@@ -16,16 +16,25 @@ three keystrokes and a coffee instead.
 
 ## How fast it is
 
-Three photos of one product, in a single session, take **about 20
-seconds**. Each cycle (shutter, USB download, background removal,
-center, watermark, save) takes roughly seven seconds on a MacBook Pro
-with an M4 chip. I rotate the product on the turntable between shots
-and press ENTER. That is the whole loop.
+The three photos in `assets/readme/buffer_stop_*.jpg` were captured in a
+single session in **about 20 seconds**. Each cycle (shutter, USB
+download, background removal, center, watermark, save) takes roughly
+seven seconds on a MacBook Pro with an M4 chip. I rotate the product on
+the turntable between shots and press ENTER. That is the whole loop.
 
-The pipeline also leaves angled (three-quarter) shots alone. Earlier
-versions tried to "straighten" them based on the product's base; that
-ruins exactly the views that look best on a product page, so it was
-removed.
+## Before / after
+
+Raw images are straight off the 24 MP sensor. Processed ones are what
+the tool writes: 1500×1500, white background, centered, watermarked.
+Note the third shot was intentionally taken at an angle. The pipeline
+does *not* "straighten" it, because a three-quarter view is exactly
+what you want on a product page.
+
+| Raw | Processed |
+|---|---|
+| ![Raw 1](assets/readme/buffer_stop_1_raw.jpg) | ![Processed 1](assets/readme/buffer_stop_1.jpg) |
+| ![Raw 2](assets/readme/buffer_stop_2_raw.jpg) | ![Processed 2](assets/readme/buffer_stop_2.jpg) |
+| ![Raw 3](assets/readme/buffer_stop_3_raw.jpg) | ![Processed 3](assets/readme/buffer_stop_3.jpg) |
 
 ## How it works
 

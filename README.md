@@ -53,6 +53,10 @@ nothing leaves the machine.
 7. Semi-transparent `TRIXBRIX.eu` watermark in the bottom right.
 8. Both the raw camera JPEG and the final 1500×1500 are saved to
    `photos/<product-name>/`.
+9. Optionally, the processed JPEG is pushed straight to a companion
+   Rails app ("Automat") over a token-authenticated HTTP API, so the
+   shop's photo-studio view updates live as you shoot. The raw stays
+   local — only the finished file goes over the wire.
 
 ## Run it
 
@@ -64,9 +68,13 @@ python3 main.py
 Interactive controls:
 
 - `ENTER` take a shot
-- `n` change the destination folder name
-- `b` toggle background removal
+- `n` change the session name (also opens a new Automat session)
+- `u` toggle upload to Automat
 - `q` quit
+
+Background removal is always on — there is no toggle. The raw camera
+JPEG is saved next to the processed one, so if `rembg` ever botches a
+shot you still have the untouched original.
 
 Or re-process an existing file without the camera:
 
@@ -74,7 +82,33 @@ Or re-process an existing file without the camera:
 python3 main.py --input some_photo.jpg --name my_product
 ```
 
+Pass `--no-upload` to skip the Automat upload for a one-off run, or
+unset `AUTOMAT_TOKEN` to disable it permanently.
+
+## Optional: upload to Automat (Rails)
+
+The capture loop can push each processed JPEG to a companion Rails app
+that hosts the catalog. The product folder name maps to a product
+record on the Rails side; sessions are deduplicated per product per day,
+so restarting the script keeps appending to the same gallery.
+
+Copy `.env.example` to `.env` and fill in:
+
+```
+AUTOMAT_URL=http://localhost:3000
+AUTOMAT_TOKEN=<bearer token from Rails credentials>
+AUTOMAT_UPLOAD_ENABLED=true
+```
+
+When the token is set, upload is on by default. The shutter announces
+the filename to Automat first (so the UI shows a spinner placeholder
+immediately), then the local pipeline runs, then the processed JPEG is
+attached to that record.
+
 ## Stack
 
 Python 3.12 + `python-gphoto2`, `rembg`, `onnxruntime`, `Pillow`,
-`numpy`, `scipy.ndimage`, `rich`. No GPU, no cloud, runs offline.
+`numpy`, `scipy.ndimage`, `rich`, plus `requests` and `python-dotenv`
+for the optional Automat upload. No GPU, no cloud inference, runs
+offline (the upload is the only network hop, and it's local-LAN by
+default).

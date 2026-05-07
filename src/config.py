@@ -1,6 +1,10 @@
+import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 PROJECT_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(PROJECT_DIR / ".env")
 DEFAULT_ASSETS_DIR = PROJECT_DIR / "assets"
 DEFAULT_LOGO = DEFAULT_ASSETS_DIR / "logos" / "trixbrix_eu.webp"
 DEFAULT_OUTPUT_DIR = PROJECT_DIR / "photos"
@@ -27,3 +31,7 @@ SHADOW_STRENGTH = 0.0
 SHADOW_RADIUS_RATIO = 0.20
 
 SHARPEN_PERCENT = 120
+
+AUTOMAT_BASE_URL = os.environ.get("AUTOMAT_URL", "http://localhost:3000")
+AUTOMAT_API_TOKEN = os.environ.get("AUTOMAT_TOKEN")
+AUTOMAT_UPLOAD_ENABLED = os.environ.get("AUTOMAT_UPLOAD_ENABLED", "true").lower() in ("1", "true", "yes", "on")

@@ -2,7 +2,7 @@
 
 A tethered product-photography pipeline for an e-commerce shop.
 Hit `ENTER` in the terminal: a Canon EOS M50 fires, the background is
-removed, the product is centered and watermarked, and a 1500×1500 JPEG
+removed, the product is centered and watermarked, and a 3000×3000 JPEG
 lands on disk ready to upload.
 
 ![Setup](assets/readme/setup.jpg)
@@ -25,7 +25,7 @@ the turntable between shots and press ENTER. That is the whole loop.
 ## Before / after
 
 Raw images are straight off the 24 MP sensor. Processed ones are what
-the tool writes: 1500×1500, white background, centered, watermarked.
+the tool writes: 3000×3000, white background, centered, watermarked.
 Note the third shot was intentionally taken at an angle. The pipeline
 does *not* "straighten" it, because a three-quarter view is exactly
 what you want on a product page.
@@ -47,11 +47,11 @@ nothing leaves the machine.
 3. Small mask blobs (dust, paper edges) are filtered out by area.
 4. Shadows visible *through gaps in the product* are lifted to white,
    while the gray plastic body itself is left alone.
-5. Bounding box, square crop with a fixed margin, resize to 1500×1500.
+5. Bounding box, square crop with a fixed margin, resize to 3000×3000.
 6. Unsharp mask on the product only, never on the background, so no
    halo on alpha edges.
 7. Semi-transparent `TRIXBRIX.eu` watermark in the bottom right.
-8. Both the raw camera JPEG and the final 1500×1500 are saved to
+8. Both the raw camera JPEG and the final 3000×3000 are saved to
    `photos/<product-name>/`.
 9. Optionally, the processed JPEG is pushed straight to a companion
    Rails app ("Automat") over a token-authenticated HTTP API, so the

@@ -6,6 +6,9 @@ from scipy import ndimage
 
 from .config import (
     AUTO_CENTER,
+    BLEED_FIT_MARGIN,
+    CLEAN_BG_ALPHA_CEILING,
+    CLEAN_BG_ALPHA_FLOOR,
     CLEAN_BG_COLOR,
     CLEAN_BG_EDGE_BLUR,
     CLEAN_BG_INFERENCE_SIZE,
@@ -47,6 +50,38 @@ def _mask_bbox(mask: Image.Image):
     rows = np.where(arr.any(axis=1))[0]
     cols = np.where(arr.any(axis=0))[0]
     return int(cols[0]), int(rows[0]), int(cols[-1]) + 1, int(rows[-1]) + 1
+
+
+def _image_bleed_edges(image: Image.Image, alpha: Image.Image) -> dict:
+    """Detect which raw-image edges have product bleeding off-frame.
+
+    Looks at a 0.5%-thick strip from each edge of the source image (not the
+    mask — u2netp @ 768 inference often clips thin extensions, so the mask
+    underreports). Counts pixels darker than 70% of background luminance; if
+    a strip has at least 50 such pixels we call that edge bleeding.
+    """
+    img_arr = np.array(image.convert("L"))
+    h, w = img_arr.shape
+
+    alpha_arr = np.array(alpha)
+    bg = alpha_arr < 32
+    if bg.sum() > 1000:
+        bg_lum = float(np.percentile(img_arr[bg], 90))
+    else:
+        bg_lum = float(np.percentile(img_arr, 95))
+    bg_lum = max(bg_lum, 1.0)
+
+    threshold = bg_lum * 0.7
+    min_dark = 50
+    sw = max(2, int(w * 0.005))
+    sh = max(2, int(h * 0.005))
+
+    return {
+        "left":   int((img_arr[:, :sw] < threshold).sum())   >= min_dark,
+        "right":  int((img_arr[:, -sw:] < threshold).sum())  >= min_dark,
+        "top":    int((img_arr[:sh, :] < threshold).sum())   >= min_dark,
+        "bottom": int((img_arr[-sh:, :] < threshold).sum())  >= min_dark,
+    }
 
 
 def _lift_internal_shadows(
@@ -132,10 +167,49 @@ def clean_background(image: Image.Image, canvas_size: tuple[int, int]) -> Image.
 
     binary_arr = np.array(binary) > 0
     filtered = _filter_small_blobs(binary_arr)
-    alpha = Image.fromarray(
-        np.where(filtered, np.array(alpha), 0).astype(np.uint8)
-    )
-    binary = Image.fromarray((filtered.astype(np.uint8) * 255))
+    img_lum = np.array(image.convert("L"))
+    bg_mask_for_lum = np.array(alpha) < 32
+    if bg_mask_for_lum.sum() > 1000:
+        bg_lum = float(np.percentile(img_lum[bg_mask_for_lum], 90))
+    else:
+        bg_lum = float(np.percentile(img_lum, 95))
+    bg_lum = max(bg_lum, 1.0)
+    # Luminance gate — only apply when bg is clearly light (typical
+    # white-tabletop product photography). For dark/colored bg we'd be
+    # inverting product/bg polarity (e.g., white LEGO tile on dark surface
+    # has white product pixels which are FAR from dark bg_lum but the
+    # naive "img_lum > bg_lum*0.75" check would still drop them, blowing
+    # away the product). bg_lum > 200 is a safe gate threshold.
+    light_bg = bg_lum > 200.0
+    pre_lum_filtered = filtered
+    if light_bg:
+        bg_like = img_lum > bg_lum * 0.95
+        filtered = filtered & ~bg_like
+    fully_filled = ndimage.binary_fill_holes(filtered)
+    candidate_holes = fully_filled & ~filtered
+    if light_bg:
+        fill_holes_mask = candidate_holes & (img_lum < bg_lum * 0.6)
+    else:
+        fill_holes_mask = np.zeros_like(candidate_holes)
+    filled = filtered | fill_holes_mask
+    alpha_raw = np.array(alpha)
+    if light_bg:
+        # Luminance-based alpha: dark pixels → opaque, bright → transparent.
+        # rembg is only used for product region detection (dilated), not alpha.
+        lo = bg_lum * 0.75
+        hi = bg_lum * 0.98
+        span = max(hi - lo, 1.0)
+        t = np.clip((hi - img_lum.astype(np.float32)) / span, 0.0, 1.0)
+        alpha_arr = (t * t * t * 255.0).astype(np.float32)
+        binary = Image.fromarray(((img_lum < bg_lum * 0.90).astype(np.uint8) * 255))
+    else:
+        alpha_arr = np.where(filtered, alpha_raw, 0).astype(np.float32)
+        alpha_arr = np.where(fill_holes_mask, 255.0, alpha_arr)
+        floor = float(CLEAN_BG_ALPHA_FLOOR)
+        ceiling = float(max(CLEAN_BG_ALPHA_CEILING, floor + 1.0))
+        alpha_arr = np.clip((alpha_arr - floor) * (255.0 / (ceiling - floor)), 0.0, 255.0)
+        binary = Image.fromarray((filled.astype(np.uint8) * 255))
+    alpha = Image.fromarray(alpha_arr.astype(np.uint8))
 
     img = _lift_internal_shadows(image.convert("RGB"), alpha, SHADOW_STRENGTH)
 
@@ -151,20 +225,131 @@ def clean_background(image: Image.Image, canvas_size: tuple[int, int]) -> Image.
         l, t, r, b = bbox
         bw, bh = r - l, b - t
         inner = max(1e-3, 1.0 - 2.0 * PRODUCT_MARGIN)
-        target_w = bw / inner
-        target_h = bh / inner
-        if target_w / max(target_h, 1e-3) > canvas_aspect:
-            crop_w = target_w
-            crop_h = crop_w / canvas_aspect
-        else:
-            crop_h = target_h
+        bleed_inner = max(1e-3, 1.0 - 2.0 * BLEED_FIT_MARGIN)
+        edges = _image_bleed_edges(image, alpha)
+        any_x_bleed = edges["left"] or edges["right"]
+        any_y_bleed = edges["top"] or edges["bottom"]
+        bbox_aspect = bw / max(bh, 1)
+        wide_product = bbox_aspect > canvas_aspect * 1.05
+        tall_product = bbox_aspect < canvas_aspect / 1.05
+        # "Small product" = bbox occupies < 30% of either source dimension.
+        # Operator deliberately framed it small, so preserve natural source
+        # composition instead of aggressively scaling bbox to 70% canvas
+        # (current auto-center). Small LEGO 2x2 tile would otherwise be
+        # upscaled ~1.75× and look like a giant tile.
+        product_fill_ratio = max(bw / src_w, bh / src_h)
+        small_product = product_fill_ratio < 0.30
+
+        if wide_product and any_x_bleed and not small_product:
+            # Bbox wider than canvas AND product bleeds off at least one X
+            # edge in source — fit Y, X overflows off-canvas.
+            #   Bleeding side: pin source edge (or bbox edge if rembg covers
+            #   the source edge) to the matching canvas edge so bleed shows.
+            #   Non-bleeding side: pin bbox edge to canvas edge (no fixed
+            #   margin — natural source bg above bbox fills the rest).
+            #
+            # Uses BLEED_FIT_MARGIN (~25–32%) instead of PRODUCT_MARGIN
+            # (~15%) because the wide-bleed case visually needs more
+            # breathing room. Clamp: if BLEED_FIT_MARGIN would pull crop_w
+            # past bbox width, the bleeding bbox edge slides AWAY from
+            # canvas edge (white margin appears, bleed disappears). Cap
+            # crop_w at bw so the bleeding side stays anchored.
+            crop_h = bh / bleed_inner
             crop_w = crop_h * canvas_aspect
-        cx = (l + r) / 2.0
-        cy = (t + b) / 2.0
-        sl = int(round(cx - crop_w / 2.0))
-        st = int(round(cy - crop_h / 2.0))
-        sr = int(round(cx + crop_w / 2.0))
-        sb = int(round(cy + crop_h / 2.0))
+            if crop_w > bw:
+                crop_w = float(bw)
+                crop_h = crop_w / canvas_aspect
+            crop_w_int = int(round(crop_w))
+            crop_h_int = int(round(crop_h))
+            margin_src_x = crop_w * PRODUCT_MARGIN
+            margin_src_y = crop_h * PRODUCT_MARGIN
+            # Anchor non-bleeding bbox edge with PRODUCT_MARGIN of clean
+            # canvas margin — logo lives in bottom-right, gets covered if
+            # bbox sits flush against canvas edge.
+            if edges["left"] and not edges["right"]:
+                sr = int(round(r + margin_src_x))
+                sl = sr - crop_w_int
+            elif edges["right"] and not edges["left"]:
+                sl = int(round(l - margin_src_x))
+                sr = sl + crop_w_int
+            else:
+                cx = (l + r) / 2.0
+                sl = int(round(cx - crop_w / 2.0))
+                sr = sl + crop_w_int
+            if edges["bottom"] and not edges["top"]:
+                sb = int(round(b + margin_src_y))
+                st = sb - crop_h_int
+            elif edges["top"] and not edges["bottom"]:
+                st = int(round(t - margin_src_y))
+                sb = st + crop_h_int
+            else:
+                cy = (t + b) / 2.0
+                st = int(round(cy - crop_h / 2.0))
+                sb = st + crop_h_int
+        elif tall_product and any_y_bleed and not small_product:
+            # Symmetric: fit X, Y overflows.
+            crop_w = bw / bleed_inner
+            crop_h = crop_w / canvas_aspect
+            if crop_h > bh:
+                crop_h = float(bh)
+                crop_w = crop_h * canvas_aspect
+            crop_w_int = int(round(crop_w))
+            crop_h_int = int(round(crop_h))
+            margin_src_x = crop_w * PRODUCT_MARGIN
+            margin_src_y = crop_h * PRODUCT_MARGIN
+            if edges["top"] and not edges["bottom"]:
+                sb = int(round(b + margin_src_y))
+                st = sb - crop_h_int
+            elif edges["bottom"] and not edges["top"]:
+                st = int(round(t - margin_src_y))
+                sb = st + crop_h_int
+            else:
+                cy = (t + b) / 2.0
+                st = int(round(cy - crop_h / 2.0))
+                sb = st + crop_h_int
+            if edges["right"] and not edges["left"]:
+                sl = int(round(l - margin_src_x))
+                sr = sl + crop_w_int
+            elif edges["left"] and not edges["right"]:
+                sr = int(round(r + margin_src_x))
+                sl = sr - crop_w_int
+            else:
+                cx = (l + r) / 2.0
+                sl = int(round(cx - crop_w / 2.0))
+                sr = sl + crop_w_int
+        elif small_product:
+            # Preserve natural source framing — crop a canvas-aspect window
+            # of the source's "natural" size (= biggest canvas-aspect rect
+            # that fits inside source). Product retains its source-frame
+            # size relative to canvas; no aggressive zoom-in.
+            src_aspect = src_w / max(src_h, 1)
+            if src_aspect >= canvas_aspect:
+                crop_h = float(src_h)
+                crop_w = crop_h * canvas_aspect
+            else:
+                crop_w = float(src_w)
+                crop_h = crop_w / canvas_aspect
+            cx = (l + r) / 2.0
+            cy = (t + b) / 2.0
+            sl = int(round(cx - crop_w / 2.0))
+            st = int(round(cy - crop_h / 2.0))
+            sr = int(round(cx + crop_w / 2.0))
+            sb = int(round(cy + crop_h / 2.0))
+        else:
+            target_w = bw / inner
+            target_h = bh / inner
+            if target_w / max(target_h, 1e-3) > canvas_aspect:
+                crop_w = target_w
+                crop_h = crop_w / canvas_aspect
+            else:
+                crop_h = target_h
+                crop_w = crop_h * canvas_aspect
+            cx = (l + r) / 2.0
+            cy = (t + b) / 2.0
+            sl = int(round(cx - crop_w / 2.0))
+            st = int(round(cy - crop_h / 2.0))
+            sr = int(round(cx + crop_w / 2.0))
+            sb = int(round(cy + crop_h / 2.0))
     else:
         if img_w / img_h > canvas_aspect:
             crop_h = img_h

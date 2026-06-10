@@ -1,5 +1,6 @@
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -7,8 +8,11 @@ import gphoto2 as gp
 
 from .config import CAMERA_IMAGE_FORMAT
 
+GP_ERROR_UNSPECIFIED = -1
 GP_ERROR_IO_IN_PROGRESS = -110
 GP_ERROR_NOT_SUPPORTED = -6
+
+_RETRYABLE_CAPTURE_ERRORS = (GP_ERROR_UNSPECIFIED, GP_ERROR_IO_IN_PROGRESS, GP_ERROR_NOT_SUPPORTED)
 
 _CONFIG_NAMES = ("imageformat", "imagequality", "imagesize")
 _AUTO_ROTATE_NAMES = ("autorotation", "autorotate", "auto-rotate")
@@ -97,33 +101,74 @@ def _drain_events(camera, timeout_ms: int = 2000) -> None:
 
 
 def _kill_ptpcamera() -> None:
-    subprocess.run(
-        ["killall", "PTPCamera"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
-    )
+    # `PTPCamera` was the legacy macOS app; newer macOS (Sonoma+) uses
+    # `ptpcamerad` daemon at /usr/libexec/ptpcamerad. Both auto-claim a
+    # connected PTP camera and need to be killed before gphoto2 can init.
+    # SIGKILL because launchd respawns the daemon ~50ms after SIGTERM.
+    for name in ("ptpcamerad", "PTPCamera"):
+        subprocess.run(
+            ["killall", "-9", name],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+
+
+class _PtpCameradReaper:
+    """Kills ptpcamerad in a tight loop while gphoto2 races to claim USB.
+
+    macOS launchd respawns ptpcamerad within ~100ms of being killed, fast
+    enough to reclaim the USB device before camera.init() finishes. Running
+    a background reaper that SIGKILLs every 30ms guarantees the daemon stays
+    dead until gphoto2 has the handle. Once init() returns, gphoto2 owns the
+    device — any subsequent ptpcamerad respawn will fail to claim (-53) and
+    exit harmlessly, so we can stop the reaper.
+    """
+
+    def __init__(self) -> None:
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=1.0)
+            self._thread = None
+
+    def _loop(self) -> None:
+        while not self._stop.is_set():
+            _kill_ptpcamera()
+            self._stop.wait(0.03)
 
 
 def capture_from_camera(workdir: Path) -> Path:
     print("Łączę z aparatem…")
     last_err: Exception | None = None
     camera = None
-    for attempt in range(3):
-        _kill_ptpcamera()
-        try:
-            camera = gp.Camera()
-            camera.init()
-            break
-        except gp.GPhoto2Error as e:
-            last_err = e
+    reaper = _PtpCameradReaper()
+    reaper.start()
+    try:
+        for attempt in range(5):
             try:
-                if camera is not None:
-                    camera.exit()
-            except gp.GPhoto2Error:
-                pass
-            camera = None
-            time.sleep(1.0 + attempt)
+                camera = gp.Camera()
+                camera.init()
+                break
+            except gp.GPhoto2Error as e:
+                last_err = e
+                try:
+                    if camera is not None:
+                        camera.exit()
+                except gp.GPhoto2Error:
+                    pass
+                camera = None
+                time.sleep(0.2 + attempt * 0.2)
+    finally:
+        reaper.stop()
     if camera is None:
         sys.exit(
             f"Nie udało się połączyć z aparatem: {last_err}\n"
@@ -153,8 +198,9 @@ def capture_from_camera(workdir: Path) -> Path:
                 break
             except gp.GPhoto2Error as e:
                 last_capture_err = e
-                if e.code not in (GP_ERROR_IO_IN_PROGRESS, GP_ERROR_NOT_SUPPORTED):
+                if e.code not in _RETRYABLE_CAPTURE_ERRORS:
                     raise
+                print(f"  Próba {attempt + 1}/5 nie powiodła się ({e}), ponawiam…")
                 _drain_events(camera, timeout_ms=1500)
                 time.sleep(0.5 + attempt * 0.5)
         if file_path is None:
@@ -168,9 +214,19 @@ def capture_from_camera(workdir: Path) -> Path:
                     "  4. Zamknij Photos.app / Image Capture / Canon EOS Utility.\n"
                     "  5. Odepnij i podepnij ponownie kabel USB."
                 )
+            if last_capture_err and last_capture_err.code == GP_ERROR_UNSPECIFIED:
+                sys.exit(
+                    "Aparat zwraca [-1] Unspecified error mimo 5 prób.\n"
+                    "Sprawdz po kolei:\n"
+                    "  1. Aparat NIE jest w trybie odtwarzania (Play).\n"
+                    "  2. AF zlapał ostrosc — spróbuj MF lub upewnij sie ze jest na czym zfocusowac.\n"
+                    "  3. Obiektyw jest poprawnie zamontowany (brak 'Err' na ekranie aparatu).\n"
+                    "  4. Wylacz i wlacz aparat, odepnij/podepnij USB.\n"
+                    "  5. Sprawdz czy aparat strzela recznie (spust na obudowie)."
+                )
             raise gp.GPhoto2Error(
-                GP_ERROR_IO_IN_PROGRESS,
-                "Aparat zajęty (I/O in progress) mimo ponownych prób.",
+                last_capture_err.code if last_capture_err else GP_ERROR_IO_IN_PROGRESS,
+                f"Aparat nie zrobil zdjecia mimo ponownych prób ({last_capture_err}).",
             )
         ext = Path(file_path.name).suffix or ".jpg"
         target = workdir / f"capture{ext}"

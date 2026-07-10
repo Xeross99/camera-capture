@@ -240,7 +240,45 @@ def clean_background(image: Image.Image, canvas_size: tuple[int, int]) -> Image.
         product_fill_ratio = max(bw / src_w, bh / src_h)
         small_product = product_fill_ratio < 0.30
 
-        if wide_product and any_x_bleed and not small_product:
+        if any_x_bleed and any_y_bleed and not small_product:
+            # Product bleeds on BOTH axes (e.g. a diagonal track crossing
+            # cut by all four source edges) — neither axis can be "fit"
+            # without exposing an amputated cut edge floating inside the
+            # canvas. Take the largest canvas-aspect window that stays
+            # fully inside the source: every bleeding cut edge lands at or
+            # past the canvas edge and visually continues off-frame.
+            src_aspect = src_w / max(src_h, 1)
+            if src_aspect >= canvas_aspect:
+                crop_h = float(src_h)
+                crop_w = crop_h * canvas_aspect
+            else:
+                crop_w = float(src_w)
+                crop_h = crop_w / canvas_aspect
+            crop_w_int = int(round(crop_w))
+            crop_h_int = int(round(crop_h))
+            margin_src_x = crop_w * PRODUCT_MARGIN
+            margin_src_y = crop_h * PRODUCT_MARGIN
+            # Per-axis anchor: margin on the single non-bleeding side,
+            # bbox-centered when both sides bleed.
+            if edges["left"] and not edges["right"]:
+                sl = int(round(r + margin_src_x)) - crop_w_int
+            elif edges["right"] and not edges["left"]:
+                sl = int(round(l - margin_src_x))
+            else:
+                sl = int(round((l + r) / 2.0 - crop_w / 2.0))
+            if edges["top"] and not edges["bottom"]:
+                st = int(round(b + margin_src_y)) - crop_h_int
+            elif edges["bottom"] and not edges["top"]:
+                st = int(round(t - margin_src_y))
+            else:
+                st = int(round((t + b) / 2.0 - crop_h / 2.0))
+            # Clamp the window inside the source — white padding on a
+            # bleeding side would reveal the cut edge.
+            sl = max(0, min(sl, src_w - crop_w_int))
+            st = max(0, min(st, src_h - crop_h_int))
+            sr = sl + crop_w_int
+            sb = st + crop_h_int
+        elif wide_product and any_x_bleed and not small_product:
             # Bbox wider than canvas AND product bleeds off at least one X
             # edge in source — fit Y, X overflows off-canvas.
             #   Bleeding side: pin source edge (or bbox edge if rembg covers

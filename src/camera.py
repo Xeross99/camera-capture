@@ -14,6 +14,13 @@ GP_ERROR_NOT_SUPPORTED = -6
 
 _RETRYABLE_CAPTURE_ERRORS = (GP_ERROR_UNSPECIFIED, GP_ERROR_IO_IN_PROGRESS, GP_ERROR_NOT_SUPPORTED)
 
+CANON_USB_VENDOR_ID = 0x04A9
+
+_LIBUSB_FALLBACK_PATHS = (
+    "/opt/homebrew/lib/libusb-1.0.0.dylib",
+    "/usr/local/lib/libusb-1.0.0.dylib",
+)
+
 _CONFIG_NAMES = ("imageformat", "imagequality", "imagesize")
 _AUTO_ROTATE_NAMES = ("autorotation", "autorotate", "auto-rotate")
 _AUTO_ROTATE_OFF_VALUES = ("None", "Off", "off", "Disable", "Disabled", "0")
@@ -146,8 +153,48 @@ class _PtpCameradReaper:
             self._stop.wait(0.03)
 
 
-def capture_from_camera(workdir: Path) -> Path:
-    print("Łączę z aparatem…")
+def _reset_usb_device() -> bool:
+    """Best-effort USB port reset of the Canon camera (software unplug/replug).
+
+    Clears a wedged PTP session that leaves the camera stuck on BUSY. Cannot
+    reboot the camera firmware itself — if BUSY persists after this, only a
+    power-cycle (or battery pull) helps.
+    """
+    try:
+        import usb.backend.libusb1
+        import usb.core
+        import usb.util
+    except ImportError:
+        print("  (pyusb niezainstalowany — pomijam reset USB; pip install pyusb)")
+        return False
+    backend = usb.backend.libusb1.get_backend()
+    if backend is None:
+        for path in _LIBUSB_FALLBACK_PATHS:
+            if Path(path).exists():
+                backend = usb.backend.libusb1.get_backend(find_library=lambda _n, p=path: p)
+                if backend is not None:
+                    break
+    if backend is None:
+        print("  (brak libusb — pomijam reset USB; brew install libusb)")
+        return False
+    dev = usb.core.find(idVendor=CANON_USB_VENDOR_ID, backend=backend)
+    if dev is None:
+        print("  (nie widze aparatu Canon na USB — pomijam reset)")
+        return False
+    try:
+        dev.reset()
+        return True
+    except usb.core.USBError as e:
+        print(f"  (reset USB nie powiodl sie: {e})")
+        return False
+    finally:
+        try:
+            usb.util.dispose_resources(dev)
+        except Exception:
+            pass
+
+
+def _init_camera() -> tuple["gp.Camera | None", Exception | None]:
     last_err: Exception | None = None
     camera = None
     reaper = _PtpCameradReaper()
@@ -169,6 +216,33 @@ def capture_from_camera(workdir: Path) -> Path:
                 time.sleep(0.2 + attempt * 0.2)
     finally:
         reaper.stop()
+    return camera, last_err
+
+
+def _reconnect_after_usb_reset(camera) -> "gp.Camera":
+    """Drop the wedged PTP session, reset the USB port, re-init the camera."""
+    try:
+        camera.exit()
+    except gp.GPhoto2Error:
+        pass
+    if _reset_usb_device():
+        print("  Reset USB OK, czekam na ponowna enumeracje urzadzenia…")
+        time.sleep(2.0)
+    new_camera, err = _init_camera()
+    if new_camera is None:
+        sys.exit(
+            f"Aparat nie odpowiada po resecie USB: {err}\n"
+            "Wisi na BUSY po stronie firmware — z hosta nie da sie tego odwiesic.\n"
+            "  1. Wylacz i wlacz aparat wlacznikiem.\n"
+            "  2. Jesli nie reaguje na wlacznik — wyjmij baterie na ~10 s.\n"
+            "  3. Sprawdz karte SD (wolna/umierajaca karta to typowa przyczyna BUSY)."
+        )
+    return new_camera
+
+
+def capture_from_camera(workdir: Path) -> Path:
+    print("Łączę z aparatem…")
+    camera, last_err = _init_camera()
     if camera is None:
         sys.exit(
             f"Nie udało się połączyć z aparatem: {last_err}\n"
@@ -192,6 +266,7 @@ def capture_from_camera(workdir: Path) -> Path:
         _drain_events(camera, timeout_ms=1500)
         file_path = None
         last_capture_err: gp.GPhoto2Error | None = None
+        usb_reset_done = False
         for attempt in range(5):
             try:
                 file_path = camera.capture(gp.GP_CAPTURE_IMAGE)
@@ -201,7 +276,12 @@ def capture_from_camera(workdir: Path) -> Path:
                 if e.code not in _RETRYABLE_CAPTURE_ERRORS:
                     raise
                 print(f"  Próba {attempt + 1}/5 nie powiodła się ({e}), ponawiam…")
-                _drain_events(camera, timeout_ms=1500)
+                if e.code == GP_ERROR_IO_IN_PROGRESS and attempt >= 2 and not usb_reset_done:
+                    usb_reset_done = True
+                    print("  Aparat wisi na -110/BUSY — próbuję reset USB…")
+                    camera = _reconnect_after_usb_reset(camera)
+                else:
+                    _drain_events(camera, timeout_ms=1500)
                 time.sleep(0.5 + attempt * 0.5)
         if file_path is None:
             if last_capture_err and last_capture_err.code == GP_ERROR_NOT_SUPPORTED:
@@ -223,6 +303,16 @@ def capture_from_camera(workdir: Path) -> Path:
                     "  3. Obiektyw jest poprawnie zamontowany (brak 'Err' na ekranie aparatu).\n"
                     "  4. Wylacz i wlacz aparat, odepnij/podepnij USB.\n"
                     "  5. Sprawdz czy aparat strzela recznie (spust na obudowie)."
+                )
+            if last_capture_err and last_capture_err.code == GP_ERROR_IO_IN_PROGRESS:
+                sys.exit(
+                    "Aparat wisi na [-110] I/O in progress (BUSY) mimo 5 prób i resetu USB.\n"
+                    "Sprawdz po kolei:\n"
+                    "  1. Karta SD wlozona? (M50 II nie strzeli bez karty, chyba ze "
+                    "'Release shutter w/o card: ON').\n"
+                    "  2. Karta nie jest wolna/umierajaca (dlugi zapis = ciagly BUSY).\n"
+                    "  3. Wylacz i wlacz aparat wlacznikiem.\n"
+                    "  4. Jesli aparat nie reaguje na wlacznik — wyjmij baterie na ~10 s."
                 )
             raise gp.GPhoto2Error(
                 last_capture_err.code if last_capture_err else GP_ERROR_IO_IN_PROGRESS,

@@ -382,12 +382,40 @@ def clean_background(image: Image.Image, canvas_size: tuple[int, int]) -> Image.
             else:
                 crop_h = target_h
                 crop_w = crop_h * canvas_aspect
+            # A square-ish bbox with edge bleed lands here (the wide/tall
+            # gates miss it, ±5% tolerance). Anchor the crop window to the
+            # bleeding source edge so the raw cut lands exactly on the
+            # canvas edge and the product visually continues off-frame —
+            # centering instead would float the amputated cut edge above a
+            # white margin. Non-bleeding sides keep the regular centering.
+            if edges["top"] and edges["bottom"] and crop_h > src_h:
+                crop_h = float(src_h)
+                crop_w = crop_h * canvas_aspect
+            if edges["left"] and edges["right"] and crop_w > src_w:
+                crop_w = float(src_w)
+                crop_h = crop_w / canvas_aspect
             cx = (l + r) / 2.0
             cy = (t + b) / 2.0
-            sl = int(round(cx - crop_w / 2.0))
-            st = int(round(cy - crop_h / 2.0))
-            sr = int(round(cx + crop_w / 2.0))
-            sb = int(round(cy + crop_h / 2.0))
+            crop_w_int = int(round(crop_w))
+            crop_h_int = int(round(crop_h))
+            if edges["left"] and not edges["right"]:
+                sl = 0
+            elif edges["right"] and not edges["left"]:
+                sl = src_w - crop_w_int
+            else:
+                sl = int(round(cx - crop_w / 2.0))
+                if edges["left"] and edges["right"]:
+                    sl = max(0, min(sl, src_w - crop_w_int))
+            if edges["top"] and not edges["bottom"]:
+                st = 0
+            elif edges["bottom"] and not edges["top"]:
+                st = src_h - crop_h_int
+            else:
+                st = int(round(cy - crop_h / 2.0))
+                if edges["top"] and edges["bottom"]:
+                    st = max(0, min(st, src_h - crop_h_int))
+            sr = sl + crop_w_int
+            sb = st + crop_h_int
     else:
         if img_w / img_h > canvas_aspect:
             crop_h = img_h

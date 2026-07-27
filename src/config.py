@@ -11,6 +11,8 @@ DEFAULT_OUTPUT_DIR = PROJECT_DIR / "photos"
 
 ASPECT_W, ASPECT_H = 1, 1
 OUTPUT_SIZE = 3000
+LOGO_ENABLED = True
+LOGO_POSITION = "bottom-right"  # bottom-right / bottom-left / top-right / top-left
 LOGO_HEIGHT_RATIO = 0.06
 LOGO_MARGIN_RATIO = 0.04
 LOGO_OPACITY = 0.5

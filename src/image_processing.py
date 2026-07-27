@@ -8,11 +8,15 @@ from .config import (
     ASPECT_H,
     ASPECT_W,
     JPEG_QUALITY,
+    LOGO_ENABLED,
     LOGO_HEIGHT_RATIO,
     LOGO_MARGIN_RATIO,
     LOGO_OPACITY,
+    LOGO_POSITION,
     OUTPUT_SIZE,
 )
+
+LOGO_POSITIONS = ("bottom-right", "bottom-left", "top-right", "top-left")
 
 
 def crop_to_aspect(image: Image.Image, aspect_w: int, aspect_h: int) -> Image.Image:
@@ -34,10 +38,15 @@ def crop_to_aspect(image: Image.Image, aspect_w: int, aspect_h: int) -> Image.Im
     return image.crop((left, top, left + new_w, top + new_h))
 
 
-def overlay_logo(canvas: Image.Image, logo_path: Path) -> Image.Image:
+def overlay_logo(
+    canvas: Image.Image, logo_path: Path, position: str = LOGO_POSITION
+) -> Image.Image:
     if not logo_path.exists():
         print(f"Uwaga: logo nie znalezione w {logo_path} — pomijam overlay.")
         return canvas
+    if position not in LOGO_POSITIONS:
+        print(f"Uwaga: nieznana pozycja logo '{position}' — używam bottom-right.")
+        position = "bottom-right"
 
     logo = Image.open(logo_path).convert("RGBA")
     canvas_w, canvas_h = canvas.size
@@ -53,15 +62,22 @@ def overlay_logo(canvas: Image.Image, logo_path: Path) -> Image.Image:
         logo = Image.merge("RGBA", (r, g, b, a))
 
     margin = int(canvas_w * LOGO_MARGIN_RATIO)
-    x = canvas_w - target_w - margin
-    y = canvas_h - target_h - margin
+    x = margin if "left" in position else canvas_w - target_w - margin
+    y = margin if "top" in position else canvas_h - target_h - margin
 
     canvas_rgba = canvas.convert("RGBA")
     canvas_rgba.alpha_composite(logo, dest=(x, y))
     return canvas_rgba.convert("RGB")
 
 
-def process(input_path: Path, logo_path: Path, output_dir: Path, clean_bg: bool = False) -> Path:
+def process(
+    input_path: Path,
+    logo_path: Path,
+    output_dir: Path,
+    clean_bg: bool = False,
+    add_logo: bool = LOGO_ENABLED,
+    logo_position: str = LOGO_POSITION,
+) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -82,7 +98,8 @@ def process(input_path: Path, logo_path: Path, output_dir: Path, clean_bg: bool 
         if target and image.size != target:
             image = image.resize(target, Image.LANCZOS)
 
-    image = overlay_logo(image, logo_path)
+    if add_logo:
+        image = overlay_logo(image, logo_path, logo_position)
 
     out_path = output_dir / f"photo_{timestamp}.jpg"
     image.save(out_path, "JPEG", quality=JPEG_QUALITY)

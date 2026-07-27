@@ -31,8 +31,10 @@ from src.config import (
     AUTOMAT_UPLOAD_ENABLED,
     DEFAULT_LOGO,
     DEFAULT_OUTPUT_DIR,
+    LOGO_ENABLED,
+    LOGO_POSITION,
 )
-from src.image_processing import process
+from src.image_processing import LOGO_POSITIONS, process
 
 console = Console()
 
@@ -110,12 +112,17 @@ def show_help() -> None:
     table.add_row("[ENTER]", "zrob zdjecie")
     table.add_row("n", "zmień nazwę sesji zdjęciowej")
     table.add_row("u", "przelacz upload do Automatu ON/OFF")
+    table.add_row("l", "przelacz nakladanie logo ON/OFF")
+    table.add_row("p", "zmien rog logo (cyklicznie)")
     table.add_row("h", "pokaz pomoc")
     table.add_row("q", "wyjscie")
     console.print(Panel(table, title="[bold]Komendy", border_style="cyan", expand=False))
 
 
-def session_header(name: str, count: int, base_output: Path, upload: bool) -> None:
+def session_header(
+    name: str, count: int, base_output: Path, upload: bool,
+    add_logo: bool, logo_position: str,
+) -> None:
     target = base_output / name
     body = Text()
     body.append("Folder: ", style="dim")
@@ -124,10 +131,21 @@ def session_header(name: str, count: int, base_output: Path, upload: bool) -> No
     body.append(str(count), style="bold magenta")
     body.append("\nUpload do Automatu: ", style="dim")
     body.append("ON" if upload else "OFF", style="bold green" if upload else "bold red")
+    body.append("\nLogo: ", style="dim")
+    if add_logo:
+        body.append(f"ON ({logo_position})", style="bold green")
+    else:
+        body.append("OFF", style="bold red")
     console.print(Panel(body, title=f"[bold cyan]{name}", border_style="green", expand=False))
 
 
-def interactive_loop(logo: Path, base_output: Path, upload: bool = True) -> None:
+def interactive_loop(
+    logo: Path,
+    base_output: Path,
+    upload: bool = True,
+    add_logo: bool = LOGO_ENABLED,
+    logo_position: str = LOGO_POSITION,
+) -> None:
     console.print(Panel.fit(
         "[bold]Camera Capture[/] [dim]· Canon EOS M50 II[/]",
         border_style="bright_magenta",
@@ -137,7 +155,7 @@ def interactive_loop(logo: Path, base_output: Path, upload: bool = True) -> None
     count = 0
     uploader = make_uploader(upload, name)
     upload_active = uploader is not None
-    session_header(name, count, base_output, upload_active)
+    session_header(name, count, base_output, upload_active, add_logo, logo_position)
 
     while True:
         drain_stdin()
@@ -153,7 +171,7 @@ def interactive_loop(logo: Path, base_output: Path, upload: bool = True) -> None
             count = 0
             uploader = make_uploader(upload, name)
             upload_active = uploader is not None
-            session_header(name, count, base_output, upload_active)
+            session_header(name, count, base_output, upload_active, add_logo, logo_position)
             continue
         if cmd == "u":
             upload = not upload
@@ -161,8 +179,21 @@ def interactive_loop(logo: Path, base_output: Path, upload: bool = True) -> None
             upload_active = uploader is not None
             console.print(f"Upload do Automatu: [bold {'green' if upload_active else 'red'}]{'ON' if upload_active else 'OFF'}[/]")
             continue
+        if cmd == "l":
+            add_logo = not add_logo
+            if add_logo:
+                console.print(f"Logo: [bold green]ON[/] [dim]({logo_position})[/]")
+            else:
+                console.print("Logo: [bold red]OFF[/]")
+            continue
+        if cmd == "p":
+            idx = LOGO_POSITIONS.index(logo_position) if logo_position in LOGO_POSITIONS else 0
+            logo_position = LOGO_POSITIONS[(idx + 1) % len(LOGO_POSITIONS)]
+            suffix = "" if add_logo else " [dim](logo jest OFF — wlacz przez 'l')[/]"
+            console.print(f"Pozycja logo: [bold cyan]{logo_position}[/]{suffix}")
+            continue
         if cmd != "":
-            console.print("[red]Nieznana komenda.[/] Uzyj [bold]ENTER[/], [bold]n[/], [bold]u[/], [bold]h[/] lub [bold]q[/].")
+            console.print("[red]Nieznana komenda.[/] Uzyj [bold]ENTER[/], [bold]n[/], [bold]u[/], [bold]l[/], [bold]p[/], [bold]h[/] lub [bold]q[/].")
             continue
 
         target_dir = base_output / name
@@ -177,7 +208,10 @@ def interactive_loop(logo: Path, base_output: Path, upload: bool = True) -> None
                 announced_filename = f"photo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
                 announced_id = announce_or_log(uploader, announced_filename)
                 with console.status("[cyan]Czyszcze tlo / wyrownuje / centruje…[/]", spinner="dots"):
-                    out = process(captured, logo, target_dir, clean_bg=True)
+                    out = process(
+                        captured, logo, target_dir, clean_bg=True,
+                        add_logo=add_logo, logo_position=logo_position,
+                    )
         except SystemExit as e:
             console.print(Panel(str(e), title="[bold red]Błąd aparatu", border_style="red"))
             continue
@@ -192,6 +226,19 @@ def main() -> None:
     parser.add_argument("--input", type=Path, help="Pomiń aparat, użyj istniejącego pliku.")
     parser.add_argument("--name", type=str, help="Nazwa sesji zdjęciowej (= podfolder w photos/).")
     parser.add_argument("--logo", type=Path, default=DEFAULT_LOGO)
+    parser.add_argument(
+        "--no-logo",
+        dest="add_logo",
+        action="store_false",
+        help="Nie nakladaj logo na finalny JPEG.",
+    )
+    parser.set_defaults(add_logo=LOGO_ENABLED)
+    parser.add_argument(
+        "--logo-position",
+        choices=LOGO_POSITIONS,
+        default=LOGO_POSITION,
+        help=f"Rog, w ktorym laduje logo (domyslnie {LOGO_POSITION}).",
+    )
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument(
         "--no-upload",
@@ -226,6 +273,8 @@ def main() -> None:
             args.logo,
             args.output_dir / name,
             clean_bg=True,
+            add_logo=args.add_logo,
+            logo_position=args.logo_position,
         )
         console.print(f"[bold green]✓ Zapisano[/] [yellow]{out}[/]")
         uploader = make_uploader(args.upload, name)
@@ -237,6 +286,8 @@ def main() -> None:
             args.logo,
             args.output_dir,
             upload=args.upload,
+            add_logo=args.add_logo,
+            logo_position=args.logo_position,
         )
     except (KeyboardInterrupt, EOFError):
         console.print("\n[dim]Przerwano.[/]")

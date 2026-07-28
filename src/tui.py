@@ -121,9 +121,14 @@ class CaptureTUI:
     def log(self, line: Text | str) -> None:
         if isinstance(line, str):
             line = Text(line)
-        line.no_wrap = True
-        line.overflow = "ellipsis"
-        self.log_lines.append(line)
+        # Wpis moze byc wielolinijkowy (np. blad aparatu z lista krokow) —
+        # deque trzyma pojedyncze linie, zeby docinanie ogona do wysokosci
+        # panelu bylo dokladne (inaczej panel przycina najnowsze wpisy).
+        parts = line.split("\n") if "\n" in line.plain else [line]
+        for part in parts:
+            part.no_wrap = True
+            part.overflow = "ellipsis"
+            self.log_lines.append(part)
         if self.live is not None:
             self.live.update(self._render())
 

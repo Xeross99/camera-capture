@@ -6,6 +6,7 @@ from scipy import ndimage
 
 from .config import (
     AUTO_CENTER,
+    AUTO_ZOOM,
     BLEED_FIT_MARGIN,
     CLEAN_BG_ALPHA_CEILING,
     CLEAN_BG_ALPHA_FLOOR,
@@ -147,7 +148,12 @@ def _build_shadow_layer(
     return Image.fromarray(np.clip(shadow, 0, 255).astype(np.uint8))
 
 
-def clean_background(image: Image.Image, canvas_size: tuple[int, int]) -> Image.Image:
+def clean_background(
+    image: Image.Image,
+    canvas_size: tuple[int, int],
+    auto_center: bool = AUTO_CENTER,
+    auto_zoom: bool = AUTO_ZOOM,
+) -> Image.Image:
     from rembg import remove
 
     canvas_w, canvas_h = canvas_size
@@ -221,9 +227,9 @@ def clean_background(image: Image.Image, canvas_size: tuple[int, int]) -> Image.
     img_w, img_h = img.size
     canvas_aspect = canvas_w / canvas_h
 
-    if AUTO_CENTER:
-        l, t, r, b = bbox
-        bw, bh = r - l, b - t
+    l, t, r, b = bbox
+    bw, bh = r - l, b - t
+    if auto_center and auto_zoom:
         inner = max(1e-3, 1.0 - 2.0 * PRODUCT_MARGIN)
         bleed_inner = max(1e-3, 1.0 - 2.0 * BLEED_FIT_MARGIN)
         edges = _image_bleed_edges(image, alpha)
@@ -416,6 +422,57 @@ def clean_background(image: Image.Image, canvas_size: tuple[int, int]) -> Image.
                     st = max(0, min(st, src_h - crop_h_int))
             sr = sl + crop_w_int
             sb = st + crop_h_int
+    elif auto_zoom:
+        # Zoom bez centrowania: okno cropu zoomowane do bboxa (jak fit-both),
+        # ale kotwiczone proporcjonalnie do pozycji produktu w source —
+        # produkt odsunięty od środka kadru zostaje odsunięty w canvy.
+        inner = max(1e-3, 1.0 - 2.0 * PRODUCT_MARGIN)
+        target_w = bw / inner
+        target_h = bh / inner
+        if target_w / max(target_h, 1e-3) > canvas_aspect:
+            crop_w = target_w
+            crop_h = crop_w / canvas_aspect
+        else:
+            crop_h = target_h
+            crop_w = crop_h * canvas_aspect
+        if crop_w > src_w or crop_h > src_h:
+            shrink = min(src_w / crop_w, src_h / crop_h)
+            crop_w *= shrink
+            crop_h *= shrink
+        crop_w_int = int(round(crop_w))
+        crop_h_int = int(round(crop_h))
+        cx = (l + r) / 2.0
+        cy = (t + b) / 2.0
+        sl = int(round(cx * (1.0 - crop_w / src_w)))
+        st = int(round(cy * (1.0 - crop_h / src_h)))
+        # Okno musi objąć cały bbox (crop >= bbox, więc zawsze możliwe) —
+        # inaczej produkt przy krawędzi kadru zostałby ucięty.
+        sl = max(min(sl, l), r - crop_w_int)
+        st = max(min(st, t), b - crop_h_int)
+        sl = max(0, min(sl, src_w - crop_w_int))
+        st = max(0, min(st, src_h - crop_h_int))
+        sr = sl + crop_w_int
+        sb = st + crop_h_int
+    elif auto_center:
+        # Centrowanie bez zoomu: naturalne okno (największy canvas-aspect
+        # prostokąt w source) wycentrowane na bboxie produktu.
+        src_aspect = src_w / max(src_h, 1)
+        if src_aspect >= canvas_aspect:
+            crop_h = float(src_h)
+            crop_w = crop_h * canvas_aspect
+        else:
+            crop_w = float(src_w)
+            crop_h = crop_w / canvas_aspect
+        crop_w_int = int(round(crop_w))
+        crop_h_int = int(round(crop_h))
+        cx = (l + r) / 2.0
+        cy = (t + b) / 2.0
+        sl = int(round(cx - crop_w / 2.0))
+        st = int(round(cy - crop_h / 2.0))
+        sl = max(0, min(sl, src_w - crop_w_int))
+        st = max(0, min(st, src_h - crop_h_int))
+        sr = sl + crop_w_int
+        sb = st + crop_h_int
     else:
         if img_w / img_h > canvas_aspect:
             crop_h = img_h

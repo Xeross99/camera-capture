@@ -7,6 +7,8 @@ from PIL import Image
 from .config import (
     ASPECT_H,
     ASPECT_W,
+    AUTO_CENTER,
+    AUTO_ZOOM,
     JPEG_QUALITY,
     LOGO_ENABLED,
     LOGO_HEIGHT_RATIO,
@@ -77,6 +79,8 @@ def process(
     clean_bg: bool = False,
     add_logo: bool = LOGO_ENABLED,
     logo_position: str = LOGO_POSITION,
+    auto_center: bool = AUTO_CENTER,
+    auto_zoom: bool = AUTO_ZOOM,
 ) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -92,7 +96,9 @@ def process(
         from .background import clean_background
 
         canvas_size = target or (OUTPUT_SIZE, OUTPUT_SIZE)
-        image = clean_background(image, canvas_size)
+        image = clean_background(
+            image, canvas_size, auto_center=auto_center, auto_zoom=auto_zoom
+        )
     else:
         image = crop_to_aspect(image, ASPECT_W, ASPECT_H)
         if target and image.size != target:

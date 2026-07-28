@@ -12,21 +12,16 @@ Uruchomienie:
 """
 
 import argparse
-import re
-import sys
-import tempfile
-import termios
 from pathlib import Path
 
 from rich.console import Console
-from rich.panel import Panel
 from rich.prompt import Prompt
-from rich.table import Table
-from rich.text import Text
 
 from src.automat_uploader import AutomatUploader
-from src.camera import capture_from_camera, list_image_formats
+from src.camera import list_image_formats
 from src.config import (
+    AUTO_CENTER,
+    AUTO_ZOOM,
     AUTOMAT_API_TOKEN,
     AUTOMAT_UPLOAD_ENABLED,
     DEFAULT_LOGO,
@@ -35,6 +30,7 @@ from src.config import (
     LOGO_POSITION,
 )
 from src.image_processing import LOGO_POSITIONS, process
+from src.tui import CaptureTUI, sanitize_name
 
 console = Console()
 
@@ -59,16 +55,6 @@ def make_uploader(enabled: bool, name: str) -> AutomatUploader | None:
     return u
 
 
-def announce_or_log(uploader: AutomatUploader | None, filename: str) -> int | None:
-    if uploader is None:
-        return None
-    try:
-        return uploader.announce_photo(filename)
-    except Exception as e:
-        console.print(f"[red]Announce do Automatu nie wyszedl:[/] {e}")
-        return None
-
-
 def upload_raw_or_log(uploader: AutomatUploader | None, out_path: Path,
                       photo_id: int | None = None) -> None:
     if uploader is None:
@@ -81,19 +67,6 @@ def upload_raw_or_log(uploader: AutomatUploader | None, out_path: Path,
     console.print("[bold cyan]↑ Wgrano przetworzone do Automatu[/]")
 
 
-def drain_stdin() -> None:
-    try:
-        termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)
-    except (termios.error, ValueError, OSError):
-        pass
-
-
-def sanitize_name(name: str) -> str:
-    name = name.strip()
-    name = re.sub(r"[^A-Za-z0-9_\-. ]+", "_", name)
-    return name.strip(" .") or "default"
-
-
 def prompt_name(current: str | None = None) -> str:
     while True:
         raw = Prompt.ask(
@@ -103,122 +76,6 @@ def prompt_name(current: str | None = None) -> str:
         )
         if raw:
             return sanitize_name(raw)
-
-
-def show_help() -> None:
-    table = Table.grid(padding=(0, 2))
-    table.add_column(style="bold green", justify="right")
-    table.add_column(style="white")
-    table.add_row("[ENTER]", "zrob zdjecie")
-    table.add_row("n", "zmień nazwę sesji zdjęciowej")
-    table.add_row("u", "przelacz upload do Automatu ON/OFF")
-    table.add_row("l", "przelacz nakladanie logo ON/OFF")
-    table.add_row("p", "zmien rog logo (cyklicznie)")
-    table.add_row("h", "pokaz pomoc")
-    table.add_row("q", "wyjscie")
-    console.print(Panel(table, title="[bold]Komendy", border_style="cyan", expand=False))
-
-
-def session_header(
-    name: str, count: int, base_output: Path, upload: bool,
-    add_logo: bool, logo_position: str,
-) -> None:
-    target = base_output / name
-    body = Text()
-    body.append("Folder: ", style="dim")
-    body.append(str(target), style="bold yellow")
-    body.append("\nZdjec w sesji: ", style="dim")
-    body.append(str(count), style="bold magenta")
-    body.append("\nUpload do Automatu: ", style="dim")
-    body.append("ON" if upload else "OFF", style="bold green" if upload else "bold red")
-    body.append("\nLogo: ", style="dim")
-    if add_logo:
-        body.append(f"ON ({logo_position})", style="bold green")
-    else:
-        body.append("OFF", style="bold red")
-    console.print(Panel(body, title=f"[bold cyan]{name}", border_style="green", expand=False))
-
-
-def interactive_loop(
-    logo: Path,
-    base_output: Path,
-    upload: bool = True,
-    add_logo: bool = LOGO_ENABLED,
-    logo_position: str = LOGO_POSITION,
-) -> None:
-    console.print(Panel.fit(
-        "[bold]Camera Capture[/] [dim]· Canon EOS M50 II[/]",
-        border_style="bright_magenta",
-    ))
-    name = prompt_name()
-    show_help()
-    count = 0
-    uploader = make_uploader(upload, name)
-    upload_active = uploader is not None
-    session_header(name, count, base_output, upload_active, add_logo, logo_position)
-
-    while True:
-        drain_stdin()
-        cmd = Prompt.ask(f"[bold green][{name}][/]", default="", show_default=False).strip().lower()
-        if cmd == "q":
-            console.print("[dim]Do zobaczenia.[/]")
-            return
-        if cmd == "h":
-            show_help()
-            continue
-        if cmd == "n":
-            name = prompt_name(name)
-            count = 0
-            uploader = make_uploader(upload, name)
-            upload_active = uploader is not None
-            session_header(name, count, base_output, upload_active, add_logo, logo_position)
-            continue
-        if cmd == "u":
-            upload = not upload
-            uploader = make_uploader(upload, name) if upload else None
-            upload_active = uploader is not None
-            console.print(f"Upload do Automatu: [bold {'green' if upload_active else 'red'}]{'ON' if upload_active else 'OFF'}[/]")
-            continue
-        if cmd == "l":
-            add_logo = not add_logo
-            if add_logo:
-                console.print(f"Logo: [bold green]ON[/] [dim]({logo_position})[/]")
-            else:
-                console.print("Logo: [bold red]OFF[/]")
-            continue
-        if cmd == "p":
-            idx = LOGO_POSITIONS.index(logo_position) if logo_position in LOGO_POSITIONS else 0
-            logo_position = LOGO_POSITIONS[(idx + 1) % len(LOGO_POSITIONS)]
-            suffix = "" if add_logo else " [dim](logo jest OFF — wlacz przez 'l')[/]"
-            console.print(f"Pozycja logo: [bold cyan]{logo_position}[/]{suffix}")
-            continue
-        if cmd != "":
-            console.print("[red]Nieznana komenda.[/] Uzyj [bold]ENTER[/], [bold]n[/], [bold]u[/], [bold]l[/], [bold]p[/], [bold]h[/] lub [bold]q[/].")
-            continue
-
-        target_dir = base_output / name
-        try:
-            with tempfile.TemporaryDirectory() as td:
-                with console.status("[cyan]Łączę z aparatem i wyzwalam migawkę…[/]", spinner="dots"):
-                    captured = capture_from_camera(Path(td))
-                # Announce filename to Automat right after capture so the
-                # browser shows a placeholder card with a spinner while we
-                # do the slow local processing.
-                from datetime import datetime
-                announced_filename = f"photo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-                announced_id = announce_or_log(uploader, announced_filename)
-                with console.status("[cyan]Czyszcze tlo / wyrownuje / centruje…[/]", spinner="dots"):
-                    out = process(
-                        captured, logo, target_dir, clean_bg=True,
-                        add_logo=add_logo, logo_position=logo_position,
-                    )
-        except SystemExit as e:
-            console.print(Panel(str(e), title="[bold red]Błąd aparatu", border_style="red"))
-            continue
-
-        count += 1
-        console.print(f"[bold green]✓ Zapisano[/] [yellow]{out}[/]  [dim](#{count})[/]")
-        upload_raw_or_log(uploader, out, photo_id=announced_id)
 
 
 def main() -> None:
@@ -239,6 +96,20 @@ def main() -> None:
         default=LOGO_POSITION,
         help=f"Rog, w ktorym laduje logo (domyslnie {LOGO_POSITION}).",
     )
+    parser.add_argument(
+        "--no-auto-center",
+        dest="auto_center",
+        action="store_false",
+        help="Nie centruj produktu (zostaje w pozycji z kadru).",
+    )
+    parser.set_defaults(auto_center=AUTO_CENTER)
+    parser.add_argument(
+        "--no-auto-zoom",
+        dest="auto_zoom",
+        action="store_false",
+        help="Nie przyblizaj produktu (naturalna skala z kadru).",
+    )
+    parser.set_defaults(auto_zoom=AUTO_ZOOM)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument(
         "--no-upload",
@@ -275,6 +146,8 @@ def main() -> None:
             clean_bg=True,
             add_logo=args.add_logo,
             logo_position=args.logo_position,
+            auto_center=args.auto_center,
+            auto_zoom=args.auto_zoom,
         )
         console.print(f"[bold green]✓ Zapisano[/] [yellow]{out}[/]")
         uploader = make_uploader(args.upload, name)
@@ -282,13 +155,15 @@ def main() -> None:
         return
 
     try:
-        interactive_loop(
-            args.logo,
-            args.output_dir,
+        CaptureTUI(
+            logo=args.logo,
+            base_output=args.output_dir,
             upload=args.upload,
             add_logo=args.add_logo,
             logo_position=args.logo_position,
-        )
+            auto_center=args.auto_center,
+            auto_zoom=args.auto_zoom,
+        ).run()
     except (KeyboardInterrupt, EOFError):
         console.print("\n[dim]Przerwano.[/]")
 

@@ -30,7 +30,7 @@ const ACCENT = "#4a8cff";
 const S = {           // stan klienta
   screen: "sesja", logOpen: false, state: null,
   selShot: -1, selGal: -1, galFilter: "all",
-  gridOn: true, kadrOn: true,
+  gridOn: true, kadrOn: true, reviewMode: false,
 };
 const $ = id => document.getElementById(id);
 const post = (payload) => fetch("/api/action", { method: "POST", body: JSON.stringify(payload) });
@@ -116,6 +116,8 @@ function sesjaScreen() {
             <div onclick="S.kadrOn = !S.kadrOn; renderScreens()" style="${badge} ${S.kadrOn ? "" : "opacity: .45;"}">KADR 1:1</div>
           </div>
           <div style="position: absolute; right: 12px; bottom: 12px; background: rgba(0,0,0,.55); border: 1px solid #3c3c44; padding: 3px 8px; ${mono} font-size: 10.5px; color: ${bgColor};">${histText}</div>
+          ${reviewOverlay()}
+          <div id="flash" style="position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 4;"></div>
         </div>
       </div>
 
@@ -123,7 +125,7 @@ function sesjaScreen() {
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
           <div style="font-size: 11.5px; font-weight: 600; color: #b6b6bd; letter-spacing: .03em; text-transform: uppercase;">Zdjęcia w sesji</div>
           <div style="display: flex; gap: 14px; ${mono} font-size: 10.5px; color: #7e7e85;">
-            <div>← → wybór</div><div>A akceptuj</div><div>X odrzuć</div>
+            <div>SPACJA podgląd</div><div>← → wybór</div><div>A akceptuj</div><div>X odrzuć</div>
           </div>
         </div>
         <div id="filmstrip" style="display: flex; gap: 8px; overflow-x: auto; overflow-y: hidden;">${filmstrip()}</div>
@@ -185,13 +187,40 @@ function sesjaScreen() {
       </div>
 
       <div style="flex: 0 0 auto; border-top: 1px solid #17171a; background: #26262a; padding: 12px 16px 14px; display: flex; flex-direction: column; gap: 8px;">
-        <button onclick="shoot()" style="height: 44px; ${btnBlue} border-radius: 6px; font-size: 14px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 10px;">${st.busy || "Zrób zdjęcie"} <span style="${mono} font-size: 11px; opacity: .75;">SPACJA</span></button>
+        <button onclick="shoot()" style="height: 44px; ${btnBlue} border-radius: 6px; font-size: 14px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 10px;">${st.busy || "Zrób zdjęcie"} <span style="${mono} font-size: 11px; opacity: .75;">ENTER</span></button>
         <div style="display: flex; gap: 8px;">
           <button onclick="toggle('preview', !S.state.previewOn)" style="flex: 1; height: 30px; background: linear-gradient(#3f3f45, #35353a); border: 1px solid #4c4c54; border-radius: 5px; color: #eaeaee; font-size: 12px; font-family: inherit;">Podgląd: ${st.previewOn ? "ON" : "OFF"} <span style="${mono} font-size: 10.5px; color: #9d9da3;">P</span></button>
           <button onclick="post({action:'reject_last'})" style="flex: 1; height: 30px; background: linear-gradient(#3f3f45, #35353a); border: 1px solid #4c4c54; border-radius: 5px; color: #eaeaee; font-size: 12px; font-family: inherit;">Odrzuć ostatnie <span style="${mono} font-size: 10.5px; color: #9d9da3;">X</span></button>
         </div>
       </div>
     </div>`;
+}
+
+function reviewShot() {
+  const shots = S.state.shots;
+  if (!shots.length) return null;
+  const i = S.selShot >= 0 && S.selShot < shots.length ? S.selShot : shots.length - 1;
+  return { ...shots[i], i };
+}
+
+function reviewOverlay() {
+  const shot = S.reviewMode ? reviewShot() : null;
+  if (!shot) return "";
+  const sess = encodeURIComponent(S.state.session.name);
+  return `
+    <img src="/img?s=${sess}&f=${encodeURIComponent(shot.file)}" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #161618; z-index: 2;" />
+    <div style="position: absolute; left: 12px; bottom: 12px; z-index: 3; background: rgba(0,0,0,.55); border: 1px solid #3c3c44; padding: 3px 8px; ${mono} font-size: 10.5px; color: #d0d0d6;">PODGLĄD ${shot.i + 1}/${S.state.shots.length} — ${shot.file} · ← → zmiana · SPACJA wraca do live</div>`;
+}
+
+function flashNow() {
+  const el = $("flash");
+  if (!el) return;
+  el.style.transition = "none";
+  el.style.opacity = "0.85";
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    el.style.transition = "opacity .45s ease-out";
+    el.style.opacity = "0";
+  }));
 }
 
 function tileBg(sess, file) {
@@ -203,7 +232,7 @@ function filmstrip() {
   const items = st.shots.map((s, i) => {
     const m = i === S.selShot ? MARKS.cur : (s.status === "rejected" ? MARKS.bad : MARKS.ok);
     return `
-    <div onclick="S.selShot = ${i}; renderScreens()" style="width: 104px; flex: 0 0 104px;">
+    <div onclick="S.selShot = ${i}; S.reviewMode = true; renderScreens()" style="width: 104px; flex: 0 0 104px;">
       <div style="height: 72px; ${tileBg(st.session.name, s.file)} border: 1px solid ${m.border}; display: flex; align-items: flex-end; justify-content: space-between; padding: 4px; box-sizing: border-box;">
         <span style="${mono} font-size: 10px; color: #fff; text-shadow: 0 1px 2px #000;">#${i + 1}</span>
         <span style="${mono} font-size: 10px; color: ${m.color}; text-shadow: 0 1px 2px #000;">${m.mark}</span>
@@ -353,9 +382,9 @@ function ustawieniaScreen() {
     <div style="display: flex; flex-direction: column; gap: 10px; background: #232326; border: 1px solid #2f2f35; border-radius: 6px; padding: 16px 18px;">
       <div style="${head}">Skróty klawiszowe</div>
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; ${mono} font-size: 11px; color: #a8a8af;">
-        <div>SPACJA — zdjęcie</div><div>P — podgląd on/off</div>
+        <div>ENTER — zdjęcie</div><div>P — podgląd on/off</div>
+        <div>SPACJA — podgląd zdjęć na live view</div><div>← → — zmiana zdjęcia / nawigacja</div>
         <div>A — akceptuj</div><div>X — odrzuć</div>
-        <div>← → — nawigacja</div><div>ENTER — pełny ekran</div>
         <div>⌘R — przetwórz ponownie</div><div>⌘U — wyślij do Automatu</div>
       </div>
     </div>`;
@@ -390,7 +419,7 @@ function renderScreens(force) {
 
   if (S.screen === "sesja") {
     const key = JSON.stringify([st.session, st.shots, st.processing, st.camera, st.post,
-      st.previewOn, st.busy, st.log.length, S.selShot, S.logOpen, S.gridOn, S.kadrOn]);
+      st.previewOn, st.busy, st.log.length, S.selShot, S.logOpen, S.gridOn, S.kadrOn, S.reviewMode]);
     if (force || key !== lastSesja) {
       lastSesja = key;
       const el = document.activeElement;
@@ -438,7 +467,18 @@ function commitName() {
   if (v) post({ action: "set_session", name: v });
 }
 
-function shoot() { post({ action: "shoot" }); }
+function shoot() {
+  if (!S.state.connected || !S.state.session.name) return;
+  flashNow();
+  post({ action: "shoot" });
+}
+
+function toggleReview() {
+  if (!S.state.shots.length) { S.reviewMode = false; return; }
+  S.reviewMode = !S.reviewMode;
+  if (S.reviewMode && S.selShot < 0) S.selShot = S.state.shots.length - 1;
+  renderScreens();
+}
 function toggle(key, value) { post({ action: "toggle", key, value }); }
 
 function reprocess() {
@@ -498,7 +538,22 @@ document.addEventListener("keydown", e => {
   const list = inGal ? galFiltered() : S.state.shots;
   const selKey = inGal ? "selGal" : "selShot";
   switch (e.key) {
-    case " ": e.preventDefault(); shoot(); break;
+    case "Enter":
+      if (inGal) {
+        const f = list[S.selGal];
+        if (f) openFull(S.state.gallery.session, f.file);
+      } else {
+        e.preventDefault();
+        shoot();
+      }
+      break;
+    case " ":
+      e.preventDefault();
+      if (!inGal) toggleReview();
+      break;
+    case "Escape":
+      if (!inGal && S.reviewMode) { S.reviewMode = false; renderScreens(); }
+      break;
     case "p": case "P": toggle("preview", !S.state.previewOn); break;
     case "ArrowLeft": if (list.length) { S[selKey] = Math.max(0, (S[selKey] < 0 ? list.length : S[selKey]) - 1); renderScreens(); } break;
     case "ArrowRight": if (list.length) { S[selKey] = Math.min(list.length - 1, S[selKey] + 1); renderScreens(); } break;
@@ -507,11 +562,6 @@ document.addEventListener("keydown", e => {
       if (S[selKey] >= 0) reviewSelected("rejected");
       else if (!inGal) post({ action: "reject_last" });
       break;
-    case "Enter": {
-      const f = list[S[selKey]];
-      if (f) openFull(inGal ? S.state.gallery.session : S.state.session.name, f.file);
-      break;
-    }
     case "Backspace": {
       const f = list[S[selKey]];
       if (inGal && f && confirm(`Usunąć ${f.file} (final + raw)?`)) {

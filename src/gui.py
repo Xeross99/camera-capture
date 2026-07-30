@@ -26,7 +26,7 @@ from PIL import Image, ImageOps, ImageTk
 
 from .automat_uploader import AutomatUploader
 from .camera import CameraSession
-from .config import AUTOMAT_API_TOKEN
+from .config import AUTOMAT_API_TOKEN, CONTRAST
 from .image_processing import LOGO_POSITIONS, process
 from .tui import sanitize_name
 
@@ -60,6 +60,7 @@ class CaptureGUI:
         logo_position: str,
         auto_center: bool,
         auto_zoom: bool,
+        contrast: float = CONTRAST,
         name: str | None = None,
     ):
         self.logo = logo
@@ -90,6 +91,7 @@ class CaptureGUI:
         self.logo_pos_var = tk.StringVar(value=logo_position)
         self.zoom_var = tk.BooleanVar(value=auto_zoom)
         self.center_var = tk.BooleanVar(value=auto_center)
+        self.contrast_var = tk.DoubleVar(value=round(contrast * 100))
         self.name_var = tk.StringVar(value=self.name or "")
 
         self._build_widgets()
@@ -131,6 +133,17 @@ class CaptureGUI:
         ).pack(side="left", padx=(6, 0))
         ttk.Checkbutton(side, text="Przybliżanie (zoom)", variable=self.zoom_var).pack(anchor="w", pady=(2, 0))
         ttk.Checkbutton(side, text="Centrowanie", variable=self.center_var).pack(anchor="w")
+
+        self.contrast_label = ttk.Label(side, text="")
+        self.contrast_label.pack(anchor="w", pady=(8, 0))
+        row = ttk.Frame(side)
+        row.pack(fill="x")
+        ttk.Scale(
+            row, from_=50, to=150, variable=self.contrast_var,
+            command=lambda _v: self._refresh_contrast_label(),
+        ).pack(side="left", fill="x", expand=True)
+        ttk.Button(row, text="100%", width=5, command=self._reset_contrast).pack(side="left", padx=(6, 0))
+        self._refresh_contrast_label()
 
         self.shoot_btn = ttk.Button(
             side, text="📷  Zdjęcie  (Spacja)", command=self._request_shoot,
@@ -259,6 +272,7 @@ class CaptureGUI:
                 job["captured"], self.logo, job["outdir"], clean_bg=True,
                 add_logo=job["add_logo"], logo_position=job["logo_position"],
                 auto_center=job["auto_center"], auto_zoom=job["auto_zoom"],
+                contrast=job["contrast"],
             )
         except Exception as e:
             self._log(f"✗ Obróbka nie wyszła: {e}")
@@ -300,6 +314,16 @@ class CaptureGUI:
         else:
             self._jobs.put(("upload_off", None))
 
+    def _contrast_factor(self) -> float:
+        return round(self.contrast_var.get()) / 100.0
+
+    def _refresh_contrast_label(self) -> None:
+        self.contrast_label.configure(text=f"Kontrast: {round(self.contrast_var.get())}%")
+
+    def _reset_contrast(self) -> None:
+        self.contrast_var.set(100)
+        self._refresh_contrast_label()
+
     def _request_shoot(self) -> None:
         if not self._cam_ok:
             self._log("Aparat nie jest połączony.")
@@ -314,6 +338,7 @@ class CaptureGUI:
             "logo_position": self.logo_pos_var.get(),
             "auto_center": self.center_var.get(),
             "auto_zoom": self.zoom_var.get(),
+            "contrast": self._contrast_factor(),
         })
 
     def _toggle_preview(self) -> None:

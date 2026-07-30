@@ -14,6 +14,7 @@ from src.config import (
     AUTO_CENTER,
     AUTO_ZOOM,
     AUTOMAT_UPLOAD_ENABLED,
+    CONTRAST,
     DEFAULT_LOGO,
     DEFAULT_OUTPUT_DIR,
     LOGO_ENABLED,
@@ -34,6 +35,10 @@ def main() -> None:
     parser.set_defaults(auto_center=AUTO_CENTER)
     parser.add_argument("--no-auto-zoom", dest="auto_zoom", action="store_false")
     parser.set_defaults(auto_zoom=AUTO_ZOOM)
+    parser.add_argument(
+        "--contrast", type=float, default=CONTRAST,
+        help=f"Kontrast produktu, 1.0 = bez zmian (domyslnie {CONTRAST}).",
+    )
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--no-upload", dest="upload", action="store_false")
     parser.set_defaults(upload=AUTOMAT_UPLOAD_ENABLED)
@@ -47,6 +52,7 @@ def main() -> None:
         logo_position=args.logo_position,
         auto_center=args.auto_center,
         auto_zoom=args.auto_zoom,
+        contrast=args.contrast,
         name=args.name,
     ).run()
 

@@ -9,6 +9,7 @@ from .config import (
     ASPECT_W,
     AUTO_CENTER,
     AUTO_ZOOM,
+    CONTRAST,
     JPEG_QUALITY,
     LOGO_ENABLED,
     LOGO_HEIGHT_RATIO,
@@ -81,6 +82,7 @@ def process(
     logo_position: str = LOGO_POSITION,
     auto_center: bool = AUTO_CENTER,
     auto_zoom: bool = AUTO_ZOOM,
+    contrast: float = CONTRAST,
 ) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -97,7 +99,8 @@ def process(
 
         canvas_size = target or (OUTPUT_SIZE, OUTPUT_SIZE)
         image = clean_background(
-            image, canvas_size, auto_center=auto_center, auto_zoom=auto_zoom
+            image, canvas_size, auto_center=auto_center, auto_zoom=auto_zoom,
+            contrast=contrast,
         )
     else:
         image = crop_to_aspect(image, ASPECT_W, ASPECT_H)

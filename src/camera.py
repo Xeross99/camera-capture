@@ -240,6 +240,90 @@ def _reconnect_after_usb_reset(camera) -> "gp.Camera":
     return new_camera
 
 
+def _configure_camera(camera) -> None:
+    if CAMERA_IMAGE_FORMAT:
+        try:
+            _apply_image_format(camera, CAMERA_IMAGE_FORMAT)
+        except gp.GPhoto2Error as e:
+            print(f"Uwaga: nie udalo sie ustawic formatu obrazu ({e}).")
+    try:
+        _disable_autorotation(camera)
+    except gp.GPhoto2Error as e:
+        print(f"Uwaga: nie udalo sie wylaczyc auto-rotacji ({e}).")
+
+
+def _capture_with_retry(camera) -> tuple["gp.CameraFilePath", "gp.Camera"]:
+    """Wyzwala migawke z retry + reset USB. Zwraca (file_path, camera) —
+    camera moze byc NOWYM obiektem po recovery z -110/BUSY."""
+    _drain_events(camera, timeout_ms=1500)
+    file_path = None
+    last_capture_err: gp.GPhoto2Error | None = None
+    usb_reset_done = False
+    for attempt in range(5):
+        try:
+            file_path = camera.capture(gp.GP_CAPTURE_IMAGE)
+            break
+        except gp.GPhoto2Error as e:
+            last_capture_err = e
+            if e.code not in _RETRYABLE_CAPTURE_ERRORS:
+                raise
+            print(f"  Próba {attempt + 1}/5 nie powiodła się ({e}), ponawiam…")
+            if e.code == GP_ERROR_IO_IN_PROGRESS and attempt >= 2 and not usb_reset_done:
+                usb_reset_done = True
+                print("  Aparat wisi na -110/BUSY — próbuję reset USB…")
+                camera = _reconnect_after_usb_reset(camera)
+            else:
+                _drain_events(camera, timeout_ms=1500)
+            time.sleep(0.5 + attempt * 0.5)
+    if file_path is None:
+        if last_capture_err and last_capture_err.code == GP_ERROR_NOT_SUPPORTED:
+            sys.exit(
+                "Aparat odrzuca wyzwolenie migawki (-6 Unsupported operation).\n"
+                "Sprawdz po kolei:\n"
+                "  1. Pokretlo trybu na M / Av / Tv / P / Fv (nie Auto+, SCN, Movie).\n"
+                "  2. Aparat NIE jest w trybie odtwarzania — wcisnij spust do polowy zeby wybudzic.\n"
+                "  3. Wylacz i wlacz aparat (auto-off potrafi zablokowac remote).\n"
+                "  4. Zamknij Photos.app / Image Capture / Canon EOS Utility.\n"
+                "  5. Odepnij i podepnij ponownie kabel USB."
+            )
+        if last_capture_err and last_capture_err.code == GP_ERROR_UNSPECIFIED:
+            sys.exit(
+                "Aparat zwraca [-1] Unspecified error mimo 5 prób.\n"
+                "Sprawdz po kolei:\n"
+                "  1. Aparat NIE jest w trybie odtwarzania (Play).\n"
+                "  2. AF zlapał ostrosc — spróbuj MF lub upewnij sie ze jest na czym zfocusowac.\n"
+                "  3. Obiektyw jest poprawnie zamontowany (brak 'Err' na ekranie aparatu).\n"
+                "  4. Wylacz i wlacz aparat, odepnij/podepnij USB.\n"
+                "  5. Sprawdz czy aparat strzela recznie (spust na obudowie)."
+            )
+        if last_capture_err and last_capture_err.code == GP_ERROR_IO_IN_PROGRESS:
+            sys.exit(
+                "Aparat wisi na [-110] I/O in progress (BUSY) mimo 5 prób i resetu USB.\n"
+                "Sprawdz po kolei:\n"
+                "  1. Karta SD wlozona? (M50 II nie strzeli bez karty, chyba ze "
+                "'Release shutter w/o card: ON').\n"
+                "  2. Karta nie jest wolna/umierajaca (dlugi zapis = ciagly BUSY).\n"
+                "  3. Wylacz i wlacz aparat wlacznikiem.\n"
+                "  4. Jesli aparat nie reaguje na wlacznik — wyjmij baterie na ~10 s."
+            )
+        raise gp.GPhoto2Error(
+            last_capture_err.code if last_capture_err else GP_ERROR_IO_IN_PROGRESS,
+            f"Aparat nie zrobil zdjecia mimo ponownych prób ({last_capture_err}).",
+        )
+    return file_path, camera
+
+
+def _download_capture(camera, file_path, workdir: Path) -> Path:
+    ext = Path(file_path.name).suffix or ".jpg"
+    target = workdir / f"capture{ext}"
+    camera_file = camera.file_get(
+        file_path.folder, file_path.name, gp.GP_FILE_TYPE_NORMAL
+    )
+    camera_file.save(str(target))
+    _drain_events(camera)
+    return target
+
+
 def capture_from_camera(workdir: Path) -> Path:
     print("Łączę z aparatem…")
     camera, last_err = _init_camera()
@@ -251,80 +335,10 @@ def capture_from_camera(workdir: Path) -> Path:
         )
 
     try:
-        if CAMERA_IMAGE_FORMAT:
-            try:
-                _apply_image_format(camera, CAMERA_IMAGE_FORMAT)
-            except gp.GPhoto2Error as e:
-                print(f"Uwaga: nie udalo sie ustawic formatu obrazu ({e}).")
-
-        try:
-            _disable_autorotation(camera)
-        except gp.GPhoto2Error as e:
-            print(f"Uwaga: nie udalo sie wylaczyc auto-rotacji ({e}).")
-
+        _configure_camera(camera)
         print("Wyzwalam migawkę…")
-        _drain_events(camera, timeout_ms=1500)
-        file_path = None
-        last_capture_err: gp.GPhoto2Error | None = None
-        usb_reset_done = False
-        for attempt in range(5):
-            try:
-                file_path = camera.capture(gp.GP_CAPTURE_IMAGE)
-                break
-            except gp.GPhoto2Error as e:
-                last_capture_err = e
-                if e.code not in _RETRYABLE_CAPTURE_ERRORS:
-                    raise
-                print(f"  Próba {attempt + 1}/5 nie powiodła się ({e}), ponawiam…")
-                if e.code == GP_ERROR_IO_IN_PROGRESS and attempt >= 2 and not usb_reset_done:
-                    usb_reset_done = True
-                    print("  Aparat wisi na -110/BUSY — próbuję reset USB…")
-                    camera = _reconnect_after_usb_reset(camera)
-                else:
-                    _drain_events(camera, timeout_ms=1500)
-                time.sleep(0.5 + attempt * 0.5)
-        if file_path is None:
-            if last_capture_err and last_capture_err.code == GP_ERROR_NOT_SUPPORTED:
-                sys.exit(
-                    "Aparat odrzuca wyzwolenie migawki (-6 Unsupported operation).\n"
-                    "Sprawdz po kolei:\n"
-                    "  1. Pokretlo trybu na M / Av / Tv / P / Fv (nie Auto+, SCN, Movie).\n"
-                    "  2. Aparat NIE jest w trybie odtwarzania — wcisnij spust do polowy zeby wybudzic.\n"
-                    "  3. Wylacz i wlacz aparat (auto-off potrafi zablokowac remote).\n"
-                    "  4. Zamknij Photos.app / Image Capture / Canon EOS Utility.\n"
-                    "  5. Odepnij i podepnij ponownie kabel USB."
-                )
-            if last_capture_err and last_capture_err.code == GP_ERROR_UNSPECIFIED:
-                sys.exit(
-                    "Aparat zwraca [-1] Unspecified error mimo 5 prób.\n"
-                    "Sprawdz po kolei:\n"
-                    "  1. Aparat NIE jest w trybie odtwarzania (Play).\n"
-                    "  2. AF zlapał ostrosc — spróbuj MF lub upewnij sie ze jest na czym zfocusowac.\n"
-                    "  3. Obiektyw jest poprawnie zamontowany (brak 'Err' na ekranie aparatu).\n"
-                    "  4. Wylacz i wlacz aparat, odepnij/podepnij USB.\n"
-                    "  5. Sprawdz czy aparat strzela recznie (spust na obudowie)."
-                )
-            if last_capture_err and last_capture_err.code == GP_ERROR_IO_IN_PROGRESS:
-                sys.exit(
-                    "Aparat wisi na [-110] I/O in progress (BUSY) mimo 5 prób i resetu USB.\n"
-                    "Sprawdz po kolei:\n"
-                    "  1. Karta SD wlozona? (M50 II nie strzeli bez karty, chyba ze "
-                    "'Release shutter w/o card: ON').\n"
-                    "  2. Karta nie jest wolna/umierajaca (dlugi zapis = ciagly BUSY).\n"
-                    "  3. Wylacz i wlacz aparat wlacznikiem.\n"
-                    "  4. Jesli aparat nie reaguje na wlacznik — wyjmij baterie na ~10 s."
-                )
-            raise gp.GPhoto2Error(
-                last_capture_err.code if last_capture_err else GP_ERROR_IO_IN_PROGRESS,
-                f"Aparat nie zrobil zdjecia mimo ponownych prób ({last_capture_err}).",
-            )
-        ext = Path(file_path.name).suffix or ".jpg"
-        target = workdir / f"capture{ext}"
-        camera_file = camera.file_get(
-            file_path.folder, file_path.name, gp.GP_FILE_TYPE_NORMAL
-        )
-        camera_file.save(str(target))
-        _drain_events(camera)
+        file_path, camera = _capture_with_retry(camera)
+        target = _download_capture(camera, file_path, workdir)
     finally:
         try:
             camera.exit()
@@ -332,3 +346,42 @@ def capture_from_camera(workdir: Path) -> Path:
             pass
 
     return target
+
+
+class CameraSession:
+    """Trwala sesja aparatu dla GUI: init raz, potem live preview i strzaly
+    bez ponownego laczenia. Wszystkie metody musza byc wolane z JEDNEGO
+    watku (gphoto2 nie jest thread-safe)."""
+
+    def __init__(self) -> None:
+        self.camera: gp.Camera | None = None
+
+    def open(self) -> None:
+        camera, last_err = _init_camera()
+        if camera is None:
+            raise RuntimeError(
+                f"Nie udało się połączyć z aparatem: {last_err}\n"
+                "Wskazówki: sprawdź USB, zamknij Photos.app / Image Capture / "
+                "Canon EOS Utility, włącz aparat w trybie M/Av/Tv/P."
+            )
+        self.camera = camera
+        _configure_camera(camera)
+
+    def preview_frame(self) -> bytes:
+        """Jedna klatka live view (JPEG ~960x640) — to co aparat rysuje na LCD."""
+        camera_file = self.camera.capture_preview()
+        return bytes(camera_file.get_data_and_size())
+
+    def capture_to(self, workdir: Path) -> Path:
+        """Pelnoprawny strzal (retry + reset USB jak w capture_from_camera)."""
+        file_path, self.camera = _capture_with_retry(self.camera)
+        return _download_capture(self.camera, file_path, workdir)
+
+    def close(self) -> None:
+        if self.camera is None:
+            return
+        try:
+            self.camera.exit()
+        except gp.GPhoto2Error:
+            pass
+        self.camera = None

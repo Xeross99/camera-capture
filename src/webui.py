@@ -14,6 +14,7 @@ Stan recenzji per sesja w photos/<sesja>/.review.json:
 import io
 import json
 import queue
+import secrets
 import shutil
 import tempfile
 import threading
@@ -97,9 +98,11 @@ class WebUI:
         auto_center: bool,
         auto_zoom: bool,
         name: str | None = None,
-        port: int = 8777,
+        port: int = 0,
     ):
-        self.port = port
+        self.port = port  # 0 = efemeryczny, przydzielony przy bind
+        self.token = secrets.token_urlsafe(16)
+        self._server: ThreadingHTTPServer | None = None
         self.lock = threading.RLock()
 
         self.name: str | None = sanitize_name(name) if name else None
@@ -736,7 +739,11 @@ class WebUI:
 
     # ---------- start ----------
 
-    def run(self) -> None:
+    def start(self) -> str:
+        """Startuje watki + serwer na efemerycznym porcie 127.0.0.1.
+        Zwraca URL z jednorazowym tokenem — bez niego serwer odpowiada 403,
+        wiec UI jest dostepne tylko dla okna aplikacji (nie da sie wejsc
+        "z boku" przegladarka na goly adres)."""
         threading.Thread(target=self._camera_loop, daemon=True).start()
         threading.Thread(target=self._worker_loop, daemon=True).start()
         ui = self
@@ -753,13 +760,24 @@ class WebUI:
                 self.end_headers()
                 self.wfile.write(body)
 
+            def _authed(self) -> bool:
+                q = parse_qs(urlparse(self.path).query)
+                if q.get("t", [""])[0] == ui.token:
+                    return True
+                return f"t={ui.token}" in self.headers.get("Cookie", "")
+
             def do_GET(self):
+                if not self._authed():
+                    self.send_error(403)
+                    return
                 url = urlparse(self.path)
                 if url.path == "/":
                     body = (STATIC_DIR / "index.html").read_bytes()
                     self.send_response(200)
                     self.send_header("Content-Type", "text/html; charset=utf-8")
                     self.send_header("Content-Length", str(len(body)))
+                    self.send_header(
+                        "Set-Cookie", f"t={ui.token}; HttpOnly; SameSite=Strict")
                     self.end_headers()
                     self.wfile.write(body)
                 elif url.path == "/api/state":
@@ -798,6 +816,9 @@ class WebUI:
                     self.send_error(404)
 
             def do_POST(self):
+                if not self._authed():
+                    self.send_error(403)
+                    return
                 if urlparse(self.path).path != "/api/action":
                     self.send_error(404)
                     return
@@ -808,13 +829,26 @@ class WebUI:
                 except Exception as e:
                     self._json({"ok": False, "error": str(e)}, 500)
 
-        server = ThreadingHTTPServer(("127.0.0.1", self.port), Handler)
-        print(f"Camera Capture web UI: http://127.0.0.1:{self.port}")
+        self._server = ThreadingHTTPServer(("127.0.0.1", self.port), Handler)
+        self.port = self._server.server_address[1]
+        threading.Thread(target=self._server.serve_forever, daemon=True).start()
+        return f"http://127.0.0.1:{self.port}/?t={self.token}"
+
+    def stop(self) -> None:
+        self._stop.set()
+        self._jobs.put(None)
+        if self._server is not None:
+            self._server.shutdown()
+            self._server.server_close()
+
+    def run(self) -> str:
+        """Tryb --browser: start + blokuj do Ctrl-C."""
+        url = self.start()
+        print(f"Camera Capture: {url}")
         try:
-            server.serve_forever()
+            threading.Event().wait()
         except KeyboardInterrupt:
             pass
         finally:
-            self._stop.set()
-            self._jobs.put(None)
-            server.server_close()
+            self.stop()
+        return url

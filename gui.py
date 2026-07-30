@@ -63,7 +63,8 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--no-upload", dest="upload", action="store_false")
     parser.set_defaults(upload=AUTOMAT_UPLOAD_ENABLED)
-    parser.add_argument("--port", type=int, default=8777)
+    parser.add_argument("--port", type=int, default=0,
+                        help="Port serwera (domyślnie losowy efemeryczny).")
     parser.add_argument("--browser", action="store_true",
                         help="Otwórz w przeglądarce zamiast natywnego okna.")
     args = parser.parse_args()
@@ -79,22 +80,27 @@ def main() -> None:
         name=args.name,
         port=args.port,
     )
-    url = f"http://127.0.0.1:{args.port}"
-
-    if args.browser:
-        threading.Timer(0.8, webbrowser.open, [url]).start()
-        ui.run()
-        return
 
     try:
         import webview
     except ImportError:
-        print("pywebview niezainstalowany (pip install pywebview) — otwieram przeglądarkę.")
-        threading.Timer(0.8, webbrowser.open, [url]).start()
-        ui.run()
+        webview = None
+
+    if args.browser or webview is None:
+        if webview is None and not args.browser:
+            print("pywebview niezainstalowany (pip install pywebview) — otwieram przeglądarkę.")
+        url = ui.start()
+        print(f"Camera Capture: {url}")
+        webbrowser.open(url)
+        try:
+            threading.Event().wait()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            ui.stop()
         return
 
-    threading.Thread(target=ui.run, daemon=True).start()
+    url = ui.start()
     api = _WindowApi()
     window = webview.create_window(
         "Camera Capture — Canon EOS M50 II", url,
@@ -103,6 +109,7 @@ def main() -> None:
     )
     api.window = window
     webview.start()
+    ui.stop()
 
 
 if __name__ == "__main__":

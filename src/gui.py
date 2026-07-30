@@ -141,10 +141,11 @@ class CaptureGUI:
         )
         self.preview_btn.pack(fill="x")
 
-        ttk.Label(side, text="Ostatnie zdjęcie:").pack(anchor="w", pady=(14, 2))
-        self.thumb_label = tk.Label(side, bg="#222", width=_THUMB_SIZE, height=_THUMB_SIZE)
+        ttk.Label(side, text="Ostatnie zdjęcie (klik = pełny ekran):").pack(anchor="w", pady=(14, 2))
+        self.thumb_label = tk.Label(side, bg="#222", cursor="pointinghand")
         self.thumb_label.pack()
         self.thumb_label.configure(width=32, height=12)
+        self.thumb_label.bind("<Button-1>", self._open_fullscreen)
 
         self.status_label = ttk.Label(self.root, text="Łączę z aparatem…", padding=(8, 4))
         self.status_label.grid(row=1, column=0, columnspan=2, sticky="ew")
@@ -379,8 +380,31 @@ class CaptureGUI:
             photo = ImageTk.PhotoImage(img)
             self.thumb_label.configure(image=photo, width=img.width, height=img.height)
             self.thumb_label.image = photo
+            self._last_photo = path
         except Exception:
             pass
+
+    def _open_fullscreen(self, _e=None) -> None:
+        path = getattr(self, "_last_photo", None)
+        if not path:
+            return
+        top = tk.Toplevel(self.root)
+        top.attributes("-fullscreen", True)
+        top.configure(bg="black")
+        sw, sh = top.winfo_screenwidth(), top.winfo_screenheight()
+        try:
+            img = ImageOps.contain(Image.open(path), (sw, sh))
+        except Exception as e:
+            top.destroy()
+            self._log(f"✗ Nie mogę otworzyć {path}: {e}")
+            return
+        photo = ImageTk.PhotoImage(img)
+        lbl = tk.Label(top, image=photo, bg="black", cursor="pointinghand")
+        lbl.image = photo
+        lbl.pack(expand=True, fill="both")
+        for seq in ("<Escape>", "<Key-q>", "<space>", "<Button-1>"):
+            top.bind(seq, lambda _e: top.destroy())
+        top.focus_set()
 
     def _drain_ui_queue(self) -> None:
         while True:

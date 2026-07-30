@@ -16,6 +16,7 @@
   ::-webkit-scrollbar-thumb { background: #3a3a41; border-radius: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
   @keyframes reviewIn { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
+  @keyframes livePulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
 </style>
 </head>
 <body>
@@ -169,6 +170,10 @@ function sesjaScreen() {
             <div onclick="S.gridOn = !S.gridOn; renderScreens()" style="${badge} ${S.gridOn ? "" : "opacity: .45;"}">SIATKA 3×3</div>
             <div onclick="S.kadrOn = !S.kadrOn; renderScreens()" style="${badge} ${S.kadrOn ? "" : "opacity: .45;"}">KADR 1:1</div>
           </div>
+          ${st.previewOn && st.connected ? `
+          <div style="position: absolute; right: 12px; top: 12px; display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,.55); border: 1px solid #3c3c44; padding: 3px 8px; ${mono} font-size: 10.5px; color: #d0d0d6;">
+            <div style="width: 7px; height: 7px; border-radius: 50%; background: #ff4d4d; animation: livePulse 1.6s ease-in-out infinite;"></div>LIVE
+          </div>` : ""}
           <div id="hist-badge" style="position: absolute; right: 12px; bottom: 12px; background: rgba(0,0,0,.55); border: 1px solid #3c3c44; padding: 3px 8px; ${mono} font-size: 10.5px; color: ${bgColor};">${histText}</div>
           <div id="review-slot" style="position: absolute; inset: 0; z-index: 2; pointer-events: none;">${reviewOverlay()}</div>
           <div id="flash" style="position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 4;"></div>

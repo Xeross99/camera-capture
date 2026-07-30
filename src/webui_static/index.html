@@ -15,6 +15,7 @@
   ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-thumb { background: #3a3a41; border-radius: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
+  @keyframes reviewIn { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
 </style>
 </head>
 <body>
@@ -208,8 +209,18 @@ function reviewOverlay() {
   if (!shot) return "";
   const sess = encodeURIComponent(S.state.session.name);
   return `
-    <img src="/img?s=${sess}&f=${encodeURIComponent(shot.file)}" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #161618; z-index: 2;" />
-    <div style="position: absolute; left: 12px; bottom: 12px; z-index: 3; background: rgba(0,0,0,.55); border: 1px solid #3c3c44; padding: 3px 8px; ${mono} font-size: 10.5px; color: #d0d0d6;">PODGLĄD ${shot.i + 1}/${S.state.shots.length} — ${shot.file} · ← → zmiana · SPACJA wraca do live</div>`;
+  <div id="review-wrap" style="position: absolute; inset: 0; z-index: 2; animation: reviewIn .2s ease-out; transition: opacity .18s ease, transform .18s ease;">
+    <img src="/img?s=${sess}&f=${encodeURIComponent(shot.file)}" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #161618;" />
+    <div style="position: absolute; left: 12px; bottom: 12px; background: rgba(0,0,0,.55); border: 1px solid #3c3c44; padding: 3px 8px; ${mono} font-size: 10.5px; color: #d0d0d6;">PODGLĄD ${shot.i + 1}/${S.state.shots.length} — ${shot.file} · ← → zmiana · ESC/SPACJA wraca do live</div>
+  </div>`;
+}
+
+function closeReview() {
+  const w = $("review-wrap");
+  if (!w) { S.reviewMode = false; renderScreens(); return; }
+  w.style.opacity = "0";
+  w.style.transform = "scale(.96)";
+  setTimeout(() => { S.reviewMode = false; renderScreens(); }, 180);
 }
 
 function flashNow() {
@@ -475,8 +486,12 @@ function shoot() {
 
 function toggleReview() {
   if (!S.state.shots.length) { S.reviewMode = false; return; }
-  S.reviewMode = !S.reviewMode;
-  if (S.reviewMode && S.selShot < 0) S.selShot = S.state.shots.length - 1;
+  if (S.reviewMode) {
+    closeReview();
+    return;
+  }
+  S.reviewMode = true;
+  if (S.selShot < 0) S.selShot = S.state.shots.length - 1;
   renderScreens();
 }
 function toggle(key, value) { post({ action: "toggle", key, value }); }
@@ -537,6 +552,12 @@ document.addEventListener("keydown", e => {
   const inGal = S.screen === "galeria";
   const list = inGal ? galFiltered() : S.state.shots;
   const selKey = inGal ? "selGal" : "selShot";
+  // preventDefault na wszystkim co obslugujemy — bez tego WKWebView puszcza
+  // klawisz w gore responder chain i macOS robi systemowy beep
+  if (["Enter", " ", "Escape", "ArrowLeft", "ArrowRight", "Backspace",
+       "p", "P", "a", "A", "x", "X"].includes(e.key)) {
+    e.preventDefault();
+  }
   switch (e.key) {
     case "Enter":
       if (inGal) {
@@ -552,7 +573,7 @@ document.addEventListener("keydown", e => {
       if (!inGal) toggleReview();
       break;
     case "Escape":
-      if (!inGal && S.reviewMode) { S.reviewMode = false; renderScreens(); }
+      if (!inGal && S.reviewMode) closeReview();
       break;
     case "p": case "P": toggle("preview", !S.state.previewOn); break;
     case "ArrowLeft": if (list.length) { S[selKey] = Math.max(0, (S[selKey] < 0 ? list.length : S[selKey]) - 1); renderScreens(); } break;

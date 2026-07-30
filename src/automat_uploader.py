@@ -48,6 +48,18 @@ class AutomatUploader:
     def _err(self, kind: str, r) -> RuntimeError:
         return RuntimeError(f"Automat {kind} {r.status_code} {r.reason} — {self._strip_body(r)}")
 
+    def list_sessions(self) -> list[dict]:
+        """GET wszystkich sesji photo_studio: [{id, name, product, created_at,
+        photos_count}, ...] — dla ekranu startowego aplikacji."""
+        r = requests.get(
+            f"{self.base}/api/photo_studio/sessions",
+            headers=self.headers,
+            timeout=self.timeout_open,
+        )
+        if not r.ok:
+            raise self._err("lista sesji", r)
+        return r.json()
+
     def open_session(self, product_name: str) -> int:
         r = requests.post(
             f"{self.base}/api/photo_studio/sessions",

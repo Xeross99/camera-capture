@@ -138,6 +138,8 @@ class WebUI:
         self.bg_range: tuple[int, int] | None = None
         self.processing_file: str | None = None
         self.gallery_session: str | None = None
+        self.automat_sessions: list[dict] = []
+        self.automat_sessions_error = ""
         self.log: deque[dict] = deque(maxlen=500)
         self.uploader: AutomatUploader | None = None  # tylko watek worker
 
@@ -324,6 +326,8 @@ class WebUI:
                     self._job_upload_one(*rest)
                 elif kind == "batch":
                     self._job_batch(rest[0])
+                elif kind == "list_sessions":
+                    self._job_list_sessions()
                 elif kind == "reprocess":
                     self._job_reprocess(*rest)
                 elif kind == "delete":
@@ -490,6 +494,18 @@ class WebUI:
         _save_review(outdir, review)
         self._log(f"Usunięto {len(files)} plik(ów) z {session}.", "warn")
 
+    def _job_list_sessions(self) -> None:
+        try:
+            sessions = self._make_uploader().list_sessions()
+        except Exception as e:
+            with self.lock:
+                self.automat_sessions_error = str(e)
+            self._log(f"✗ Lista sesji z Automatu: {e}", "err")
+            return
+        with self.lock:
+            self.automat_sessions = sessions
+            self.automat_sessions_error = ""
+
     def _job_test(self) -> None:
         import requests
 
@@ -517,6 +533,16 @@ class WebUI:
             self._log(f"Sesja: {name} → {self.base_output / name}")
             if self.upload_enabled:
                 self._jobs.put(("open_session", name))
+                self._jobs.put(("list_sessions",))
+        elif act == "clear_session":
+            with self.lock:
+                self.name = None
+            self._jobs.put(("upload_off",))
+            if self.automat_token:
+                self._jobs.put(("list_sessions",))
+        elif act == "refresh_sessions":
+            if self.automat_token:
+                self._jobs.put(("list_sessions",))
         elif act == "shoot":
             if not self.connected:
                 return {"ok": False, "error": "aparat nie jest połączony"}
@@ -699,6 +725,12 @@ class WebUI:
                     "upload": self.upload_enabled,
                 },
                 "gallery": {"session": gsess or "", "sessions": sessions, "files": gfiles},
+                "automat": {
+                    "sessions": self.automat_sessions,
+                    "error": self.automat_sessions_error,
+                    "hasToken": bool(self.automat_token),
+                    "localSessions": sessions,
+                },
                 "settings": {
                     "photosDir": str(self.base_output),
                     "logoPath": str(self.logo_path),
@@ -746,6 +778,8 @@ class WebUI:
         "z boku" przegladarka na goly adres)."""
         threading.Thread(target=self._camera_loop, daemon=True).start()
         threading.Thread(target=self._worker_loop, daemon=True).start()
+        if self.automat_token:
+            self._jobs.put(("list_sessions",))
         ui = self
 
         class Handler(BaseHTTPRequestHandler):

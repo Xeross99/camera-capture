@@ -119,7 +119,7 @@ function sesjaScreen() {
             <div onclick="S.kadrOn = !S.kadrOn; renderScreens()" style="${badge} ${S.kadrOn ? "" : "opacity: .45;"}">KADR 1:1</div>
           </div>
           <div id="hist-badge" style="position: absolute; right: 12px; bottom: 12px; background: rgba(0,0,0,.55); border: 1px solid #3c3c44; padding: 3px 8px; ${mono} font-size: 10.5px; color: ${bgColor};">${histText}</div>
-          ${reviewOverlay()}
+          <div id="review-slot" style="position: absolute; inset: 0; z-index: 2; pointer-events: none;">${reviewOverlay()}</div>
           <div id="flash" style="position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 4;"></div>
         </div>
       </div>
@@ -214,10 +214,32 @@ function reviewOverlay() {
              : S.navDir < 0 ? "reviewSlideR .16s ease-out"
              : "reviewIn .2s ease-out";
   return `
-  <div id="review-wrap" style="position: absolute; inset: 0; z-index: 2; background: #161618; animation: ${anim}; transition: opacity .2s ease, transform .2s ease;">
+  <div id="review-wrap" style="position: absolute; inset: 0; background: #161618; pointer-events: auto; animation: ${anim}; transition: opacity .2s ease, transform .2s ease;">
     <img src="/img?s=${sess}&f=${encodeURIComponent(shot.file)}" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;" />
     <div style="position: absolute; left: 12px; bottom: 12px; background: rgba(0,0,0,.55); border: 1px solid #3c3c44; padding: 3px 8px; ${mono} font-size: 10.5px; color: #d0d0d6;">PODGLĄD ${shot.i + 1}/${S.state.shots.length} — ${shot.file} · ← → zmiana · ESC usuwa · SPACJA wraca do live</div>
   </div>`;
+}
+
+function navShot(dir) {
+  const list = S.state.shots;
+  if (!list.length) return;
+  const cur = S.selShot < 0 ? list.length : S.selShot;
+  const next = Math.max(0, Math.min(list.length - 1, cur + dir));
+  if (next === S.selShot) return;
+  S.selShot = next;
+  const slot = $("review-slot");
+  if (S.reviewMode && slot) {
+    // patch tylko overlaya — pelny rebuild niszczylby <img> streamu (lag)
+    // i pol sekundy pozniej odtwarzal animacje wejscia przy ticku stanu
+    S.navDir = dir;
+    slot.innerHTML = reviewOverlay();
+    S.navDir = 0;
+    const strip = $("filmstrip");
+    if (strip) strip.innerHTML = filmstrip();
+    lastSesja = sesjaKey(S.state);
+  } else {
+    renderScreens();
+  }
 }
 
 function deleteReviewed() {
@@ -435,6 +457,10 @@ function ustawieniaScreen() {
 
 let lastShellKey = "", lastSesja = "", lastGaleria = "", lastUstawienia = "";
 
+const sesjaKey = st => JSON.stringify([st.session, st.shots, st.processing,
+  st.camera.settings, st.post, st.previewOn, S.selShot, S.logOpen, S.gridOn,
+  S.kadrOn, S.reviewMode]);
+
 function renderShell(force) {
   const st = S.state;
   const key = JSON.stringify([S.screen, st.connected]);
@@ -489,8 +515,7 @@ function renderScreens(force) {
   updateVolatile(st);
 
   if (S.screen === "sesja") {
-    const key = JSON.stringify([st.session, st.shots, st.processing, st.camera.settings,
-      st.post, st.previewOn, S.selShot, S.logOpen, S.gridOn, S.kadrOn, S.reviewMode, S.navDir]);
+    const key = sesjaKey(st);
     if (force || key !== lastSesja) {
       lastSesja = key;
       S.lastLogLen = st.log.length;
@@ -638,19 +663,17 @@ document.addEventListener("keydown", e => {
       break;
     case "p": case "P": toggle("preview", !S.state.previewOn); break;
     case "ArrowLeft":
-      if (list.length) {
-        S.navDir = -1;
-        S[selKey] = Math.max(0, (S[selKey] < 0 ? list.length : S[selKey]) - 1);
-        renderScreens();
-        S.navDir = 0;
+      if (inGal) {
+        if (list.length) { S.selGal = Math.max(0, (S.selGal < 0 ? list.length : S.selGal) - 1); renderScreens(); }
+      } else {
+        navShot(-1);
       }
       break;
     case "ArrowRight":
-      if (list.length) {
-        S.navDir = 1;
-        S[selKey] = Math.min(list.length - 1, S[selKey] + 1);
-        renderScreens();
-        S.navDir = 0;
+      if (inGal) {
+        if (list.length) { S.selGal = Math.min(list.length - 1, S.selGal + 1); renderScreens(); }
+      } else {
+        navShot(1);
       }
       break;
     case "a": case "A": reviewSelected("accepted"); break;

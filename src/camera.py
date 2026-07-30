@@ -430,6 +430,47 @@ class CameraSession:
         self.camera.set_config(config)
         return str(value)
 
+    # Ustawienia ekspozycji dla sekcji "Aparat" w web UI. Klucz -> kandydaci
+    # nazw widgetow gphoto2 (rozne firmware'y roznie je nazywaja).
+    SETTING_WIDGETS = {
+        "iso": ("iso",),
+        "aperture": ("aperture", "f-number"),
+        "shutterspeed": ("shutterspeed", "shutterspeed2"),
+        "whitebalance": ("whitebalance",),
+        "afmode": ("focusmode", "eosafmode", "afmethod"),
+        "exposurecompensation": ("exposurecompensation",),
+    }
+
+    def get_settings(self) -> dict:
+        """{klucz: {current, choices}} dla widgetow ktore aparat eksponuje."""
+        config = self.camera.get_config()
+        out = {}
+        for key, names in self.SETTING_WIDGETS.items():
+            _name, w = _find_widget(config, names)
+            if w is None:
+                continue
+            try:
+                choices = [w.get_choice(i) for i in range(w.count_choices())]
+            except gp.GPhoto2Error:
+                choices = []
+            try:
+                current = str(w.get_value())
+            except gp.GPhoto2Error:
+                continue
+            out[key] = {"current": current, "choices": choices}
+        return out
+
+    def set_setting(self, key: str, value: str) -> None:
+        names = self.SETTING_WIDGETS.get(key)
+        if not names:
+            raise RuntimeError(f"nieznane ustawienie: {key}")
+        config = self.camera.get_config()
+        _name, w = _find_widget(config, names)
+        if w is None:
+            raise RuntimeError(f"aparat nie eksponuje '{key}'")
+        w.set_value(value)
+        self.camera.set_config(config)
+
     def close(self) -> None:
         if self.camera is None:
             return

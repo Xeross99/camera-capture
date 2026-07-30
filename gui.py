@@ -104,7 +104,8 @@ def main() -> None:
     api = _WindowApi()
     window = webview.create_window(
         "Camera Capture — Canon EOS M50 II", url,
-        width=1440, height=900, frameless=True, easy_drag=False,
+        width=1440, height=900, min_size=(1080, 700),
+        frameless=True, easy_drag=False,
         background_color="#1a1a1c", js_api=api,
     )
     api.window = window

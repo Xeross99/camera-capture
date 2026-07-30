@@ -38,6 +38,10 @@ SHADOW_RADIUS_RATIO = 0.20
 
 SHARPEN_PERCENT = 120
 
+# Kontrast produktu (1.0 = bez zmian). Aplikowany na sub_img przed paste'em
+# na biala canve — tlo zostaje czyste niezaleznie od wartosci.
+CONTRAST = 1.0
+
 AUTOMAT_BASE_URL = os.environ.get("AUTOMAT_URL", "http://localhost:3000")
 AUTOMAT_API_TOKEN = os.environ.get("AUTOMAT_TOKEN")
 AUTOMAT_UPLOAD_ENABLED = os.environ.get("AUTOMAT_UPLOAD_ENABLED", "true").lower() in ("1", "true", "yes", "on")

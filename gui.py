@@ -13,6 +13,7 @@ Uruchomienie:
 """
 
 import argparse
+import os
 import threading
 import webbrowser
 from pathlib import Path
@@ -79,7 +80,7 @@ def main() -> None:
             pass
         finally:
             ui.stop()
-        return
+            os._exit(0)
 
     url = ui.start()
     webview.create_window(
@@ -88,7 +89,11 @@ def main() -> None:
         background_color="#1a1a1c",
     )
     webview.start()
+    # Uporzadkowane zamkniecie sesji aparatu, potem twarde wyjscie —
+    # lingering watki C (libusb/onnxruntime/Cocoa) potrafia zawiesic
+    # normalna finalizacje interpretera przy zamykaniu okna.
     ui.stop()
+    os._exit(0)
 
 
 if __name__ == "__main__":

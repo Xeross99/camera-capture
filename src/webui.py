@@ -103,6 +103,8 @@ class WebUI:
         self.port = port  # 0 = efemeryczny, przydzielony przy bind
         self.token = secrets.token_urlsafe(16)
         self._server: ThreadingHTTPServer | None = None
+        self._camera_thread: threading.Thread | None = None
+        self._worker_thread: threading.Thread | None = None
         self.lock = threading.RLock()
 
         self.name: str | None = sanitize_name(name) if name else None
@@ -776,8 +778,10 @@ class WebUI:
         Zwraca URL z jednorazowym tokenem — bez niego serwer odpowiada 403,
         wiec UI jest dostepne tylko dla okna aplikacji (nie da sie wejsc
         "z boku" przegladarka na goly adres)."""
-        threading.Thread(target=self._camera_loop, daemon=True).start()
-        threading.Thread(target=self._worker_loop, daemon=True).start()
+        self._camera_thread = threading.Thread(target=self._camera_loop, daemon=True)
+        self._worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
+        self._camera_thread.start()
+        self._worker_thread.start()
         if self.automat_token:
             self._jobs.put(("list_sessions",))
         ui = self
@@ -869,8 +873,18 @@ class WebUI:
         return f"http://127.0.0.1:{self.port}/?t={self.token}"
 
     def stop(self) -> None:
+        """Uporzadkowane zamkniecie: NAJPIERW czekamy az watek aparatu wyjdzie
+        z petli i zamknie sesje gphoto2 (porzucona otwarta sesja PTP to
+        zawieszki libusb przy wyjsciu procesu + BUSY przy nastepnym starcie),
+        dopiero potem ubijamy serwer."""
+        if self._stop.is_set():
+            return
         self._stop.set()
         self._jobs.put(None)
+        if self._camera_thread is not None:
+            self._camera_thread.join(timeout=4.0)
+        if self._worker_thread is not None:
+            self._worker_thread.join(timeout=3.0)
         if self._server is not None:
             self._server.shutdown()
             self._server.server_close()

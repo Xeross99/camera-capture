@@ -62,17 +62,6 @@ function shell() {
   return `
 <div style="width: 100%; height: 100%; background: #232326; overflow: hidden; display: flex; flex-direction: column; font-family: -apple-system, 'Helvetica Neue', Helvetica, sans-serif; color: #e8e8ea; font-size: 13px;">
 
-  <div style="height: 38px; flex: 0 0 38px; background: linear-gradient(#3a3a3e, #313134); border-bottom: 1px solid #17171a; display: flex; align-items: center; padding: 0 14px; gap: 8px; position: relative;">
-    <div class="pywebview-drag-region" style="position: absolute; inset: 0;"></div>
-    <div onclick="winBtn('close')" style="width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; position: relative; z-index: 1;"></div>
-    <div onclick="winBtn('minimize')" style="width: 12px; height: 12px; border-radius: 50%; background: #febc2e; position: relative; z-index: 1;"></div>
-    <div onclick="winBtn('zoom')" style="width: 12px; height: 12px; border-radius: 50%; background: #28c840; position: relative; z-index: 1;"></div>
-    <div style="position: absolute; left: 0; right: 0; text-align: center; font-size: 13px; font-weight: 600; color: #d6d6d9; pointer-events: none;">Camera Capture — Canon EOS M50 II</div>
-    <div style="margin-left: auto; display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: #9d9da3; position: relative; z-index: 1;">
-      <div style="width: 7px; height: 7px; border-radius: 50%; background: ${conn ? "#34c759" : "#e05a5a"};"></div><span id="conn-label">${conn ? `Aparat połączony · ${st.fps} fps` : "Aparat rozłączony"}</span>
-    </div>
-  </div>
-
   <div style="height: 34px; flex: 0 0 34px; background: #2a2a2d; border-bottom: 1px solid #17171a; display: flex; align-items: stretch; padding: 0 10px; gap: 2px;">
     <div onclick="go('sesja')" style="display: flex; align-items: center; padding: 0 18px; font-size: 12.5px; font-weight: 500; cursor: default; color: ${tab("sesja")}; border-bottom: 2px solid ${bar("sesja")};">Sesja</div>
     <div onclick="go('galeria')" style="display: flex; align-items: center; padding: 0 18px; font-size: 12.5px; font-weight: 500; cursor: default; color: ${tab("galeria")}; border-bottom: 2px solid ${bar("galeria")};">Galeria</div>
@@ -81,6 +70,9 @@ function shell() {
       <div>sesja: <span style="color: #c9c9cf;" id="stat-name">—</span></div>
       <div>zdjęć: <span style="color: #c9c9cf;" id="stat-count">0</span></div>
       <div>odrzuconych: <span style="color: #c9c9cf;" id="stat-rejected">0</span></div>
+      <div style="display: flex; align-items: center; gap: 7px; font-family: -apple-system, 'Helvetica Neue', Helvetica, sans-serif; font-size: 11.5px; color: #9d9da3;">
+        <div style="width: 7px; height: 7px; border-radius: 50%; background: ${conn ? "#34c759" : "#e05a5a"};"></div><span id="conn-label">${conn ? `Aparat połączony · ${st.fps} fps` : "Aparat rozłączony"}</span>
+      </div>
     </div>
   </div>
 
@@ -672,9 +664,6 @@ function go(screen) {
   renderShell(true);
 }
 
-function winBtn(kind) {
-  if (window.pywebview && window.pywebview.api) window.pywebview.api[kind]();
-}
 
 // ---------- akcje ----------
 

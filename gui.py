@@ -1,8 +1,8 @@
 #!/Users/xeross/Desktop/camera_capture/.venv/bin/python
 """Aplikacja desktopowa z live preview — UI 1:1 z projektu Claude Design.
 
-Natywne okno (pywebview / WKWebView, frameless — pasek tytułu i „światełka"
-rysowane w UI zgodnie z projektem, ale funkcjonalne). Backend (src/webui.py)
+Natywne okno (pywebview / WKWebView) z systemowym paskiem tytułu — prawdziwe
+traffic lights macOS (działają też w fullscreen). Backend (src/webui.py)
 serwuje UI + MJPEG na 127.0.0.1 tylko dla tego okna.
 
 Uruchomienie:
@@ -28,25 +28,6 @@ from src.config import (
 )
 from src.image_processing import LOGO_POSITIONS
 from src.webui import WebUI
-
-
-class _WindowApi:
-    """Cele dla narysowanych 'swiatelek' macOS w pasku tytulu."""
-
-    def __init__(self) -> None:
-        self.window = None
-
-    def close(self) -> None:
-        if self.window:
-            self.window.destroy()
-
-    def minimize(self) -> None:
-        if self.window:
-            self.window.minimize()
-
-    def zoom(self) -> None:
-        if self.window:
-            self.window.toggle_fullscreen()
 
 
 def main() -> None:
@@ -101,14 +82,11 @@ def main() -> None:
         return
 
     url = ui.start()
-    api = _WindowApi()
-    window = webview.create_window(
+    webview.create_window(
         "Camera Capture — Canon EOS M50 II", url,
         width=1440, height=900, min_size=(1080, 700),
-        frameless=True, easy_drag=False,
-        background_color="#1a1a1c", js_api=api,
+        background_color="#1a1a1c",
     )
-    api.window = window
     webview.start()
     ui.stop()
 

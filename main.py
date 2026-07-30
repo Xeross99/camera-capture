@@ -23,7 +23,6 @@ from src.config import (
     AUTO_CENTER,
     AUTO_ZOOM,
     AUTOMAT_API_TOKEN,
-    CONTRAST,
     AUTOMAT_UPLOAD_ENABLED,
     DEFAULT_LOGO,
     DEFAULT_OUTPUT_DIR,
@@ -111,12 +110,6 @@ def main() -> None:
         help="Nie przyblizaj produktu (naturalna skala z kadru).",
     )
     parser.set_defaults(auto_zoom=AUTO_ZOOM)
-    parser.add_argument(
-        "--contrast",
-        type=float,
-        default=CONTRAST,
-        help=f"Kontrast produktu, 1.0 = bez zmian (domyslnie {CONTRAST}).",
-    )
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument(
         "--no-upload",
@@ -155,7 +148,6 @@ def main() -> None:
             logo_position=args.logo_position,
             auto_center=args.auto_center,
             auto_zoom=args.auto_zoom,
-            contrast=args.contrast,
         )
         console.print(f"[bold green]✓ Zapisano[/] [yellow]{out}[/]")
         uploader = make_uploader(args.upload, name)

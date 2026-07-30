@@ -26,7 +26,7 @@ from PIL import Image, ImageOps, ImageTk
 
 from .automat_uploader import AutomatUploader
 from .camera import CameraSession
-from .config import AUTOMAT_API_TOKEN, CONTRAST
+from .config import AUTOMAT_API_TOKEN
 from .image_processing import LOGO_POSITIONS, process
 from .tui import sanitize_name
 
@@ -60,7 +60,6 @@ class CaptureGUI:
         logo_position: str,
         auto_center: bool,
         auto_zoom: bool,
-        contrast: float = CONTRAST,
         name: str | None = None,
     ):
         self.logo = logo
@@ -77,7 +76,7 @@ class CaptureGUI:
         self._frame: bytes | None = None
         self._frames_shown = 0
         self._fps_t0 = time.monotonic()
-        self._shoot_q: queue.Queue[dict] = queue.Queue()
+        self._cam_q: queue.Queue[tuple] = queue.Queue()  # komendy do watku aparatu
         self._jobs: queue.Queue = queue.Queue()
         self._ui_q: queue.Queue = queue.Queue()
 
@@ -91,7 +90,6 @@ class CaptureGUI:
         self.logo_pos_var = tk.StringVar(value=logo_position)
         self.zoom_var = tk.BooleanVar(value=auto_zoom)
         self.center_var = tk.BooleanVar(value=auto_center)
-        self.contrast_var = tk.DoubleVar(value=round(contrast * 100))
         self.name_var = tk.StringVar(value=self.name or "")
 
         self._build_widgets()
@@ -134,16 +132,10 @@ class CaptureGUI:
         ttk.Checkbutton(side, text="Przybliżanie (zoom)", variable=self.zoom_var).pack(anchor="w", pady=(2, 0))
         ttk.Checkbutton(side, text="Centrowanie", variable=self.center_var).pack(anchor="w")
 
-        self.contrast_label = ttk.Label(side, text="")
-        self.contrast_label.pack(anchor="w", pady=(8, 0))
-        row = ttk.Frame(side)
-        row.pack(fill="x")
-        ttk.Scale(
-            row, from_=50, to=150, variable=self.contrast_var,
-            command=lambda _v: self._refresh_contrast_label(),
-        ).pack(side="left", fill="x", expand=True)
-        ttk.Button(row, text="100%", width=5, command=self._reset_contrast).pack(side="left", padx=(6, 0))
-        self._refresh_contrast_label()
+        ttk.Label(side, text="Kontrast (w aparacie):").pack(anchor="w", pady=(8, 0))
+        self.contrast_row = ttk.Frame(side)
+        self.contrast_row.pack(fill="x")
+        ttk.Label(self.contrast_row, text="— sprawdzam…", foreground="gray").pack(anchor="w")
 
         self.shoot_btn = ttk.Button(
             side, text="📷  Zdjęcie  (Spacja)", command=self._request_shoot,
@@ -193,13 +185,25 @@ class CaptureGUI:
         self._ui(("cam", True))
         self._log("Aparat połączony — live view aktywny.")
         try:
+            self._ui(("contrast_info", self.session.describe_contrast()))
+        except gp.GPhoto2Error as e:
+            self._ui(("contrast_info", None))
+            self._log(f"Nie udało się odczytać kontrastu: {e}")
+        try:
             while not self._stop.is_set():
                 try:
-                    opts = self._shoot_q.get_nowait()
+                    cmd, payload = self._cam_q.get_nowait()
                 except queue.Empty:
-                    opts = None
-                if opts is not None:
-                    self._do_capture(opts)
+                    cmd = None
+                if cmd == "shoot":
+                    self._do_capture(payload)
+                    continue
+                if cmd == "contrast":
+                    try:
+                        self.session.set_contrast(payload)
+                        self._log(f"Kontrast aparatu: {payload}")
+                    except Exception as e:
+                        self._log(f"✗ Nie udało się ustawić kontrastu: {e}")
                     continue
                 if self._preview_enabled:
                     try:
@@ -272,7 +276,6 @@ class CaptureGUI:
                 job["captured"], self.logo, job["outdir"], clean_bg=True,
                 add_logo=job["add_logo"], logo_position=job["logo_position"],
                 auto_center=job["auto_center"], auto_zoom=job["auto_zoom"],
-                contrast=job["contrast"],
             )
         except Exception as e:
             self._log(f"✗ Obróbka nie wyszła: {e}")
@@ -314,16 +317,6 @@ class CaptureGUI:
         else:
             self._jobs.put(("upload_off", None))
 
-    def _contrast_factor(self) -> float:
-        return round(self.contrast_var.get()) / 100.0
-
-    def _refresh_contrast_label(self) -> None:
-        self.contrast_label.configure(text=f"Kontrast: {round(self.contrast_var.get())}%")
-
-    def _reset_contrast(self) -> None:
-        self.contrast_var.set(100)
-        self._refresh_contrast_label()
-
     def _request_shoot(self) -> None:
         if not self._cam_ok:
             self._log("Aparat nie jest połączony.")
@@ -332,14 +325,46 @@ class CaptureGUI:
             self._log("Najpierw ustaw nazwę sesji.")
             self.name_entry.focus_set()
             return
-        self._shoot_q.put({
+        self._cam_q.put(("shoot", {
             "outdir": self.base_output / self.name,
             "add_logo": self.logo_var.get(),
             "logo_position": self.logo_pos_var.get(),
             "auto_center": self.center_var.get(),
             "auto_zoom": self.zoom_var.get(),
-            "contrast": self._contrast_factor(),
-        })
+        }))
+
+    def _build_contrast_control(self, info: dict | None) -> None:
+        for w in self.contrast_row.winfo_children():
+            w.destroy()
+        if not info:
+            ttk.Label(
+                self.contrast_row,
+                text="niedostępny przez USB (ustaw w Picture Style aparatu)",
+                foreground="gray",
+            ).pack(anchor="w")
+            return
+        if info["kind"] == "range":
+            self.contrast_var = tk.DoubleVar(value=float(info["current"]))
+            value_label = ttk.Label(self.contrast_row, text=f"{float(info['current']):.0f}", width=4)
+            scale = ttk.Scale(
+                self.contrast_row, from_=info["min"], to=info["max"],
+                variable=self.contrast_var,
+                command=lambda _v: value_label.configure(text=f"{self.contrast_var.get():.0f}"),
+            )
+            scale.pack(side="left", fill="x", expand=True)
+            scale.bind("<ButtonRelease-1>", lambda _e: self._send_contrast(round(self.contrast_var.get())))
+            value_label.pack(side="left", padx=(6, 0))
+        else:
+            self.contrast_var = tk.StringVar(value=str(info["current"]))
+            box = ttk.Combobox(
+                self.contrast_row, textvariable=self.contrast_var,
+                values=[str(c) for c in info["choices"]], state="readonly", width=10,
+            )
+            box.pack(anchor="w")
+            box.bind("<<ComboboxSelected>>", lambda _e: self._send_contrast(self.contrast_var.get()))
+
+    def _send_contrast(self, value) -> None:
+        self._cam_q.put(("contrast", value))
 
     def _toggle_preview(self) -> None:
         self._preview_enabled = not self._preview_enabled
@@ -448,6 +473,8 @@ class CaptureGUI:
                     self.status_label.configure(text="Aparat rozłączony.")
             elif kind == "status":
                 self._busy_status = rest[0]
+            elif kind == "contrast_info":
+                self._build_contrast_control(rest[0])
             elif kind == "shot":
                 self.count += 1
                 self._refresh_session_label()

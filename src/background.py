@@ -1,7 +1,7 @@
 from functools import lru_cache
 
 import numpy as np
-from PIL import Image, ImageEnhance, ImageFilter
+from PIL import Image, ImageFilter
 from scipy import ndimage
 
 from .config import (
@@ -15,7 +15,6 @@ from .config import (
     CLEAN_BG_INFERENCE_SIZE,
     CLEAN_BG_MASK_THRESHOLD,
     CLEAN_BG_MODEL,
-    CONTRAST,
     PRODUCT_MARGIN,
     SHADOW_RADIUS_RATIO,
     SHADOW_STRENGTH,
@@ -154,7 +153,6 @@ def clean_background(
     canvas_size: tuple[int, int],
     auto_center: bool = AUTO_CENTER,
     auto_zoom: bool = AUTO_ZOOM,
-    contrast: float = CONTRAST,
 ) -> Image.Image:
     from rembg import remove
 
@@ -507,8 +505,6 @@ def clean_background(
         dst_h = max(1, dst_b - dst_t)
         sub_img = img.resize((dst_w, dst_h), Image.LANCZOS, box=(csl, cst, csr, csb))
         sub_alpha = alpha.resize((dst_w, dst_h), Image.LANCZOS, box=(csl, cst, csr, csb))
-        if contrast != 1.0:
-            sub_img = ImageEnhance.Contrast(sub_img).enhance(contrast)
         if SHARPEN_PERCENT > 0:
             sub_img = sub_img.filter(
                 ImageFilter.UnsharpMask(radius=1.5, percent=SHARPEN_PERCENT, threshold=3)

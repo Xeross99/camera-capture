@@ -348,6 +348,30 @@ def capture_from_camera(workdir: Path) -> Path:
     return target
 
 
+def _leaf_widgets(widget):
+    try:
+        n = widget.count_children()
+    except gp.GPhoto2Error:
+        n = 0
+    if n:
+        for i in range(n):
+            yield from _leaf_widgets(widget.get_child(i))
+    else:
+        yield widget
+
+
+def _find_contrast_widget(config):
+    for w in _leaf_widgets(config):
+        try:
+            name = w.get_name().lower()
+            label = (w.get_label() or "").lower()
+        except gp.GPhoto2Error:
+            continue
+        if "contrast" in name or "kontrast" in label or "contrast" in label:
+            return w
+    return None
+
+
 class CameraSession:
     """Trwala sesja aparatu dla GUI: init raz, potem live preview i strzaly
     bez ponownego laczenia. Wszystkie metody musza byc wolane z JEDNEGO
@@ -376,6 +400,35 @@ class CameraSession:
         """Pelnoprawny strzal (retry + reset USB jak w capture_from_camera)."""
         file_path, self.camera = _capture_with_retry(self.camera)
         return _download_capture(self.camera, file_path, workdir)
+
+    def describe_contrast(self) -> dict | None:
+        """Widget kontrastu z aparatu (o ile firmware go eksponuje przez PTP).
+        Zwraca {kind: 'range'|'choices', ...} albo None."""
+        config = self.camera.get_config()
+        w = _find_contrast_widget(config)
+        if w is None:
+            return None
+        wtype = w.get_type()
+        if wtype == gp.GP_WIDGET_RANGE:
+            lo, hi, step = w.get_range()
+            return {"kind": "range", "min": lo, "max": hi,
+                    "step": step or 1, "current": w.get_value()}
+        if wtype in (gp.GP_WIDGET_RADIO, gp.GP_WIDGET_MENU):
+            choices = [w.get_choice(i) for i in range(w.count_choices())]
+            return {"kind": "choices", "choices": choices, "current": w.get_value()}
+        return None
+
+    def set_contrast(self, value) -> str:
+        config = self.camera.get_config()
+        w = _find_contrast_widget(config)
+        if w is None:
+            raise RuntimeError("aparat nie eksponuje kontrastu przez PTP")
+        if w.get_type() == gp.GP_WIDGET_RANGE:
+            w.set_value(float(value))
+        else:
+            w.set_value(str(value))
+        self.camera.set_config(config)
+        return str(value)
 
     def close(self) -> None:
         if self.camera is None:

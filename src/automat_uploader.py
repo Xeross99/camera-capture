@@ -14,6 +14,19 @@ import requests
 from .config import AUTOMAT_API_TOKEN, AUTOMAT_BASE_URL
 
 
+def describe_opened_session(uploader: "AutomatUploader", name: str) -> tuple[str, str]:
+    """Komunikat do logu po open_session() -> (tekst, poziom 'ok'|'warn')."""
+    suffix = (
+        f" — podłączono do istniejącej ({uploader.photos_count} zdjęć)"
+        if uploader.reattached
+        else ""
+    )
+    base = f"↑ Automat: sesja {uploader.session_id} ({name})"
+    if uploader.product_found:
+        return f"{base}{suffix}", "ok"
+    return f"{base} — produkt nie znaleziony, sesja luźna{suffix}", "warn"
+
+
 class AutomatUploader:
     def __init__(
         self,

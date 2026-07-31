@@ -17,19 +17,11 @@ from pathlib import Path
 from rich.console import Console
 from rich.prompt import Prompt
 
-from src.automat_uploader import AutomatUploader
+from src.automat_uploader import AutomatUploader, describe_opened_session
 from src.camera import list_image_formats
-from src.config import (
-    AUTO_CENTER,
-    AUTO_ZOOM,
-    AUTOMAT_API_TOKEN,
-    AUTOMAT_UPLOAD_ENABLED,
-    DEFAULT_LOGO,
-    DEFAULT_OUTPUT_DIR,
-    LOGO_ENABLED,
-    LOGO_POSITION,
-)
-from src.image_processing import LOGO_POSITIONS, process
+from src.cli import add_capture_args
+from src.config import AUTOMAT_API_TOKEN
+from src.image_processing import process
 from src.tui import CaptureTUI, sanitize_name
 
 console = Console()
@@ -44,14 +36,9 @@ def make_uploader(enabled: bool, name: str) -> AutomatUploader | None:
     except Exception as e:
         console.print(f"[red]Nie udalo sie otworzyc sesji w Automacie:[/] {e}")
         return None
-    suffix = ""
-    if u.reattached:
-        suffix = f" — podlaczono do istniejacej ({u.photos_count} zdjec)"
-    if u.product_found:
-        console.print(f"[bold cyan]↑ Automat: sesja {u.session_id} ({name}){suffix}[/]")
-    else:
-        kind = "luzna" + (" (podlaczono)" if u.reattached else "")
-        console.print(f"[yellow]↑ Automat: sesja {u.session_id} ({name}) — produkt nie znaleziony, sesja {kind}{suffix}[/]")
+    text, level = describe_opened_session(u, name)
+    style = "bold cyan" if level == "ok" else "yellow"
+    console.print(f"[{style}]{text}[/]")
     return u
 
 
@@ -81,48 +68,12 @@ def prompt_name(current: str | None = None) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Capture, crop 1:1, overlay logo.")
     parser.add_argument("--input", type=Path, help="Pomiń aparat, użyj istniejącego pliku.")
-    parser.add_argument("--name", type=str, help="Nazwa sesji zdjęciowej (= podfolder w photos/).")
-    parser.add_argument("--logo", type=Path, default=DEFAULT_LOGO)
-    parser.add_argument(
-        "--no-logo",
-        dest="add_logo",
-        action="store_false",
-        help="Nie nakladaj logo na finalny JPEG.",
-    )
-    parser.set_defaults(add_logo=LOGO_ENABLED)
-    parser.add_argument(
-        "--logo-position",
-        choices=LOGO_POSITIONS,
-        default=LOGO_POSITION,
-        help=f"Rog, w ktorym laduje logo (domyslnie {LOGO_POSITION}).",
-    )
-    parser.add_argument(
-        "--no-auto-center",
-        dest="auto_center",
-        action="store_false",
-        help="Nie centruj produktu (zostaje w pozycji z kadru).",
-    )
-    parser.set_defaults(auto_center=AUTO_CENTER)
-    parser.add_argument(
-        "--no-auto-zoom",
-        dest="auto_zoom",
-        action="store_false",
-        help="Nie przyblizaj produktu (naturalna skala z kadru).",
-    )
-    parser.set_defaults(auto_zoom=AUTO_ZOOM)
-    parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
-    parser.add_argument(
-        "--no-upload",
-        dest="upload",
-        action="store_false",
-        help="Nie wgrywaj raw do Automatu (domyslnie ON gdy AUTOMAT_TOKEN ustawiony).",
-    )
-    parser.set_defaults(upload=AUTOMAT_UPLOAD_ENABLED)
     parser.add_argument(
         "--list-formats",
         action="store_true",
         help="Wypisz dostepne formaty/rozmiary zdjec na aparacie i zakoncz.",
     )
+    add_capture_args(parser)
     args = parser.parse_args()
 
     if args.list_formats:

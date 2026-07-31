@@ -30,7 +30,7 @@ import numpy as np
 from PIL import Image
 
 from . import image_processing
-from .automat_uploader import AutomatUploader
+from .automat_uploader import AutomatUploader, describe_opened_session
 from .camera import CameraSession
 from .config import (
     AUTOMAT_API_TOKEN,
@@ -42,6 +42,11 @@ from .image_processing import LOGO_POSITIONS, process
 from .tui import sanitize_name
 
 STATIC_DIR = Path(__file__).parent / "webui_static"
+STATIC_TYPES = {
+    ".css": "text/css; charset=utf-8",
+    ".js": "application/javascript; charset=utf-8",
+    ".woff2": "font/woff2",
+}
 THUMB_SIZE = 360
 DEFAULT_NAME_PATTERN = "photo_{data}_{godzina}.jpg"
 
@@ -85,6 +90,135 @@ def _find_raw(session_dir: Path, final_name: str) -> Path | None:
         if cand.exists():
             return cand
     return None
+
+
+def _shot_entries(session_dir: Path | None, review: dict, with_meta: bool = False) -> list[dict]:
+    """Wpisy zdjec dla frontu (filmstrip sesji / siatka galerii)."""
+    entries = []
+    for f in (_finals(session_dir) if session_dir else []):
+        entry = {
+            "file": f,
+            "status": "rejected" if f in review["rejected"] else "ok",
+            "uploaded": f in review["uploaded"],
+        }
+        if with_meta:
+            entry["meta"] = review["meta"].get(f, "")
+        entries.append(entry)
+    return entries
+
+
+class _Handler(BaseHTTPRequestHandler):
+    """Handler HTTP (instancja per request). Atrybut klasowy `ui` wstrzykiwany
+    w WebUI.start() przez subklase — jeden serwer = jedno WebUI."""
+
+    ui: "WebUI"
+
+    def log_message(self, *_a):
+        pass
+
+    def _json(self, payload, code=200):
+        body = json.dumps(payload).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _authed(self) -> bool:
+        q = parse_qs(urlparse(self.path).query)
+        if q.get("t", [""])[0] == self.ui.token:
+            return True
+        return f"t={self.ui.token}" in self.headers.get("Cookie", "")
+
+    def do_GET(self):
+        if not self._authed():
+            self.send_error(403)
+            return
+        url = urlparse(self.path)
+        if url.path == "/":
+            self._serve_index()
+        elif url.path.startswith("/static/"):
+            self._serve_static(url.path)
+        elif url.path == "/api/state":
+            self._json(self.ui.state())
+        elif url.path == "/stream":
+            self._serve_stream()
+        elif url.path == "/img":
+            self._serve_img(parse_qs(url.query))
+        else:
+            self.send_error(404)
+
+    def _serve_index(self):
+        body = (STATIC_DIR / "index.html").read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header(
+            "Set-Cookie", f"t={self.ui.token}; HttpOnly; SameSite=Strict")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _serve_static(self, path: str):
+        """Statyki frontendu (style.css / app.js) z webui_static — tylko
+        rozszerzenia z STATIC_TYPES, sama nazwa pliku (bez podkatalogow)."""
+        name = Path(path).name
+        ctype = STATIC_TYPES.get(Path(name).suffix)
+        target = STATIC_DIR / name
+        if ctype is None or not target.is_file():
+            self.send_error(404)
+            return
+        body = target.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _serve_stream(self):
+        """MJPEG live view: ostatnia klatka z watku camera, w tempie preview_fps."""
+        self.send_response(200)
+        self.send_header(
+            "Content-Type", "multipart/x-mixed-replace; boundary=frame")
+        self.end_headers()
+        try:
+            while not self.ui._stop.is_set():
+                frame = self.ui.latest_frame()
+                if frame is not None:
+                    self.wfile.write(b"--frame\r\nContent-Type: image/jpeg\r\n")
+                    self.wfile.write(f"Content-Length: {len(frame)}\r\n\r\n".encode())
+                    self.wfile.write(frame)
+                    self.wfile.write(b"\r\n")
+                time.sleep(1.0 / max(1, self.ui.preview_fps))
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+
+    def _serve_img(self, q: dict):
+        data = self.ui.image_bytes(
+            q.get("s", [""])[0], q.get("f", [""])[0],
+            thumb=q.get("thumb", ["0"])[0] == "1",
+        )
+        if data is None:
+            self.send_error(404)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "image/jpeg")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_POST(self):
+        if not self._authed():
+            self.send_error(403)
+            return
+        if urlparse(self.path).path != "/api/action":
+            self.send_error(404)
+            return
+        length = int(self.headers.get("Content-Length", "0"))
+        try:
+            data = json.loads(self.rfile.read(length) or b"{}")
+            self._json(self.ui.action(data))
+        except Exception as e:
+            self._json({"ok": False, "error": str(e)}, 500)
 
 
 class WebUI:
@@ -316,26 +450,9 @@ class WebUI:
             item = self._jobs.get()
             if item is None:
                 return
-            kind, *rest = item
+            kind, *args = item
             try:
-                if kind == "photo":
-                    self._job_photo(rest[0])
-                elif kind == "open_session":
-                    self._job_open_session(rest[0])
-                elif kind == "upload_off":
-                    self.uploader = None
-                elif kind == "upload_one":
-                    self._job_upload_one(*rest)
-                elif kind == "batch":
-                    self._job_batch(rest[0])
-                elif kind == "list_sessions":
-                    self._job_list_sessions()
-                elif kind == "reprocess":
-                    self._job_reprocess(*rest)
-                elif kind == "delete":
-                    self._job_delete(*rest)
-                elif kind == "test":
-                    self._job_test()
+                self._JOBS[kind](self, *args)
             except Exception as e:
                 self._log(f"✗ {kind}: {e}", "err")
 
@@ -351,12 +468,11 @@ class WebUI:
         except Exception as e:
             self._log(f"✗ Nie udało się otworzyć sesji w Automacie: {e}", "err")
             return
-        suffix = f" — podłączono do istniejącej ({u.photos_count} zdjęć)" if u.reattached else ""
-        if u.product_found:
-            self._log(f"↑ Automat: sesja {u.session_id} ({name}){suffix}", "ok")
-        else:
-            self._log(f"↑ Automat: sesja {u.session_id} ({name}) — produkt nie znaleziony, sesja luźna{suffix}", "warn")
+        self._log(*describe_opened_session(u, name))
         self.uploader = u
+
+    def _job_upload_off(self) -> None:
+        self.uploader = None
 
     def _job_photo(self, job: dict) -> None:
         filename = job["filename"]
@@ -521,101 +637,150 @@ class WebUI:
             self.test_result = f"✗ {e.__class__.__name__}"
             self._log(f"Test Automatu nie wyszedł: {e}", "err")
 
+    _JOBS = {
+        "photo": _job_photo,
+        "open_session": _job_open_session,
+        "upload_off": _job_upload_off,
+        "upload_one": _job_upload_one,
+        "batch": _job_batch,
+        "list_sessions": _job_list_sessions,
+        "reprocess": _job_reprocess,
+        "delete": _job_delete,
+        "test": _job_test,
+    }
+
     # ---------- akcje z frontu ----------
 
     def action(self, data: dict) -> dict:
+        """Dispatcher /api/action. Metoda _act_* zwraca dict bledu albo None (= ok)."""
         act = data.get("action", "")
-        if act == "set_session":
-            name = sanitize_name(str(data.get("name", "")))
-            if not name or name == "default":
-                return {"ok": False, "error": "pusta nazwa"}
-            with self.lock:
-                self.name = name
-                self.gallery_session = name
-            self._log(f"Sesja: {name} → {self.base_output / name}")
-            if self.upload_enabled:
-                self._jobs.put(("open_session", name))
-                self._jobs.put(("list_sessions",))
-        elif act == "clear_session":
-            with self.lock:
-                self.name = None
-            self._jobs.put(("upload_off",))
-            if self.automat_token:
-                self._jobs.put(("list_sessions",))
-        elif act == "refresh_sessions":
-            if self.automat_token:
-                self._jobs.put(("list_sessions",))
-        elif act == "shoot":
-            if not self.connected:
-                return {"ok": False, "error": "aparat nie jest połączony"}
-            if not self.name:
-                return {"ok": False, "error": "najpierw ustaw nazwę sesji"}
-            with self.lock:
-                opts = dict(
-                    outdir=self.session_dir, filename=self._resolve_filename(),
-                    clean_bg=self.clean_bg, add_logo=self.add_logo,
-                    logo_position=self.logo_position,
-                    auto_center=self.auto_center, auto_zoom=self.auto_zoom,
-                    upload=self.upload_enabled,
-                )
-            self._cam_q.put(("shoot", opts))
-        elif act == "toggle":
-            key, val = data["key"], bool(data["value"])
-            with self.lock:
-                if key == "preview":
-                    self.preview_on = val
-                elif key == "logo":
-                    self.add_logo = val
-                elif key == "zoom":
-                    self.auto_zoom = val
-                elif key == "center":
-                    self.auto_center = val
-                elif key == "cleanbg":
-                    self.clean_bg = val
-                elif key == "upload":
-                    if val and not self.automat_token:
-                        self._log("Brak tokenu Automatu — upload zostaje OFF", "warn")
-                        val = False
-                    self.upload_enabled = val
-            if key == "upload":
-                if val and self.name:
-                    self._jobs.put(("open_session", self.name))
-                elif not val:
-                    self._jobs.put(("upload_off",))
-        elif act == "set_post":
-            key, val = data["key"], data["value"]
-            with self.lock:
-                if key == "logo_position" and val in LOGO_POSITIONS:
-                    self.logo_position = val
-                elif key == "opacity":
-                    self.logo_opacity = max(0, min(100, int(val)))
-                    image_processing.LOGO_OPACITY = self.logo_opacity / 100.0
-        elif act == "set_camera":
-            self._cam_q.put(("set_camera", data["key"], str(data["value"])))
-        elif act == "review":
-            self._review_mark(data["session"], data["file"], data["verdict"])
-        elif act == "reject_last":
-            if self.session_dir:
-                review = _load_review(self.session_dir)
-                fresh = [f for f in _finals(self.session_dir) if f not in review["rejected"]]
-                if fresh:
-                    self._review_mark(self.name, fresh[-1], "rejected")
-        elif act == "gallery_session":
-            with self.lock:
-                self.gallery_session = sanitize_name(str(data.get("name", "")))
-        elif act == "delete":
-            self._jobs.put(("delete", data["session"], list(data["files"])))
-        elif act == "reprocess":
-            self._jobs.put(("reprocess", data["session"], list(data["files"])))
-        elif act == "batch_upload":
-            self._jobs.put(("batch", data["session"]))
-        elif act == "test_connection":
-            self._jobs.put(("test",))
-        elif act == "set_app":
-            self._set_app_setting(data["key"], data["value"])
-        else:
+        handler = self._ACTIONS.get(act)
+        if handler is None:
             return {"ok": False, "error": f"nieznana akcja {act!r}"}
-        return {"ok": True}
+        return handler(self, data) or {"ok": True}
+
+    def _act_set_session(self, data: dict) -> dict | None:
+        name = sanitize_name(str(data.get("name", "")))
+        if not name or name == "default":
+            return {"ok": False, "error": "pusta nazwa"}
+        with self.lock:
+            self.name = name
+            self.gallery_session = name
+        self._log(f"Sesja: {name} → {self.base_output / name}")
+        if self.upload_enabled:
+            self._jobs.put(("open_session", name))
+            self._jobs.put(("list_sessions",))
+        return None
+
+    def _act_clear_session(self, data: dict) -> None:
+        with self.lock:
+            self.name = None
+        self._jobs.put(("upload_off",))
+        if self.automat_token:
+            self._jobs.put(("list_sessions",))
+
+    def _act_refresh_sessions(self, data: dict) -> None:
+        if self.automat_token:
+            self._jobs.put(("list_sessions",))
+
+    def _act_shoot(self, data: dict) -> dict | None:
+        if not self.connected:
+            return {"ok": False, "error": "aparat nie jest połączony"}
+        if not self.name:
+            return {"ok": False, "error": "najpierw ustaw nazwę sesji"}
+        with self.lock:
+            opts = dict(
+                outdir=self.session_dir, filename=self._resolve_filename(),
+                clean_bg=self.clean_bg, add_logo=self.add_logo,
+                logo_position=self.logo_position,
+                auto_center=self.auto_center, auto_zoom=self.auto_zoom,
+                upload=self.upload_enabled,
+            )
+        self._cam_q.put(("shoot", opts))
+        return None
+
+    _TOGGLE_ATTRS = {
+        "preview": "preview_on",
+        "logo": "add_logo",
+        "zoom": "auto_zoom",
+        "center": "auto_center",
+        "cleanbg": "clean_bg",
+    }
+
+    def _act_toggle(self, data: dict) -> None:
+        key, val = data["key"], bool(data["value"])
+        with self.lock:
+            if key in self._TOGGLE_ATTRS:
+                setattr(self, self._TOGGLE_ATTRS[key], val)
+            elif key == "upload":
+                if val and not self.automat_token:
+                    self._log("Brak tokenu Automatu — upload zostaje OFF", "warn")
+                    val = False
+                self.upload_enabled = val
+        if key == "upload":
+            if val and self.name:
+                self._jobs.put(("open_session", self.name))
+            elif not val:
+                self._jobs.put(("upload_off",))
+
+    def _act_set_post(self, data: dict) -> None:
+        key, val = data["key"], data["value"]
+        with self.lock:
+            if key == "logo_position" and val in LOGO_POSITIONS:
+                self.logo_position = val
+            elif key == "opacity":
+                self.logo_opacity = max(0, min(100, int(val)))
+                image_processing.LOGO_OPACITY = self.logo_opacity / 100.0
+
+    def _act_set_camera(self, data: dict) -> None:
+        self._cam_q.put(("set_camera", data["key"], str(data["value"])))
+
+    def _act_review(self, data: dict) -> None:
+        self._review_mark(data["session"], data["file"], data["verdict"])
+
+    def _act_reject_last(self, data: dict) -> None:
+        if self.session_dir:
+            review = _load_review(self.session_dir)
+            fresh = [f for f in _finals(self.session_dir) if f not in review["rejected"]]
+            if fresh:
+                self._review_mark(self.name, fresh[-1], "rejected")
+
+    def _act_gallery_session(self, data: dict) -> None:
+        with self.lock:
+            self.gallery_session = sanitize_name(str(data.get("name", "")))
+
+    def _act_delete(self, data: dict) -> None:
+        self._jobs.put(("delete", data["session"], list(data["files"])))
+
+    def _act_reprocess(self, data: dict) -> None:
+        self._jobs.put(("reprocess", data["session"], list(data["files"])))
+
+    def _act_batch_upload(self, data: dict) -> None:
+        self._jobs.put(("batch", data["session"]))
+
+    def _act_test_connection(self, data: dict) -> None:
+        self._jobs.put(("test",))
+
+    def _act_set_app(self, data: dict) -> None:
+        self._set_app_setting(data["key"], data["value"])
+
+    _ACTIONS = {
+        "set_session": _act_set_session,
+        "clear_session": _act_clear_session,
+        "refresh_sessions": _act_refresh_sessions,
+        "shoot": _act_shoot,
+        "toggle": _act_toggle,
+        "set_post": _act_set_post,
+        "set_camera": _act_set_camera,
+        "review": _act_review,
+        "reject_last": _act_reject_last,
+        "gallery_session": _act_gallery_session,
+        "delete": _act_delete,
+        "reprocess": _act_reprocess,
+        "batch_upload": _act_batch_upload,
+        "test_connection": _act_test_connection,
+        "set_app": _act_set_app,
+    }
 
     def _review_mark(self, session: str, filename: str, verdict: str) -> None:
         outdir = self.base_output / session
@@ -665,27 +830,11 @@ class WebUI:
         with self.lock:
             sdir = self.session_dir
             review = _load_review(sdir) if sdir else {"rejected": [], "uploaded": [], "meta": {}}
-            finals = _finals(sdir) if sdir else []
-            shots = [
-                {
-                    "file": f,
-                    "status": "rejected" if f in review["rejected"] else "ok",
-                    "uploaded": f in review["uploaded"],
-                }
-                for f in finals
-            ]
+            shots = _shot_entries(sdir, review)
             gsess = self.gallery_session or self.name
             gdir = (self.base_output / gsess) if gsess else None
             greview = _load_review(gdir) if gdir else review
-            gfiles = [
-                {
-                    "file": f,
-                    "status": "rejected" if f in greview["rejected"] else "ok",
-                    "uploaded": f in greview["uploaded"],
-                    "meta": greview["meta"].get(f, ""),
-                }
-                for f in (_finals(gdir) if gdir else [])
-            ]
+            gfiles = _shot_entries(gdir, greview, with_meta=True)
             sessions = []
             if self.base_output.is_dir():
                 sessions = sorted(
@@ -784,90 +933,9 @@ class WebUI:
         self._worker_thread.start()
         if self.automat_token:
             self._jobs.put(("list_sessions",))
-        ui = self
 
-        class Handler(BaseHTTPRequestHandler):
-            def log_message(self, *_a):
-                pass
-
-            def _json(self, payload, code=200):
-                body = json.dumps(payload).encode()
-                self.send_response(code)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-
-            def _authed(self) -> bool:
-                q = parse_qs(urlparse(self.path).query)
-                if q.get("t", [""])[0] == ui.token:
-                    return True
-                return f"t={ui.token}" in self.headers.get("Cookie", "")
-
-            def do_GET(self):
-                if not self._authed():
-                    self.send_error(403)
-                    return
-                url = urlparse(self.path)
-                if url.path == "/":
-                    body = (STATIC_DIR / "index.html").read_bytes()
-                    self.send_response(200)
-                    self.send_header("Content-Type", "text/html; charset=utf-8")
-                    self.send_header("Content-Length", str(len(body)))
-                    self.send_header(
-                        "Set-Cookie", f"t={ui.token}; HttpOnly; SameSite=Strict")
-                    self.end_headers()
-                    self.wfile.write(body)
-                elif url.path == "/api/state":
-                    self._json(ui.state())
-                elif url.path == "/stream":
-                    self.send_response(200)
-                    self.send_header(
-                        "Content-Type", "multipart/x-mixed-replace; boundary=frame")
-                    self.end_headers()
-                    try:
-                        while not ui._stop.is_set():
-                            frame = ui.latest_frame()
-                            if frame is not None:
-                                self.wfile.write(b"--frame\r\nContent-Type: image/jpeg\r\n")
-                                self.wfile.write(f"Content-Length: {len(frame)}\r\n\r\n".encode())
-                                self.wfile.write(frame)
-                                self.wfile.write(b"\r\n")
-                            time.sleep(1.0 / max(1, ui.preview_fps))
-                    except (BrokenPipeError, ConnectionResetError, OSError):
-                        pass
-                elif url.path == "/img":
-                    q = parse_qs(url.query)
-                    data = ui.image_bytes(
-                        q.get("s", [""])[0], q.get("f", [""])[0],
-                        thumb=q.get("thumb", ["0"])[0] == "1",
-                    )
-                    if data is None:
-                        self.send_error(404)
-                        return
-                    self.send_response(200)
-                    self.send_header("Content-Type", "image/jpeg")
-                    self.send_header("Content-Length", str(len(data)))
-                    self.end_headers()
-                    self.wfile.write(data)
-                else:
-                    self.send_error(404)
-
-            def do_POST(self):
-                if not self._authed():
-                    self.send_error(403)
-                    return
-                if urlparse(self.path).path != "/api/action":
-                    self.send_error(404)
-                    return
-                length = int(self.headers.get("Content-Length", "0"))
-                try:
-                    data = json.loads(self.rfile.read(length) or b"{}")
-                    self._json(ui.action(data))
-                except Exception as e:
-                    self._json({"ok": False, "error": str(e)}, 500)
-
-        self._server = ThreadingHTTPServer(("127.0.0.1", self.port), Handler)
+        handler = type("Handler", (_Handler,), {"ui": self})
+        self._server = ThreadingHTTPServer(("127.0.0.1", self.port), handler)
         self.port = self._server.server_address[1]
         threading.Thread(target=self._server.serve_forever, daemon=True).start()
         return f"http://127.0.0.1:{self.port}/?t={self.token}"

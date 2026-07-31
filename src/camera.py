@@ -14,6 +14,49 @@ GP_ERROR_NOT_SUPPORTED = -6
 
 _RETRYABLE_CAPTURE_ERRORS = (GP_ERROR_UNSPECIFIED, GP_ERROR_IO_IN_PROGRESS, GP_ERROR_NOT_SUPPORTED)
 
+CONNECT_HINT = (
+    "Wskazówki: sprawdź USB, zamknij Photos.app / Image Capture / Canon EOS Utility "
+    "(blokują urządzenie), włącz aparat w trybie M/Av/Tv/P."
+)
+
+# Checklisty dla operatora gdy 5 prob capture nie pomoglo — per kod bledu.
+_CAPTURE_FAILURE_HINTS = {
+    GP_ERROR_NOT_SUPPORTED: (
+        "Aparat odrzuca wyzwolenie migawki (-6 Unsupported operation).\n"
+        "Sprawdz po kolei:\n"
+        "  1. Pokretlo trybu na M / Av / Tv / P / Fv (nie Auto+, SCN, Movie).\n"
+        "  2. Aparat NIE jest w trybie odtwarzania — wcisnij spust do polowy zeby wybudzic.\n"
+        "  3. Wylacz i wlacz aparat (auto-off potrafi zablokowac remote).\n"
+        "  4. Zamknij Photos.app / Image Capture / Canon EOS Utility.\n"
+        "  5. Odepnij i podepnij ponownie kabel USB."
+    ),
+    GP_ERROR_UNSPECIFIED: (
+        "Aparat zwraca [-1] Unspecified error mimo 5 prób.\n"
+        "Sprawdz po kolei:\n"
+        "  1. Aparat NIE jest w trybie odtwarzania (Play).\n"
+        "  2. AF zlapał ostrosc — spróbuj MF lub upewnij sie ze jest na czym zfocusowac.\n"
+        "  3. Obiektyw jest poprawnie zamontowany (brak 'Err' na ekranie aparatu).\n"
+        "  4. Wylacz i wlacz aparat, odepnij/podepnij USB.\n"
+        "  5. Sprawdz czy aparat strzela recznie (spust na obudowie)."
+    ),
+    GP_ERROR_IO_IN_PROGRESS: (
+        "Aparat wisi na [-110] I/O in progress (BUSY) mimo 5 prób i resetu USB.\n"
+        "Sprawdz po kolei:\n"
+        "  1. Karta SD wlozona? (M50 II nie strzeli bez karty, chyba ze "
+        "'Release shutter w/o card: ON').\n"
+        "  2. Karta nie jest wolna/umierajaca (dlugi zapis = ciagly BUSY).\n"
+        "  3. Wylacz i wlacz aparat wlacznikiem.\n"
+        "  4. Jesli aparat nie reaguje na wlacznik — wyjmij baterie na ~10 s."
+    ),
+}
+
+_USB_RESET_FAILURE_HINT = (
+    "Wisi na BUSY po stronie firmware — z hosta nie da sie tego odwiesic.\n"
+    "  1. Wylacz i wlacz aparat wlacznikiem.\n"
+    "  2. Jesli nie reaguje na wlacznik — wyjmij baterie na ~10 s.\n"
+    "  3. Sprawdz karte SD (wolna/umierajaca karta to typowa przyczyna BUSY)."
+)
+
 CANON_USB_VENDOR_ID = 0x04A9
 
 _LIBUSB_FALLBACK_PATHS = (
@@ -230,13 +273,7 @@ def _reconnect_after_usb_reset(camera) -> "gp.Camera":
         time.sleep(2.0)
     new_camera, err = _init_camera()
     if new_camera is None:
-        sys.exit(
-            f"Aparat nie odpowiada po resecie USB: {err}\n"
-            "Wisi na BUSY po stronie firmware — z hosta nie da sie tego odwiesic.\n"
-            "  1. Wylacz i wlacz aparat wlacznikiem.\n"
-            "  2. Jesli nie reaguje na wlacznik — wyjmij baterie na ~10 s.\n"
-            "  3. Sprawdz karte SD (wolna/umierajaca karta to typowa przyczyna BUSY)."
-        )
+        sys.exit(f"Aparat nie odpowiada po resecie USB: {err}\n{_USB_RESET_FAILURE_HINT}")
     return new_camera
 
 
@@ -276,36 +313,8 @@ def _capture_with_retry(camera) -> tuple["gp.CameraFilePath", "gp.Camera"]:
                 _drain_events(camera, timeout_ms=1500)
             time.sleep(0.5 + attempt * 0.5)
     if file_path is None:
-        if last_capture_err and last_capture_err.code == GP_ERROR_NOT_SUPPORTED:
-            sys.exit(
-                "Aparat odrzuca wyzwolenie migawki (-6 Unsupported operation).\n"
-                "Sprawdz po kolei:\n"
-                "  1. Pokretlo trybu na M / Av / Tv / P / Fv (nie Auto+, SCN, Movie).\n"
-                "  2. Aparat NIE jest w trybie odtwarzania — wcisnij spust do polowy zeby wybudzic.\n"
-                "  3. Wylacz i wlacz aparat (auto-off potrafi zablokowac remote).\n"
-                "  4. Zamknij Photos.app / Image Capture / Canon EOS Utility.\n"
-                "  5. Odepnij i podepnij ponownie kabel USB."
-            )
-        if last_capture_err and last_capture_err.code == GP_ERROR_UNSPECIFIED:
-            sys.exit(
-                "Aparat zwraca [-1] Unspecified error mimo 5 prób.\n"
-                "Sprawdz po kolei:\n"
-                "  1. Aparat NIE jest w trybie odtwarzania (Play).\n"
-                "  2. AF zlapał ostrosc — spróbuj MF lub upewnij sie ze jest na czym zfocusowac.\n"
-                "  3. Obiektyw jest poprawnie zamontowany (brak 'Err' na ekranie aparatu).\n"
-                "  4. Wylacz i wlacz aparat, odepnij/podepnij USB.\n"
-                "  5. Sprawdz czy aparat strzela recznie (spust na obudowie)."
-            )
-        if last_capture_err and last_capture_err.code == GP_ERROR_IO_IN_PROGRESS:
-            sys.exit(
-                "Aparat wisi na [-110] I/O in progress (BUSY) mimo 5 prób i resetu USB.\n"
-                "Sprawdz po kolei:\n"
-                "  1. Karta SD wlozona? (M50 II nie strzeli bez karty, chyba ze "
-                "'Release shutter w/o card: ON').\n"
-                "  2. Karta nie jest wolna/umierajaca (dlugi zapis = ciagly BUSY).\n"
-                "  3. Wylacz i wlacz aparat wlacznikiem.\n"
-                "  4. Jesli aparat nie reaguje na wlacznik — wyjmij baterie na ~10 s."
-            )
+        if last_capture_err and last_capture_err.code in _CAPTURE_FAILURE_HINTS:
+            sys.exit(_CAPTURE_FAILURE_HINTS[last_capture_err.code])
         raise gp.GPhoto2Error(
             last_capture_err.code if last_capture_err else GP_ERROR_IO_IN_PROGRESS,
             f"Aparat nie zrobil zdjecia mimo ponownych prób ({last_capture_err}).",
@@ -328,11 +337,7 @@ def capture_from_camera(workdir: Path) -> Path:
     print("Łączę z aparatem…")
     camera, last_err = _init_camera()
     if camera is None:
-        sys.exit(
-            f"Nie udało się połączyć z aparatem: {last_err}\n"
-            "Wskazówki: sprawdź USB, zamknij Photos.app / Image Capture / Canon EOS Utility "
-            "(blokują urządzenie), włącz aparat w trybie M/Av/Tv/P."
-        )
+        sys.exit(f"Nie udało się połączyć z aparatem: {last_err}\n{CONNECT_HINT}")
 
     try:
         _configure_camera(camera)
@@ -384,9 +389,7 @@ class CameraSession:
         camera, last_err = _init_camera()
         if camera is None:
             raise RuntimeError(
-                f"Nie udało się połączyć z aparatem: {last_err}\n"
-                "Wskazówki: sprawdź USB, zamknij Photos.app / Image Capture / "
-                "Canon EOS Utility, włącz aparat w trybie M/Av/Tv/P."
+                f"Nie udało się połączyć z aparatem: {last_err}\n{CONNECT_HINT}"
             )
         self.camera = camera
         _configure_camera(camera)

@@ -19,7 +19,7 @@ from rich.panel import Panel
 from rich.spinner import Spinner
 from rich.text import Text
 
-from .automat_uploader import AutomatUploader
+from .automat_uploader import AutomatUploader, describe_opened_session
 from .camera import capture_from_camera
 from .config import AUTOMAT_API_TOKEN
 from .image_processing import LOGO_POSITIONS, process
@@ -142,14 +142,8 @@ class CaptureTUI:
         except Exception as e:
             self.log(Text(f"Nie udalo sie otworzyc sesji w Automacie: {e}", style="red"))
             return
-        suffix = f" — podlaczono do istniejacej ({u.photos_count} zdjec)" if u.reattached else ""
-        if u.product_found:
-            self.log(Text(f"↑ Automat: sesja {u.session_id} ({self.name}){suffix}", style="bold cyan"))
-        else:
-            self.log(Text(
-                f"↑ Automat: sesja {u.session_id} ({self.name}) — produkt nie znaleziony, sesja luzna{suffix}",
-                style="yellow",
-            ))
+        text, level = describe_opened_session(u, self.name)
+        self.log(Text(text, style="bold cyan" if level == "ok" else "yellow"))
         self.uploader = u
 
     def _announce(self, filename: str) -> int | None:

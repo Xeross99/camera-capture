@@ -16,39 +16,18 @@ import argparse
 import os
 import threading
 import webbrowser
-from pathlib import Path
 
-from src.config import (
-    AUTO_CENTER,
-    AUTO_ZOOM,
-    AUTOMAT_UPLOAD_ENABLED,
-    DEFAULT_LOGO,
-    DEFAULT_OUTPUT_DIR,
-    LOGO_ENABLED,
-    LOGO_POSITION,
-)
-from src.image_processing import LOGO_POSITIONS
+from src.cli import add_capture_args
 from src.webui import WebUI
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Live preview + capture (aplikacja okienkowa).")
-    parser.add_argument("--name", type=str, help="Nazwa sesji zdjęciowej (= podfolder w photos/).")
-    parser.add_argument("--logo", type=Path, default=DEFAULT_LOGO)
-    parser.add_argument("--no-logo", dest="add_logo", action="store_false")
-    parser.set_defaults(add_logo=LOGO_ENABLED)
-    parser.add_argument("--logo-position", choices=LOGO_POSITIONS, default=LOGO_POSITION)
-    parser.add_argument("--no-auto-center", dest="auto_center", action="store_false")
-    parser.set_defaults(auto_center=AUTO_CENTER)
-    parser.add_argument("--no-auto-zoom", dest="auto_zoom", action="store_false")
-    parser.set_defaults(auto_zoom=AUTO_ZOOM)
-    parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
-    parser.add_argument("--no-upload", dest="upload", action="store_false")
-    parser.set_defaults(upload=AUTOMAT_UPLOAD_ENABLED)
     parser.add_argument("--port", type=int, default=0,
                         help="Port serwera (domyślnie losowy efemeryczny).")
     parser.add_argument("--browser", action="store_true",
                         help="Otwórz w przeglądarce zamiast natywnego okna.")
+    add_capture_args(parser)
     args = parser.parse_args()
 
     ui = WebUI(

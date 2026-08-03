@@ -276,6 +276,7 @@ class WebUI:
         self.gallery_session: str | None = None
         self.automat_sessions: list[dict] = []
         self.automat_sessions_error = ""
+        self.attach_to: dict | None = None  # {"id", "name"} — podłączenie do istniejącej sesji Automatu
         self.log: deque[dict] = deque(maxlen=500)
         self.uploader: AutomatUploader | None = None  # tylko watek worker
 
@@ -462,9 +463,18 @@ class WebUI:
 
     def _job_open_session(self, name: str) -> None:
         self.uploader = None
+        with self.lock:
+            attach = self.attach_to if self.attach_to and self.attach_to["name"] == name else None
+            info = next((s for s in self.automat_sessions
+                         if attach and s.get("id") == attach["id"]), {})
         try:
             u = self._make_uploader()
-            u.open_session(name)
+            if attach:
+                u.attach_session(attach["id"], name,
+                                 product_found=bool(info.get("product")),
+                                 photos_count=int(info.get("photos_count", 0)))
+            else:
+                u.open_session(name)
         except Exception as e:
             self._log(f"✗ Nie udało się otworzyć sesji w Automacie: {e}", "err")
             return
@@ -663,9 +673,11 @@ class WebUI:
         name = sanitize_name(str(data.get("name", "")))
         if not name or name == "default":
             return {"ok": False, "error": "pusta nazwa"}
+        sid = data.get("session_id")
         with self.lock:
             self.name = name
             self.gallery_session = name
+            self.attach_to = {"id": int(sid), "name": name} if sid else None
         self._log(f"Sesja: {name} → {self.base_output / name}")
         if self.upload_enabled:
             self._jobs.put(("open_session", name))
@@ -675,6 +687,7 @@ class WebUI:
     def _act_clear_session(self, data: dict) -> None:
         with self.lock:
             self.name = None
+            self.attach_to = None
         self._jobs.put(("upload_off",))
         if self.automat_token:
             self._jobs.put(("list_sessions",))

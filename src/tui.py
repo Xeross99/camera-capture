@@ -19,7 +19,8 @@ from rich.panel import Panel
 from rich.spinner import Spinner
 from rich.text import Text
 
-from .automat_uploader import AutomatUploader, describe_opened_session
+from .automat_uploader import (AutomatUploader, describe_opened_session,
+                               find_existing_session)
 from .camera import capture_from_camera
 from .config import AUTOMAT_API_TOKEN
 from .image_processing import LOGO_POSITIONS, process
@@ -111,6 +112,8 @@ class CaptureTUI:
         self.log_lines: deque[Text] = deque(maxlen=300)
         self.menu_open = False
         self.menu_idx = 0
+        self.pending_attach: dict | None = None   # sesja z Automatu czekajaca na decyzje podlacz/nowa
+        self.attach_to: dict | None = None        # {"name", "session"|None} — zapamietana decyzja dla nazwy
         self.status: Spinner | None = None
         self.input_buffer: str | None = ""  # start w trybie wpisywania nazwy
         self.live = None
@@ -134,11 +137,28 @@ class CaptureTUI:
 
     def _open_uploader(self) -> None:
         self.uploader = None
+        self.pending_attach = None
         if not self.upload_enabled or not AUTOMAT_API_TOKEN or not self.name:
             return
+        if self.attach_to is not None and self.attach_to["name"] == self.name:
+            self._connect_uploader(self.attach_to["session"])
+            return
+        match = find_existing_session(AutomatUploader(), self.name)
+        if match is not None:
+            self.pending_attach = match  # decyzja w _handle_attach_key
+            return
+        self.attach_to = {"name": self.name, "session": None}
+        self._connect_uploader(None)
+
+    def _connect_uploader(self, attach: dict | None) -> None:
         try:
             u = AutomatUploader()
-            u.open_session(self.name)
+            if attach is not None:
+                u.attach_session(attach["id"], self.name,
+                                 product_found=bool(attach.get("product")),
+                                 photos_count=int(attach.get("photos_count", 0)))
+            else:
+                u.open_session(self.name)
         except Exception as e:
             self.log(Text(f"Nie udalo sie otworzyc sesji w Automacie: {e}", style="red"))
             return
@@ -250,6 +270,24 @@ class CaptureTUI:
         return Panel(body, border_style="cyan", height=3,
                      title="[dim]ENTER zatwierdz" + (" · ESC anuluj" if self.name else ""))
 
+    def _attach_panel(self) -> Panel:
+        m = self.pending_attach
+        date = (m.get("created_at") or "")[:10]
+        body = Text.assemble(
+            ("Sesja ", ""), (str(m.get("name", "")), "bold cyan"),
+            (" juz istnieje w Automacie", ""),
+            (f" ({date}, zdjec: {m.get('photos_count', 0)}).", "dim"),
+        )
+        body.no_wrap = True
+        body.overflow = "ellipsis"
+        hint = Text.assemble(
+            ("[ENTER/p]", "bold green"), (" podlacz do istniejacej   ", "dim"),
+            ("[n]", "bold green"), (" utworz nowa   ", "dim"),
+            ("[ESC]", "bold green"), (" upload OFF", "dim"),
+        )
+        return Panel(Group(body, hint), border_style="yellow", height=4,
+                     title="[bold yellow]Istniejaca sesja w Automacie")
+
     def _render(self) -> Group:
         total_h = self.console.size.height
         parts: list = [self._header()]
@@ -257,6 +295,9 @@ class CaptureTUI:
         if self.input_buffer is not None:
             parts.append(self._input_panel())
             used += 3
+        elif self.pending_attach is not None:
+            parts.append(self._attach_panel())
+            used += 4
         elif self.menu_open:
             menu = self._menu_panel()
             parts.append(menu)
@@ -361,6 +402,21 @@ class CaptureTUI:
         elif len(k) == 1 and k.isprintable():
             self.input_buffer = (self.input_buffer or "") + k
 
+    def _handle_attach_key(self, k: str) -> None:
+        m = self.pending_attach
+        if k in ("ENTER", "p"):
+            self.pending_attach = None
+            self.attach_to = {"name": self.name, "session": m}
+            self._connect_uploader(m)
+        elif k == "n":
+            self.pending_attach = None
+            self.attach_to = {"name": self.name, "session": None}
+            self._connect_uploader(None)
+        elif k == "ESC":
+            self.pending_attach = None
+            self.upload_enabled = False
+            self.log(Text("Upload: OFF (anulowano wybor sesji)", style="yellow"))
+
     _SHORTCUTS = {"n": "name", "u": "upload", "l": "logo",
                   "p": "logo_pos", "z": "zoom", "c": "center"}
 
@@ -408,6 +464,8 @@ class CaptureTUI:
                     continue
                 if self.input_buffer is not None:
                     self._handle_input_key(k)
+                elif self.pending_attach is not None:
+                    self._handle_attach_key(k)
                 elif self.menu_open:
                     self._handle_menu_key(k)
                 else:

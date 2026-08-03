@@ -27,6 +27,20 @@ def describe_opened_session(uploader: "AutomatUploader", name: str) -> tuple[str
     return f"{base} — produkt nie znaleziony, sesja luźna{suffix}", "warn"
 
 
+def find_existing_session(uploader: "AutomatUploader", name: str) -> dict | None:
+    """Najnowsza sesja photo_studio o tej nazwie (case-insensitive) albo None.
+    Blad listy (brak sieci itd.) -> None, flow po prostu otworzy sesje po nazwie."""
+    try:
+        sessions = uploader.list_sessions()
+    except Exception:
+        return None
+    matches = [s for s in sessions
+               if (s.get("name") or "").strip().lower() == name.strip().lower()]
+    if not matches:
+        return None
+    return max(matches, key=lambda s: s.get("created_at") or "")
+
+
 class AutomatUploader:
     def __init__(
         self,
@@ -88,6 +102,23 @@ class AutomatUploader:
         self.product_found = bool(payload.get("product_found", True))
         self.reattached = bool(payload.get("reattached", False))
         self.photos_count = int(payload.get("photos_count", 0))
+        return self.session_id
+
+    def attach_session(
+        self,
+        session_id: int,
+        product_name: str,
+        product_found: bool = True,
+        photos_count: int = 0,
+    ) -> int:
+        """Podłącza się do istniejącej sesji po id, bez POST-a (announce/upload
+        idą na /sessions/:id/photos). Jeśli sesja zniknęła po stronie Rails,
+        pierwszy 404 przejdzie przez _reopen() i otworzy nową po nazwie."""
+        self.session_id = int(session_id)
+        self.product_name = product_name
+        self.product_found = product_found
+        self.reattached = True
+        self.photos_count = photos_count
         return self.session_id
 
     def _reopen(self) -> None:

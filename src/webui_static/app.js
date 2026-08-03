@@ -4,6 +4,7 @@ const S = {           // stan klienta
   screen: "sesja", logOpen: false, state: null,
   selShot: -1, selGal: -1, galFilter: "all",
   gridOn: true, kadrOn: true, reviewMode: false, lastLogLen: -1,
+  pendingNew: null,   // {name, match} — wpisana nazwa koliduje z istniejącą sesją Automatu
 };
 const $ = id => document.getElementById(id);
 const post = (payload) => fetch("/api/action", { method: "POST", body: JSON.stringify(payload) });
@@ -63,7 +64,7 @@ function startScreen() {
       ? `<span style="${mono} font-size: 9.5px; color: #9fe0a8;">✓ produkt</span>`
       : `<span style="${mono} font-size: 9.5px; color: #e0b96a;">luźna</span>`;
     return `
-    <div onclick='post({action: "set_session", name: ${JSON.stringify(s.name)}})' style="background: #232326; border: 1px solid #2f2f35; border-radius: 6px; padding: 14px 16px; display: flex; flex-direction: column; gap: 7px; cursor: default;"
+    <div onclick='pickSession(${s.id}, ${JSON.stringify(s.name)})' style="background: #232326; border: 1px solid #2f2f35; border-radius: 6px; padding: 14px 16px; display: flex; flex-direction: column; gap: 7px; cursor: default;"
          onmouseover="this.style.borderColor='${ACCENT}'" onmouseout="this.style.borderColor='#2f2f35'">
       <div style="font-size: 13px; font-weight: 600; color: #e8e8ea; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${s.name}</div>
       <div style="display: flex; align-items: center; gap: 10px; ${mono} font-size: 10.5px; color: #7e7e85;">
@@ -78,6 +79,16 @@ function startScreen() {
       : a.sessions.length === 0
         ? `<div style="${mono} font-size: 11px; color: #7e7e85;">Ładuję sesje z Automatu…</div>`
         : "";
+  const p = S.pendingNew;
+  const pend = !p ? "" : `
+    <div style="max-width: 560px; background: #26231d; border: 1px solid #5a4a2a; border-radius: 6px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;">
+      <div style="font-size: 12.5px; color: #e8e8ea;">Sesja <b>${p.match.name}</b> już istnieje w Automacie (${fmtDate(p.match.created_at)}, zdjęć: ${p.match.photos_count}).</div>
+      <div style="display: flex; gap: 8px;">
+        <button onclick="resolvePending(true)" style="height: 28px; padding: 0 14px; ${btnBlue} border-radius: 4px; font-size: 12px; font-weight: 600;">Podłącz do istniejącej</button>
+        <button onclick="resolvePending(false)" style="${btnGray} height: 28px;">Utwórz nową</button>
+        <button onclick="S.pendingNew = null; renderScreens(true)" style="${btnGray} height: 28px; opacity: .7;">Anuluj</button>
+      </div>
+    </div>`;
   return `
   <div style="flex: 1; overflow: auto; background: #1d1d20; padding: 26px 32px; display: flex; flex-direction: column; gap: 18px; min-width: 0;">
     <div style="display: flex; flex-direction: column; gap: 8px;">
@@ -87,6 +98,7 @@ function startScreen() {
         <button onclick="commitNewSession()" style="height: 32px; padding: 0 18px; ${btnBlue} border-radius: 5px; font-size: 12.5px; font-weight: 600;">Utwórz i otwórz</button>
       </div>
       <div style="${mono} font-size: 10.5px; color: #77777f;">nazwa = folder w photos/ i sesja w Automacie (dopasowanie do produktu po nazwie)</div>
+      ${pend}
     </div>
     <div style="display: flex; align-items: center; gap: 12px; margin-top: 6px;">
       <div style="${head}">Sesje z Automatu</div>
@@ -102,7 +114,30 @@ function startScreen() {
 function commitNewSession() {
   const el = $("new-session-input");
   const v = el && el.value.trim();
-  if (v) post({ action: "set_session", name: v });
+  if (!v) return;
+  const clean = v.replace(/[^A-Za-z0-9_\-. ]/g, "").trim().toLowerCase();  // jak sanitize_name() w backendzie
+  const match = (S.state.automat.sessions || [])
+    .filter(s => (s.name || "").trim().toLowerCase() === clean)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+  if (match) {
+    S.pendingNew = { name: v, match };
+    renderScreens(true);
+    return;
+  }
+  post({ action: "set_session", name: v });
+}
+
+function pickSession(id, name) {
+  S.pendingNew = null;
+  post({ action: "set_session", name, session_id: id });
+}
+
+function resolvePending(attach) {
+  const p = S.pendingNew;
+  S.pendingNew = null;
+  if (!p) return;
+  if (attach) post({ action: "set_session", name: p.match.name, session_id: p.match.id });
+  else post({ action: "set_session", name: p.name });
 }
 
 function sesjaScreen() {
@@ -173,7 +208,7 @@ function sesjaScreen() {
             <button onclick="commitName()" style="height: 26px; padding: 0 14px; background: linear-gradient(#4a4a50, #3d3d43); border: 1px solid #55555d; border-radius: 4px; color: #eaeaee; font-size: 12px; font-family: inherit;">Ustaw</button>
           </div>
           <div style="${mono} font-size: 10.5px; color: #77777f; word-break: break-all;">${st.session.dir || "(bez nazwy nie da się strzelić)"}</div>
-          <div onclick="post({action: 'clear_session'})" style="${mono} font-size: 10.5px; color: #6aa6ff;">‹ lista sesji</div>
+          <div onclick="S.pendingNew = null; post({action: 'clear_session'})" style="${mono} font-size: 10.5px; color: #6aa6ff;">‹ lista sesji</div>
         </div>
 
         <div style="display: flex; flex-direction: column; gap: 10px;">
@@ -582,7 +617,7 @@ function renderScreens(force) {
   updateVolatile(st);
 
   if (S.screen === "sesja" && !st.session.name) {
-    const key = JSON.stringify(["start", st.automat]);
+    const key = JSON.stringify(["start", st.automat, S.pendingNew]);
     if (force || key !== lastSesja) {
       const el = document.activeElement;
       const editing = el && el.id === "new-session-input";

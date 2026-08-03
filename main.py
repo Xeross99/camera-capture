@@ -15,9 +15,10 @@ import argparse
 from pathlib import Path
 
 from rich.console import Console
-from rich.prompt import Prompt
+from rich.prompt import Confirm, Prompt
 
-from src.automat_uploader import AutomatUploader, describe_opened_session
+from src.automat_uploader import (AutomatUploader, describe_opened_session,
+                                  find_existing_session)
 from src.camera import list_image_formats
 from src.cli import add_capture_args
 from src.config import AUTOMAT_API_TOKEN
@@ -32,7 +33,18 @@ def make_uploader(enabled: bool, name: str) -> AutomatUploader | None:
         return None
     try:
         u = AutomatUploader()
-        u.open_session(name)
+        match = find_existing_session(u, name)
+        if match is not None and Confirm.ask(
+            f"[yellow]Sesja [bold]{match['name']}[/bold] juz istnieje w Automacie "
+            f"({(match.get('created_at') or '')[:10]}, zdjec: {match.get('photos_count', 0)}). "
+            f"Podlaczyc do niej?[/]",
+            default=True,
+        ):
+            u.attach_session(match["id"], name,
+                             product_found=bool(match.get("product")),
+                             photos_count=int(match.get("photos_count", 0)))
+        else:
+            u.open_session(name)
     except Exception as e:
         console.print(f"[red]Nie udalo sie otworzyc sesji w Automacie:[/] {e}")
         return None

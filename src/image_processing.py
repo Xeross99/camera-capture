@@ -81,12 +81,15 @@ def process(
     logo_position: str = LOGO_POSITION,
     auto_center: bool = AUTO_CENTER,
     auto_zoom: bool = AUTO_ZOOM,
+    out_name: str | None = None,
 ) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stem = Path(out_name).stem if out_name else f"photo_{timestamp}"
 
-    raw_path = output_dir / f"photo_{timestamp}_raw.jpg"
-    shutil.copy2(input_path, raw_path)
+    raw_path = output_dir / f"{stem}_raw.jpg"
+    if input_path.resolve() != raw_path.resolve():
+        shutil.copy2(input_path, raw_path)
 
     image = Image.open(input_path)
 
@@ -107,6 +110,6 @@ def process(
     if add_logo:
         image = overlay_logo(image, logo_path, logo_position)
 
-    out_path = output_dir / f"photo_{timestamp}.jpg"
+    out_path = output_dir / f"{stem}.jpg"
     image.save(out_path, "JPEG", quality=JPEG_QUALITY)
     return out_path

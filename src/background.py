@@ -1,3 +1,12 @@
+"""Czyszczenie tla + auto-center/auto-zoom (pelny opis pipeline'u w CLAUDE.md).
+
+Przeplyw `clean_background`:
+    rembg (inference w malej rozdzielczosci) -> maska/alpha na full-res
+    (`_product_alpha`) -> lifting cieni w przeswitach -> wybor okna cropu
+    (`_select_crop_window`) -> kompozycja na bialej canvie
+    (`_compose_on_canvas`).
+"""
+
 from functools import lru_cache
 
 import numpy as np
@@ -20,6 +29,9 @@ from .config import (
     SHADOW_STRENGTH,
     SHARPEN_PERCENT,
 )
+
+Bbox = tuple[int, int, int, int]  # (left, top, right, bottom)
+Window = tuple[int, int, int, int]  # okno cropu w pikselach source (sl, st, sr, sb)
 
 
 @lru_cache(maxsize=1)
@@ -44,13 +56,23 @@ def _filter_small_blobs(arr: np.ndarray, min_fraction: float = 0.03) -> np.ndarr
     return np.isin(labels, keep_ids)
 
 
-def _mask_bbox(mask: Image.Image):
+def _mask_bbox(mask: Image.Image) -> Bbox | None:
     arr = np.array(mask) > 128
     if not arr.any():
         return None
     rows = np.where(arr.any(axis=1))[0]
     cols = np.where(arr.any(axis=0))[0]
     return int(cols[0]), int(rows[0]), int(cols[-1]) + 1, int(rows[-1]) + 1
+
+
+def _background_luminance(lum: np.ndarray, bg_mask: np.ndarray) -> float:
+    """90. percentyl luminancji pikseli tla (bg_mask); gdy tla jest za malo,
+    fallback na 95. percentyl calego obrazu."""
+    if bg_mask.sum() > 1000:
+        value = float(np.percentile(lum[bg_mask], 90))
+    else:
+        value = float(np.percentile(lum, 95))
+    return max(value, 1.0)
 
 
 def _image_bleed_edges(image: Image.Image, alpha: Image.Image) -> dict:
@@ -63,14 +85,7 @@ def _image_bleed_edges(image: Image.Image, alpha: Image.Image) -> dict:
     """
     img_arr = np.array(image.convert("L"))
     h, w = img_arr.shape
-
-    alpha_arr = np.array(alpha)
-    bg = alpha_arr < 32
-    if bg.sum() > 1000:
-        bg_lum = float(np.percentile(img_arr[bg], 90))
-    else:
-        bg_lum = float(np.percentile(img_arr, 95))
-    bg_lum = max(bg_lum, 1.0)
+    bg_lum = _background_luminance(img_arr, np.array(alpha) < 32)
 
     threshold = bg_lum * 0.7
     min_dark = 50
@@ -88,14 +103,11 @@ def _image_bleed_edges(image: Image.Image, alpha: Image.Image) -> dict:
 def _lift_internal_shadows(
     img: Image.Image, alpha: Image.Image, strength: float
 ) -> Image.Image:
+    """Podciaga do bieli cienie widoczne przez przeswity produktu (piksele
+    "jasne ale przyciemnione"); szare cialo produktu nie jest ruszane."""
     img_arr = np.array(img.convert("RGB")).astype(np.float32)
     lum = img_arr.mean(axis=2)
-    bg_mask = np.array(alpha) < 32
-    if bg_mask.sum() > 1000:
-        bg_lum = float(np.percentile(lum[bg_mask], 90))
-    else:
-        bg_lum = float(np.percentile(lum, 95))
-    bg_lum = max(bg_lum, 1.0)
+    bg_lum = _background_luminance(lum, np.array(alpha) < 32)
     darkness = np.clip(1.0 - lum / bg_lum, 0.0, 1.0)
     shadow_on_bg = np.clip((lum / bg_lum - 0.55) / 0.4, 0.0, 1.0)
     lift = darkness * shadow_on_bg * strength
@@ -106,6 +118,8 @@ def _lift_internal_shadows(
 def _build_shadow_layer(
     img: Image.Image, alpha: Image.Image, strength: float
 ) -> Image.Image:
+    """Warstwa cienia strictly pod produktem: per-column bottom + exponential
+    falloff w dol, gating horyzontalny do bbox + 3% marginesu."""
     img_arr = np.array(img.convert("RGB")).astype(np.float32)
     h, w, _ = img_arr.shape
     lum = img_arr.mean(axis=2)
@@ -114,12 +128,7 @@ def _build_shadow_layer(
     if not fg.any():
         return Image.fromarray(np.full_like(img_arr, 255, dtype=np.uint8))
 
-    bg_mask = np.array(alpha) < 32
-    if bg_mask.sum() > 1000:
-        bg_lum = float(np.percentile(lum[bg_mask], 90))
-    else:
-        bg_lum = float(np.percentile(lum, 95))
-    bg_lum = max(bg_lum, 1.0)
+    bg_lum = _background_luminance(lum, np.array(alpha) < 32)
 
     ys_idx = np.arange(h)[:, None]
     masked_ys = np.where(fg, ys_idx, -1)
@@ -148,46 +157,28 @@ def _build_shadow_layer(
     return Image.fromarray(np.clip(shadow, 0, 255).astype(np.uint8))
 
 
-def clean_background(
-    image: Image.Image,
-    canvas_size: tuple[int, int],
-    auto_center: bool = AUTO_CENTER,
-    auto_zoom: bool = AUTO_ZOOM,
-) -> Image.Image:
-    from rembg import remove
+def _product_alpha(
+    image: Image.Image, rembg_alpha: Image.Image
+) -> tuple[Image.Image, Image.Image]:
+    """Finalna alpha + binarna maska produktu z maski rembg.
 
-    canvas_w, canvas_h = canvas_size
-    src_w, src_h = image.size
+    Dual-path w zaleznosci od jasnosci tla (bg_lum > 200 = light_bg,
+    typowy bialy stol):
+    - light bg: luminance gate odsiewa piksele tla z maski, selektywny
+      hole-fill (tylko ciemny material pominiety przez rembg), a alpha
+      liczona z luminancji obrazu (cubic falloff) — rembg sluzy tylko do
+      wykrycia regionu produktu, nie do alfy,
+    - dark bg: alpha z rembg z kontrastem [FLOOR, CEILING] -> [0, 255],
+      bez gate'u i hole-fill (naiwny gate luminancji odwracalby polaryzacje
+      produkt/tlo, np. bialy klocek na ciemnym stole).
 
-    if max(src_w, src_h) > CLEAN_BG_INFERENCE_SIZE:
-        infer_img = image.resize(
-            (CLEAN_BG_INFERENCE_SIZE, CLEAN_BG_INFERENCE_SIZE), Image.LANCZOS
-        )
-    else:
-        infer_img = image
-
-    rgba = remove(infer_img.convert("RGBA"), session=_session(CLEAN_BG_MODEL))
-    small_alpha = rgba.split()[3]
-    alpha = small_alpha.resize((src_w, src_h), Image.LANCZOS)
-    binary = _binarize(alpha)
-
-    binary_arr = np.array(binary) > 0
-    filtered = _filter_small_blobs(binary_arr)
+    Zwraca (alpha, binary) jako obrazy L w rozdzielczosci source.
+    """
+    filtered = _filter_small_blobs(np.array(_binarize(rembg_alpha)) > 0)
     img_lum = np.array(image.convert("L"))
-    bg_mask_for_lum = np.array(alpha) < 32
-    if bg_mask_for_lum.sum() > 1000:
-        bg_lum = float(np.percentile(img_lum[bg_mask_for_lum], 90))
-    else:
-        bg_lum = float(np.percentile(img_lum, 95))
-    bg_lum = max(bg_lum, 1.0)
-    # Luminance gate — only apply when bg is clearly light (typical
-    # white-tabletop product photography). For dark/colored bg we'd be
-    # inverting product/bg polarity (e.g., white LEGO tile on dark surface
-    # has white product pixels which are FAR from dark bg_lum but the
-    # naive "img_lum > bg_lum*0.75" check would still drop them, blowing
-    # away the product). bg_lum > 200 is a safe gate threshold.
+    bg_lum = _background_luminance(img_lum, np.array(rembg_alpha) < 32)
     light_bg = bg_lum > 200.0
-    pre_lum_filtered = filtered
+
     if light_bg:
         bg_like = img_lum > bg_lum * 0.95
         filtered = filtered & ~bg_like
@@ -198,10 +189,8 @@ def clean_background(
     else:
         fill_holes_mask = np.zeros_like(candidate_holes)
     filled = filtered | fill_holes_mask
-    alpha_raw = np.array(alpha)
+
     if light_bg:
-        # Luminance-based alpha: dark pixels → opaque, bright → transparent.
-        # rembg is only used for product region detection (dilated), not alpha.
         lo = bg_lum * 0.75
         hi = bg_lum * 0.98
         span = max(hi - lo, 1.0)
@@ -209,281 +198,353 @@ def clean_background(
         alpha_arr = (t * t * t * 255.0).astype(np.float32)
         binary = Image.fromarray(((img_lum < bg_lum * 0.90).astype(np.uint8) * 255))
     else:
-        alpha_arr = np.where(filtered, alpha_raw, 0).astype(np.float32)
+        alpha_arr = np.where(filtered, np.array(rembg_alpha), 0).astype(np.float32)
         alpha_arr = np.where(fill_holes_mask, 255.0, alpha_arr)
         floor = float(CLEAN_BG_ALPHA_FLOOR)
         ceiling = float(max(CLEAN_BG_ALPHA_CEILING, floor + 1.0))
         alpha_arr = np.clip((alpha_arr - floor) * (255.0 / (ceiling - floor)), 0.0, 255.0)
         binary = Image.fromarray((filled.astype(np.uint8) * 255))
-    alpha = Image.fromarray(alpha_arr.astype(np.uint8))
 
-    img = _lift_internal_shadows(image.convert("RGB"), alpha, SHADOW_STRENGTH)
+    return Image.fromarray(alpha_arr.astype(np.uint8)), binary
 
-    canvas_white = Image.new("RGB", canvas_size, CLEAN_BG_COLOR)
-    bbox = _mask_bbox(binary)
-    if bbox is None:
-        return canvas_white
 
-    img_w, img_h = img.size
-    canvas_aspect = canvas_w / canvas_h
+# ---------- wybor okna cropu ----------
+#
+# Kazda funkcja _window_* zwraca okno cropu (sl, st, sr, sb) w pikselach
+# source. Okno moze wystawac poza source — _compose_on_canvas dopelni
+# brakujaca czesc bielem.
+
+
+def _largest_window(src_w: int, src_h: int, canvas_aspect: float) -> tuple[float, float]:
+    """Najwiekszy canvas-aspect prostokat mieszczacy sie w source."""
+    src_aspect = src_w / max(src_h, 1)
+    if src_aspect >= canvas_aspect:
+        crop_h = float(src_h)
+        crop_w = crop_h * canvas_aspect
+    else:
+        crop_w = float(src_w)
+        crop_h = crop_w / canvas_aspect
+    return crop_w, crop_h
+
+
+def _window_double_bleed(
+    bbox: Bbox, edges: dict, src_w: int, src_h: int, canvas_aspect: float
+) -> Window:
+    """Product bleeds on BOTH axes (e.g. a diagonal track crossing cut by all
+    four source edges) — neither axis can be "fit" without exposing an
+    amputated cut edge floating inside the canvas. Take the largest
+    canvas-aspect window that stays fully inside the source: every bleeding
+    cut edge lands at or past the canvas edge and visually continues
+    off-frame."""
+    l, t, r, b = bbox
+    crop_w, crop_h = _largest_window(src_w, src_h, canvas_aspect)
+    crop_w_int = int(round(crop_w))
+    crop_h_int = int(round(crop_h))
+    margin_src_x = crop_w * PRODUCT_MARGIN
+    margin_src_y = crop_h * PRODUCT_MARGIN
+    # Per-axis anchor: margin on the single non-bleeding side, bbox-centered
+    # when both sides bleed.
+    if edges["left"] and not edges["right"]:
+        sl = int(round(r + margin_src_x)) - crop_w_int
+    elif edges["right"] and not edges["left"]:
+        sl = int(round(l - margin_src_x))
+    else:
+        sl = int(round((l + r) / 2.0 - crop_w / 2.0))
+    if edges["top"] and not edges["bottom"]:
+        st = int(round(b + margin_src_y)) - crop_h_int
+    elif edges["bottom"] and not edges["top"]:
+        st = int(round(t - margin_src_y))
+    else:
+        st = int(round((t + b) / 2.0 - crop_h / 2.0))
+    # Clamp the window inside the source — white padding on a bleeding side
+    # would reveal the cut edge.
+    sl = max(0, min(sl, src_w - crop_w_int))
+    st = max(0, min(st, src_h - crop_h_int))
+    return sl, st, sl + crop_w_int, st + crop_h_int
+
+
+def _window_bleed_fit_y(bbox: Bbox, edges: dict, canvas_aspect: float) -> Window:
+    """Bbox wider than canvas AND product bleeds off at least one X edge in
+    source — fit Y, X overflows off-canvas.
+      Bleeding side: pin source edge (or bbox edge if rembg covers the source
+      edge) to the matching canvas edge so bleed shows.
+      Non-bleeding side: bbox edge + PRODUCT_MARGIN of clean canvas margin —
+      logo lives in bottom-right, gets covered if bbox sits flush against
+      canvas edge.
+
+    Uses BLEED_FIT_MARGIN (~25–32%) instead of PRODUCT_MARGIN (~15%) because
+    the wide-bleed case visually needs more breathing room. Clamp: if
+    BLEED_FIT_MARGIN would pull crop_w past bbox width, the bleeding bbox
+    edge slides AWAY from canvas edge (white margin appears, bleed
+    disappears). Cap crop_w at bw so the bleeding side stays anchored."""
+    l, t, r, b = bbox
+    bw, bh = r - l, b - t
+    bleed_inner = max(1e-3, 1.0 - 2.0 * BLEED_FIT_MARGIN)
+    crop_h = bh / bleed_inner
+    crop_w = crop_h * canvas_aspect
+    if crop_w > bw:
+        crop_w = float(bw)
+        crop_h = crop_w / canvas_aspect
+    crop_w_int = int(round(crop_w))
+    crop_h_int = int(round(crop_h))
+    margin_src_x = crop_w * PRODUCT_MARGIN
+    margin_src_y = crop_h * PRODUCT_MARGIN
+    if edges["left"] and not edges["right"]:
+        sr = int(round(r + margin_src_x))
+        sl = sr - crop_w_int
+    elif edges["right"] and not edges["left"]:
+        sl = int(round(l - margin_src_x))
+        sr = sl + crop_w_int
+    else:
+        cx = (l + r) / 2.0
+        sl = int(round(cx - crop_w / 2.0))
+        sr = sl + crop_w_int
+    if edges["bottom"] and not edges["top"]:
+        sb = int(round(b + margin_src_y))
+        st = sb - crop_h_int
+    elif edges["top"] and not edges["bottom"]:
+        st = int(round(t - margin_src_y))
+        sb = st + crop_h_int
+    else:
+        cy = (t + b) / 2.0
+        st = int(round(cy - crop_h / 2.0))
+        sb = st + crop_h_int
+    return sl, st, sr, sb
+
+
+def _window_bleed_fit_x(bbox: Bbox, edges: dict, canvas_aspect: float) -> Window:
+    """Symetrycznie do _window_bleed_fit_y: tall product + Y bleed — fit X,
+    Y overflows off-canvas."""
+    l, t, r, b = bbox
+    bw, bh = r - l, b - t
+    bleed_inner = max(1e-3, 1.0 - 2.0 * BLEED_FIT_MARGIN)
+    crop_w = bw / bleed_inner
+    crop_h = crop_w / canvas_aspect
+    if crop_h > bh:
+        crop_h = float(bh)
+        crop_w = crop_h * canvas_aspect
+    crop_w_int = int(round(crop_w))
+    crop_h_int = int(round(crop_h))
+    margin_src_x = crop_w * PRODUCT_MARGIN
+    margin_src_y = crop_h * PRODUCT_MARGIN
+    if edges["top"] and not edges["bottom"]:
+        sb = int(round(b + margin_src_y))
+        st = sb - crop_h_int
+    elif edges["bottom"] and not edges["top"]:
+        st = int(round(t - margin_src_y))
+        sb = st + crop_h_int
+    else:
+        cy = (t + b) / 2.0
+        st = int(round(cy - crop_h / 2.0))
+        sb = st + crop_h_int
+    if edges["right"] and not edges["left"]:
+        sl = int(round(l - margin_src_x))
+        sr = sl + crop_w_int
+    elif edges["left"] and not edges["right"]:
+        sr = int(round(r + margin_src_x))
+        sl = sr - crop_w_int
+    else:
+        cx = (l + r) / 2.0
+        sl = int(round(cx - crop_w / 2.0))
+        sr = sl + crop_w_int
+    return sl, st, sr, sb
+
+
+def _window_small_product(
+    bbox: Bbox, src_w: int, src_h: int, canvas_aspect: float
+) -> Window:
+    """Preserve natural source framing — crop a canvas-aspect window of the
+    source's "natural" size (= biggest canvas-aspect rect that fits inside
+    source). Product retains its source-frame size relative to canvas; no
+    aggressive zoom-in."""
+    l, t, r, b = bbox
+    crop_w, crop_h = _largest_window(src_w, src_h, canvas_aspect)
+    cx = (l + r) / 2.0
+    cy = (t + b) / 2.0
+    sl = int(round(cx - crop_w / 2.0))
+    st = int(round(cy - crop_h / 2.0))
+    sr = int(round(cx + crop_w / 2.0))
+    sb = int(round(cy + crop_h / 2.0))
+    return sl, st, sr, sb
+
+
+def _window_fit_both(
+    bbox: Bbox, edges: dict, src_w: int, src_h: int, canvas_aspect: float
+) -> Window:
+    """Standardowy fit-both: wiekszy wymiar bboxa dyktuje skale, produkt
+    z PRODUCT_MARGIN ze wszystkich stron.
+
+    A square-ish bbox with edge bleed lands here (the wide/tall gates miss
+    it, ±5% tolerance). Anchor the crop window to the bleeding source edge so
+    the raw cut lands exactly on the canvas edge and the product visually
+    continues off-frame — centering instead would float the amputated cut
+    edge above a white margin. Non-bleeding sides keep the regular
+    centering."""
+    l, t, r, b = bbox
+    bw, bh = r - l, b - t
+    inner = max(1e-3, 1.0 - 2.0 * PRODUCT_MARGIN)
+    target_w = bw / inner
+    target_h = bh / inner
+    if target_w / max(target_h, 1e-3) > canvas_aspect:
+        crop_w = target_w
+        crop_h = crop_w / canvas_aspect
+    else:
+        crop_h = target_h
+        crop_w = crop_h * canvas_aspect
+    if edges["top"] and edges["bottom"] and crop_h > src_h:
+        crop_h = float(src_h)
+        crop_w = crop_h * canvas_aspect
+    if edges["left"] and edges["right"] and crop_w > src_w:
+        crop_w = float(src_w)
+        crop_h = crop_w / canvas_aspect
+    cx = (l + r) / 2.0
+    cy = (t + b) / 2.0
+    crop_w_int = int(round(crop_w))
+    crop_h_int = int(round(crop_h))
+    if edges["left"] and not edges["right"]:
+        sl = 0
+    elif edges["right"] and not edges["left"]:
+        sl = src_w - crop_w_int
+    else:
+        sl = int(round(cx - crop_w / 2.0))
+        if edges["left"] and edges["right"]:
+            sl = max(0, min(sl, src_w - crop_w_int))
+    if edges["top"] and not edges["bottom"]:
+        st = 0
+    elif edges["bottom"] and not edges["top"]:
+        st = src_h - crop_h_int
+    else:
+        st = int(round(cy - crop_h / 2.0))
+        if edges["top"] and edges["bottom"]:
+            st = max(0, min(st, src_h - crop_h_int))
+    return sl, st, sl + crop_w_int, st + crop_h_int
+
+
+def _window_zoom_only(
+    bbox: Bbox, src_w: int, src_h: int, canvas_aspect: float
+) -> Window:
+    """Zoom bez centrowania: okno cropu zoomowane do bboxa (jak fit-both),
+    ale kotwiczone proporcjonalnie do pozycji produktu w source — produkt
+    odsuniety od srodka kadru zostaje odsuniety w canvy."""
+    l, t, r, b = bbox
+    bw, bh = r - l, b - t
+    inner = max(1e-3, 1.0 - 2.0 * PRODUCT_MARGIN)
+    target_w = bw / inner
+    target_h = bh / inner
+    if target_w / max(target_h, 1e-3) > canvas_aspect:
+        crop_w = target_w
+        crop_h = crop_w / canvas_aspect
+    else:
+        crop_h = target_h
+        crop_w = crop_h * canvas_aspect
+    if crop_w > src_w or crop_h > src_h:
+        shrink = min(src_w / crop_w, src_h / crop_h)
+        crop_w *= shrink
+        crop_h *= shrink
+    crop_w_int = int(round(crop_w))
+    crop_h_int = int(round(crop_h))
+    cx = (l + r) / 2.0
+    cy = (t + b) / 2.0
+    sl = int(round(cx * (1.0 - crop_w / src_w)))
+    st = int(round(cy * (1.0 - crop_h / src_h)))
+    # Okno musi objac caly bbox (crop >= bbox, wiec zawsze mozliwe) —
+    # inaczej produkt przy krawedzi kadru zostalby uciety.
+    sl = max(min(sl, l), r - crop_w_int)
+    st = max(min(st, t), b - crop_h_int)
+    sl = max(0, min(sl, src_w - crop_w_int))
+    st = max(0, min(st, src_h - crop_h_int))
+    return sl, st, sl + crop_w_int, st + crop_h_int
+
+
+def _window_center_only(
+    bbox: Bbox, src_w: int, src_h: int, canvas_aspect: float
+) -> Window:
+    """Centrowanie bez zoomu: naturalne okno (najwiekszy canvas-aspect
+    prostokat w source) wycentrowane na bboxie produktu, clamp do source."""
+    l, t, r, b = bbox
+    crop_w, crop_h = _largest_window(src_w, src_h, canvas_aspect)
+    crop_w_int = int(round(crop_w))
+    crop_h_int = int(round(crop_h))
+    cx = (l + r) / 2.0
+    cy = (t + b) / 2.0
+    sl = int(round(cx - crop_w / 2.0))
+    st = int(round(cy - crop_h / 2.0))
+    sl = max(0, min(sl, src_w - crop_w_int))
+    st = max(0, min(st, src_h - crop_h_int))
+    return sl, st, sl + crop_w_int, st + crop_h_int
+
+
+def _window_plain_center(src_w: int, src_h: int, canvas_aspect: float) -> Window:
+    """Centralny crop sensora bez patrzenia na produkt (zoom OFF + center
+    OFF = swiadome "nie ruszaj nic")."""
+    if src_w / src_h > canvas_aspect:
+        crop_h = src_h
+        crop_w = int(round(src_h * canvas_aspect))
+    else:
+        crop_w = src_w
+        crop_h = int(round(src_w / canvas_aspect))
+    sl = (src_w - crop_w) // 2
+    st = (src_h - crop_h) // 2
+    return sl, st, sl + crop_w, st + crop_h
+
+
+def _select_crop_window(
+    image: Image.Image,
+    alpha: Image.Image,
+    bbox: Bbox,
+    canvas_aspect: float,
+    auto_center: bool,
+    auto_zoom: bool,
+) -> Window:
+    """Wybiera okno cropu wg toggli zoom/center, a przy obu ON — wg sygnalow
+    z kadru (bleed na krawedziach, ksztalt i rozmiar bboxa)."""
+    src_w, src_h = image.size
+    if not auto_center and not auto_zoom:
+        return _window_plain_center(src_w, src_h, canvas_aspect)
+    if auto_zoom and not auto_center:
+        return _window_zoom_only(bbox, src_w, src_h, canvas_aspect)
+    if auto_center and not auto_zoom:
+        return _window_center_only(bbox, src_w, src_h, canvas_aspect)
 
     l, t, r, b = bbox
     bw, bh = r - l, b - t
-    if auto_center and auto_zoom:
-        inner = max(1e-3, 1.0 - 2.0 * PRODUCT_MARGIN)
-        bleed_inner = max(1e-3, 1.0 - 2.0 * BLEED_FIT_MARGIN)
-        edges = _image_bleed_edges(image, alpha)
-        any_x_bleed = edges["left"] or edges["right"]
-        any_y_bleed = edges["top"] or edges["bottom"]
-        bbox_aspect = bw / max(bh, 1)
-        wide_product = bbox_aspect > canvas_aspect * 1.05
-        tall_product = bbox_aspect < canvas_aspect / 1.05
-        # "Small product" = bbox occupies < 30% of either source dimension.
-        # Operator deliberately framed it small, so preserve natural source
-        # composition instead of aggressively scaling bbox to 70% canvas
-        # (current auto-center). Small LEGO 2x2 tile would otherwise be
-        # upscaled ~1.75× and look like a giant tile.
-        product_fill_ratio = max(bw / src_w, bh / src_h)
-        small_product = product_fill_ratio < 0.30
+    edges = _image_bleed_edges(image, alpha)
+    any_x_bleed = edges["left"] or edges["right"]
+    any_y_bleed = edges["top"] or edges["bottom"]
+    bbox_aspect = bw / max(bh, 1)
+    wide_product = bbox_aspect > canvas_aspect * 1.05
+    tall_product = bbox_aspect < canvas_aspect / 1.05
+    # "Small product" = bbox occupies < 30% of either source dimension.
+    # Operator deliberately framed it small, so preserve natural source
+    # composition instead of aggressively scaling bbox to 70% canvas.
+    # Small LEGO 2x2 tile would otherwise be upscaled ~1.75× and look like
+    # a giant tile. Bleed-fit is skipped, bo male produkty nie bleeduja.
+    small_product = max(bw / src_w, bh / src_h) < 0.30
 
-        if any_x_bleed and any_y_bleed and not small_product:
-            # Product bleeds on BOTH axes (e.g. a diagonal track crossing
-            # cut by all four source edges) — neither axis can be "fit"
-            # without exposing an amputated cut edge floating inside the
-            # canvas. Take the largest canvas-aspect window that stays
-            # fully inside the source: every bleeding cut edge lands at or
-            # past the canvas edge and visually continues off-frame.
-            src_aspect = src_w / max(src_h, 1)
-            if src_aspect >= canvas_aspect:
-                crop_h = float(src_h)
-                crop_w = crop_h * canvas_aspect
-            else:
-                crop_w = float(src_w)
-                crop_h = crop_w / canvas_aspect
-            crop_w_int = int(round(crop_w))
-            crop_h_int = int(round(crop_h))
-            margin_src_x = crop_w * PRODUCT_MARGIN
-            margin_src_y = crop_h * PRODUCT_MARGIN
-            # Per-axis anchor: margin on the single non-bleeding side,
-            # bbox-centered when both sides bleed.
-            if edges["left"] and not edges["right"]:
-                sl = int(round(r + margin_src_x)) - crop_w_int
-            elif edges["right"] and not edges["left"]:
-                sl = int(round(l - margin_src_x))
-            else:
-                sl = int(round((l + r) / 2.0 - crop_w / 2.0))
-            if edges["top"] and not edges["bottom"]:
-                st = int(round(b + margin_src_y)) - crop_h_int
-            elif edges["bottom"] and not edges["top"]:
-                st = int(round(t - margin_src_y))
-            else:
-                st = int(round((t + b) / 2.0 - crop_h / 2.0))
-            # Clamp the window inside the source — white padding on a
-            # bleeding side would reveal the cut edge.
-            sl = max(0, min(sl, src_w - crop_w_int))
-            st = max(0, min(st, src_h - crop_h_int))
-            sr = sl + crop_w_int
-            sb = st + crop_h_int
-        elif wide_product and any_x_bleed and not small_product:
-            # Bbox wider than canvas AND product bleeds off at least one X
-            # edge in source — fit Y, X overflows off-canvas.
-            #   Bleeding side: pin source edge (or bbox edge if rembg covers
-            #   the source edge) to the matching canvas edge so bleed shows.
-            #   Non-bleeding side: pin bbox edge to canvas edge (no fixed
-            #   margin — natural source bg above bbox fills the rest).
-            #
-            # Uses BLEED_FIT_MARGIN (~25–32%) instead of PRODUCT_MARGIN
-            # (~15%) because the wide-bleed case visually needs more
-            # breathing room. Clamp: if BLEED_FIT_MARGIN would pull crop_w
-            # past bbox width, the bleeding bbox edge slides AWAY from
-            # canvas edge (white margin appears, bleed disappears). Cap
-            # crop_w at bw so the bleeding side stays anchored.
-            crop_h = bh / bleed_inner
-            crop_w = crop_h * canvas_aspect
-            if crop_w > bw:
-                crop_w = float(bw)
-                crop_h = crop_w / canvas_aspect
-            crop_w_int = int(round(crop_w))
-            crop_h_int = int(round(crop_h))
-            margin_src_x = crop_w * PRODUCT_MARGIN
-            margin_src_y = crop_h * PRODUCT_MARGIN
-            # Anchor non-bleeding bbox edge with PRODUCT_MARGIN of clean
-            # canvas margin — logo lives in bottom-right, gets covered if
-            # bbox sits flush against canvas edge.
-            if edges["left"] and not edges["right"]:
-                sr = int(round(r + margin_src_x))
-                sl = sr - crop_w_int
-            elif edges["right"] and not edges["left"]:
-                sl = int(round(l - margin_src_x))
-                sr = sl + crop_w_int
-            else:
-                cx = (l + r) / 2.0
-                sl = int(round(cx - crop_w / 2.0))
-                sr = sl + crop_w_int
-            if edges["bottom"] and not edges["top"]:
-                sb = int(round(b + margin_src_y))
-                st = sb - crop_h_int
-            elif edges["top"] and not edges["bottom"]:
-                st = int(round(t - margin_src_y))
-                sb = st + crop_h_int
-            else:
-                cy = (t + b) / 2.0
-                st = int(round(cy - crop_h / 2.0))
-                sb = st + crop_h_int
-        elif tall_product and any_y_bleed and not small_product:
-            # Symmetric: fit X, Y overflows.
-            crop_w = bw / bleed_inner
-            crop_h = crop_w / canvas_aspect
-            if crop_h > bh:
-                crop_h = float(bh)
-                crop_w = crop_h * canvas_aspect
-            crop_w_int = int(round(crop_w))
-            crop_h_int = int(round(crop_h))
-            margin_src_x = crop_w * PRODUCT_MARGIN
-            margin_src_y = crop_h * PRODUCT_MARGIN
-            if edges["top"] and not edges["bottom"]:
-                sb = int(round(b + margin_src_y))
-                st = sb - crop_h_int
-            elif edges["bottom"] and not edges["top"]:
-                st = int(round(t - margin_src_y))
-                sb = st + crop_h_int
-            else:
-                cy = (t + b) / 2.0
-                st = int(round(cy - crop_h / 2.0))
-                sb = st + crop_h_int
-            if edges["right"] and not edges["left"]:
-                sl = int(round(l - margin_src_x))
-                sr = sl + crop_w_int
-            elif edges["left"] and not edges["right"]:
-                sr = int(round(r + margin_src_x))
-                sl = sr - crop_w_int
-            else:
-                cx = (l + r) / 2.0
-                sl = int(round(cx - crop_w / 2.0))
-                sr = sl + crop_w_int
-        elif small_product:
-            # Preserve natural source framing — crop a canvas-aspect window
-            # of the source's "natural" size (= biggest canvas-aspect rect
-            # that fits inside source). Product retains its source-frame
-            # size relative to canvas; no aggressive zoom-in.
-            src_aspect = src_w / max(src_h, 1)
-            if src_aspect >= canvas_aspect:
-                crop_h = float(src_h)
-                crop_w = crop_h * canvas_aspect
-            else:
-                crop_w = float(src_w)
-                crop_h = crop_w / canvas_aspect
-            cx = (l + r) / 2.0
-            cy = (t + b) / 2.0
-            sl = int(round(cx - crop_w / 2.0))
-            st = int(round(cy - crop_h / 2.0))
-            sr = int(round(cx + crop_w / 2.0))
-            sb = int(round(cy + crop_h / 2.0))
-        else:
-            target_w = bw / inner
-            target_h = bh / inner
-            if target_w / max(target_h, 1e-3) > canvas_aspect:
-                crop_w = target_w
-                crop_h = crop_w / canvas_aspect
-            else:
-                crop_h = target_h
-                crop_w = crop_h * canvas_aspect
-            # A square-ish bbox with edge bleed lands here (the wide/tall
-            # gates miss it, ±5% tolerance). Anchor the crop window to the
-            # bleeding source edge so the raw cut lands exactly on the
-            # canvas edge and the product visually continues off-frame —
-            # centering instead would float the amputated cut edge above a
-            # white margin. Non-bleeding sides keep the regular centering.
-            if edges["top"] and edges["bottom"] and crop_h > src_h:
-                crop_h = float(src_h)
-                crop_w = crop_h * canvas_aspect
-            if edges["left"] and edges["right"] and crop_w > src_w:
-                crop_w = float(src_w)
-                crop_h = crop_w / canvas_aspect
-            cx = (l + r) / 2.0
-            cy = (t + b) / 2.0
-            crop_w_int = int(round(crop_w))
-            crop_h_int = int(round(crop_h))
-            if edges["left"] and not edges["right"]:
-                sl = 0
-            elif edges["right"] and not edges["left"]:
-                sl = src_w - crop_w_int
-            else:
-                sl = int(round(cx - crop_w / 2.0))
-                if edges["left"] and edges["right"]:
-                    sl = max(0, min(sl, src_w - crop_w_int))
-            if edges["top"] and not edges["bottom"]:
-                st = 0
-            elif edges["bottom"] and not edges["top"]:
-                st = src_h - crop_h_int
-            else:
-                st = int(round(cy - crop_h / 2.0))
-                if edges["top"] and edges["bottom"]:
-                    st = max(0, min(st, src_h - crop_h_int))
-            sr = sl + crop_w_int
-            sb = st + crop_h_int
-    elif auto_zoom:
-        # Zoom bez centrowania: okno cropu zoomowane do bboxa (jak fit-both),
-        # ale kotwiczone proporcjonalnie do pozycji produktu w source —
-        # produkt odsunięty od środka kadru zostaje odsunięty w canvy.
-        inner = max(1e-3, 1.0 - 2.0 * PRODUCT_MARGIN)
-        target_w = bw / inner
-        target_h = bh / inner
-        if target_w / max(target_h, 1e-3) > canvas_aspect:
-            crop_w = target_w
-            crop_h = crop_w / canvas_aspect
-        else:
-            crop_h = target_h
-            crop_w = crop_h * canvas_aspect
-        if crop_w > src_w or crop_h > src_h:
-            shrink = min(src_w / crop_w, src_h / crop_h)
-            crop_w *= shrink
-            crop_h *= shrink
-        crop_w_int = int(round(crop_w))
-        crop_h_int = int(round(crop_h))
-        cx = (l + r) / 2.0
-        cy = (t + b) / 2.0
-        sl = int(round(cx * (1.0 - crop_w / src_w)))
-        st = int(round(cy * (1.0 - crop_h / src_h)))
-        # Okno musi objąć cały bbox (crop >= bbox, więc zawsze możliwe) —
-        # inaczej produkt przy krawędzi kadru zostałby ucięty.
-        sl = max(min(sl, l), r - crop_w_int)
-        st = max(min(st, t), b - crop_h_int)
-        sl = max(0, min(sl, src_w - crop_w_int))
-        st = max(0, min(st, src_h - crop_h_int))
-        sr = sl + crop_w_int
-        sb = st + crop_h_int
-    elif auto_center:
-        # Centrowanie bez zoomu: naturalne okno (największy canvas-aspect
-        # prostokąt w source) wycentrowane na bboxie produktu.
-        src_aspect = src_w / max(src_h, 1)
-        if src_aspect >= canvas_aspect:
-            crop_h = float(src_h)
-            crop_w = crop_h * canvas_aspect
-        else:
-            crop_w = float(src_w)
-            crop_h = crop_w / canvas_aspect
-        crop_w_int = int(round(crop_w))
-        crop_h_int = int(round(crop_h))
-        cx = (l + r) / 2.0
-        cy = (t + b) / 2.0
-        sl = int(round(cx - crop_w / 2.0))
-        st = int(round(cy - crop_h / 2.0))
-        sl = max(0, min(sl, src_w - crop_w_int))
-        st = max(0, min(st, src_h - crop_h_int))
-        sr = sl + crop_w_int
-        sb = st + crop_h_int
-    else:
-        if img_w / img_h > canvas_aspect:
-            crop_h = img_h
-            crop_w = int(round(img_h * canvas_aspect))
-        else:
-            crop_w = img_w
-            crop_h = int(round(img_w / canvas_aspect))
-        sl = (img_w - crop_w) // 2
-        st = (img_h - crop_h) // 2
-        sr = sl + crop_w
-        sb = st + crop_h
+    if any_x_bleed and any_y_bleed and not small_product:
+        return _window_double_bleed(bbox, edges, src_w, src_h, canvas_aspect)
+    if wide_product and any_x_bleed and not small_product:
+        return _window_bleed_fit_y(bbox, edges, canvas_aspect)
+    if tall_product and any_y_bleed and not small_product:
+        return _window_bleed_fit_x(bbox, edges, canvas_aspect)
+    if small_product:
+        return _window_small_product(bbox, src_w, src_h, canvas_aspect)
+    return _window_fit_both(bbox, edges, src_w, src_h, canvas_aspect)
+
+
+def _compose_on_canvas(
+    img: Image.Image,
+    alpha: Image.Image,
+    window: Window,
+    canvas_size: tuple[int, int],
+) -> Image.Image:
+    """Wycina okno z source (czesc poza source = biale dopelnienie), skaluje
+    do canvas, sharpen na sub-obrazie PRZED paste'em (biale tlo zostaje
+    czyste, bez halo na alpha-edge), opcjonalny cien, kompozyt przez
+    zblurowana alfe."""
+    sl, st, sr, sb = window
+    canvas_w, canvas_h = canvas_size
+    img_w, img_h = img.size
 
     crop_w = sr - sl
     crop_h = sb - st
@@ -492,6 +553,7 @@ def clean_background(
     csr = min(img_w, sr)
     csb = min(img_h, sb)
 
+    canvas_white = Image.new("RGB", canvas_size, CLEAN_BG_COLOR)
     img_canvas = Image.new("RGB", canvas_size, CLEAN_BG_COLOR)
     alpha_canvas = Image.new("L", canvas_size, 0)
     if csr > csl and csb > cst:
@@ -521,3 +583,36 @@ def clean_background(
         canvas_white.paste(shadow_layer, (0, 0))
     canvas_white.paste(img_canvas, (0, 0), mask=soft_mask)
     return canvas_white
+
+
+def clean_background(
+    image: Image.Image,
+    canvas_size: tuple[int, int],
+    auto_center: bool = AUTO_CENTER,
+    auto_zoom: bool = AUTO_ZOOM,
+) -> Image.Image:
+    from rembg import remove
+
+    canvas_w, canvas_h = canvas_size
+    src_w, src_h = image.size
+
+    if max(src_w, src_h) > CLEAN_BG_INFERENCE_SIZE:
+        infer_img = image.resize(
+            (CLEAN_BG_INFERENCE_SIZE, CLEAN_BG_INFERENCE_SIZE), Image.LANCZOS
+        )
+    else:
+        infer_img = image
+    rgba = remove(infer_img.convert("RGBA"), session=_session(CLEAN_BG_MODEL))
+    rembg_alpha = rgba.split()[3].resize((src_w, src_h), Image.LANCZOS)
+
+    alpha, binary = _product_alpha(image, rembg_alpha)
+    img = _lift_internal_shadows(image.convert("RGB"), alpha, SHADOW_STRENGTH)
+
+    bbox = _mask_bbox(binary)
+    if bbox is None:
+        return Image.new("RGB", canvas_size, CLEAN_BG_COLOR)
+
+    window = _select_crop_window(
+        image, alpha, bbox, canvas_w / canvas_h, auto_center, auto_zoom
+    )
+    return _compose_on_canvas(img, alpha, window, canvas_size)

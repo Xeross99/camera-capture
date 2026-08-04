@@ -40,6 +40,9 @@ CAMERA_IMAGE_FORMAT: str | None = "L"
 CAMERA_BACKEND = os.environ.get("CAMERA_BACKEND", "auto").strip().lower()
 # Webserver digiCamControl (Settings -> Webserver -> Enable, domyslny port 5513).
 DIGICAMCONTROL_URL = os.environ.get("DIGICAMCONTROL_URL", "http://127.0.0.1:5513").rstrip("/")
+# Sciezka do CameraControl.exe — gdy webserver nie odpowiada, backend sam
+# uruchamia digiCamControl (domyslne sciezki instalatora sprawdzane bez tego).
+DIGICAMCONTROL_EXE = os.environ.get("DIGICAMCONTROL_EXE", "").strip() or None
 
 CLEAN_BG_MODEL = "u2netp"
 CLEAN_BG_INFERENCE_SIZE = 768

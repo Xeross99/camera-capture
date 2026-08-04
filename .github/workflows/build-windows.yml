@@ -1,0 +1,31 @@
+name: Build Windows app
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-windows.txt pyinstaller
+
+      - name: Build with PyInstaller
+        run: pyinstaller --noconfirm CameraCapture.spec
+
+      - name: Include .env template
+        run: copy .env.example dist\CameraCapture\.env.example
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CameraCapture-windows
+          path: dist/CameraCapture

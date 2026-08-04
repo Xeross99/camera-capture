@@ -10,6 +10,10 @@ if getattr(sys, "frozen", False):
     PROJECT_DIR = Path(sys.executable).resolve().parent
 else:
     PROJECT_DIR = Path(__file__).resolve().parent.parent
+
+APP_NAME = "Trixbrix - Camera Capture"
+APP_AUTHOR = "Michał Krzysteczko"
+
 load_dotenv(PROJECT_DIR / ".env")
 DEFAULT_ASSETS_DIR = PROJECT_DIR / "assets"
 DEFAULT_LOGO = DEFAULT_ASSETS_DIR / "logos" / "trixbrix_eu.webp"

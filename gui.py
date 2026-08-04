@@ -18,7 +18,10 @@ import threading
 import webbrowser
 
 from src.cli import add_capture_args
+from src.config import APP_AUTHOR, APP_NAME
 from src.webui import WebUI
+
+__author__ = APP_AUTHOR
 
 
 def main() -> None:
@@ -63,7 +66,7 @@ def main() -> None:
 
     url = ui.start()
     webview.create_window(
-        "Camera Capture — Canon EOS M50 II", url,
+        APP_NAME, url,
         width=1440, height=900, min_size=(1080, 700),
         background_color="#1a1a1c",
     )

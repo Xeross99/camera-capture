@@ -211,14 +211,6 @@ function sesjaScreen() {
             <select onchange="post({action:'set_post', key:'logo_position', value:this.value})" style="${sel}">
               ${post_.logoPositions.map(p => `<option ${p === post_.logoPosition ? "selected" : ""}>${p}</option>`).join("")}
             </select>
-            <div style="color: #b4b4bb;">Krycie</div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <div id="opacity-track" style="flex: 1; height: 3px; background: #3a3a41; border-radius: 2px; position: relative; cursor: default; padding: 6px 0; background-clip: content-box;">
-                <div id="opacity-fill" style="position: absolute; left: 0; top: 6px; height: 3px; width: ${post_.opacity}%; background: ${ACCENT}; border-radius: 2px;"></div>
-                <div id="opacity-knob" style="position: absolute; left: ${post_.opacity}%; top: 2px; width: 11px; height: 11px; margin-left: -5px; border-radius: 50%; background: #dcdce1;"></div>
-              </div>
-              <span id="opacity-label" style="${mono} font-size: 10.5px; color: #8b8b93;">${post_.opacity}%</span>
-            </div>
           </div>
           <label style="${label}"><input type="checkbox" ${post_.zoom ? "checked" : ""} onchange="toggle('zoom', this.checked)" style="${chk}" />Przybliżanie (zoom do produktu)</label>
           <label style="${label}"><input type="checkbox" ${post_.center ? "checked" : ""} onchange="toggle('center', this.checked)" style="${chk}" />Centrowanie</label>
@@ -613,7 +605,6 @@ function renderScreens(force) {
       if (strip) strip.scrollLeft = strip.scrollWidth;
       const lp = $("log-panel");
       if (lp) lp.scrollTop = lp.scrollHeight;
-      bindOpacity();
     }
   } else if (S.screen === "galeria") {
     const key = JSON.stringify([st.gallery, S.selGal, S.galFilter]);
@@ -674,23 +665,6 @@ function openFull(sess, file) {
 }
 
 $("fullscreen").onclick = () => $("fullscreen").style.display = "none";
-
-function bindOpacity() {
-  const track = $("opacity-track");
-  if (!track) return;
-  let dragging = false;
-  const apply = (e, send) => {
-    const r = track.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(100, Math.round((e.clientX - r.left) / r.width * 100)));
-    $("opacity-fill").style.width = pct + "%";
-    $("opacity-knob").style.left = pct + "%";
-    $("opacity-label").textContent = pct + "%";
-    if (send) post({ action: "set_post", key: "opacity", value: pct });
-  };
-  track.onpointerdown = e => { dragging = true; track.setPointerCapture(e.pointerId); apply(e, false); };
-  track.onpointermove = e => { if (dragging) apply(e, false); };
-  track.onpointerup = e => { dragging = false; apply(e, true); };
-}
 
 // ---------- klawiatura ----------
 

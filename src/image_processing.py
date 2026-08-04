@@ -13,7 +13,6 @@ from .config import (
     LOGO_ENABLED,
     LOGO_HEIGHT_RATIO,
     LOGO_MARGIN_RATIO,
-    LOGO_OPACITY,
     LOGO_POSITION,
     OUTPUT_SIZE,
 )
@@ -57,11 +56,6 @@ def overlay_logo(
     scale = target_h / logo.height
     target_w = int(logo.width * scale)
     logo = logo.resize((target_w, target_h), Image.LANCZOS)
-
-    if LOGO_OPACITY < 1.0:
-        r, g, b, a = logo.split()
-        a = a.point(lambda v: int(v * LOGO_OPACITY))
-        logo = Image.merge("RGBA", (r, g, b, a))
 
     margin = int(canvas_w * LOGO_MARGIN_RATIO)
     x = margin if "left" in position else canvas_w - target_w - margin

@@ -15,7 +15,12 @@ APP_NAME = "Trixbrix - Camera Capture"
 APP_AUTHOR = "Michał Krzysteczko"
 
 load_dotenv(PROJECT_DIR / ".env")
-DEFAULT_ASSETS_DIR = PROJECT_DIR / "assets"
+# Zasoby (logo) sa bundlowane przez PyInstaller do _internal (_MEIPASS) —
+# inny korzen niz .env/photos, ktore zyja obok .exe.
+if getattr(sys, "frozen", False):
+    DEFAULT_ASSETS_DIR = Path(getattr(sys, "_MEIPASS", PROJECT_DIR)) / "assets"
+else:
+    DEFAULT_ASSETS_DIR = PROJECT_DIR / "assets"
 DEFAULT_LOGO = DEFAULT_ASSETS_DIR / "logos" / "trixbrix_eu.webp"
 DEFAULT_OUTPUT_DIR = PROJECT_DIR / "photos"
 
@@ -25,7 +30,6 @@ LOGO_ENABLED = True
 LOGO_POSITION = "bottom-right"  # bottom-right / bottom-left / top-right / top-left
 LOGO_HEIGHT_RATIO = 0.06
 LOGO_MARGIN_RATIO = 0.04
-LOGO_OPACITY = 0.5
 JPEG_QUALITY = 95
 
 CAMERA_IMAGE_FORMAT: str | None = "L"

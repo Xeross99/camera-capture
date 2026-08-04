@@ -30,6 +30,7 @@ LOGO_ENABLED = True
 LOGO_POSITION = "bottom-right"  # bottom-right / bottom-left / top-right / top-left
 LOGO_HEIGHT_RATIO = 0.06
 LOGO_MARGIN_RATIO = 0.04
+LOGO_OPACITY = 0.5  # stale krycie watermarku — celowo bez mozliwosci zmiany w UI
 JPEG_QUALITY = 95
 
 CAMERA_IMAGE_FORMAT: str | None = "L"

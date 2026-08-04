@@ -13,8 +13,8 @@ pip install -r requirements-windows.txt pyinstaller || goto :err
 pyinstaller --noconfirm CameraCapture.spec || goto :err
 
 echo.
-echo Gotowe: dist\CameraCapture\CameraCapture.exe
-echo Skopiuj .env (na bazie .env.example) obok CameraCapture.exe.
+echo Gotowe: dist\CameraCapture\"Trixbrix - Camera Capture.exe"
+echo Skopiuj .env (na bazie .env.example) obok pliku .exe.
 exit /b 0
 
 :err

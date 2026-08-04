@@ -2,7 +2,7 @@
 
 Serwer HTTP (stdlib) + trzy watki jak w poprzednim GUI:
 - camera: JEDYNY wlasciciel gphoto2 (preview loop z throttlingiem do
-  preview_fps, komendy: shoot / set_camera / preview on-off),
+  preview_fps, komendy: shoot / preview on-off),
 - worker: obrobka (rembg) + Automat (announce/upload/batch/reprocess),
 - HTTP (ThreadingHTTPServer): index.html, MJPEG stream, /api/state,
   /api/action (dispatcher), /img (pliki sesji + cache miniatur).
@@ -258,10 +258,8 @@ class WebUI:
         self.automat_url = AUTOMAT_BASE_URL
         self.automat_token = AUTOMAT_API_TOKEN or ""
         self.auto_upload_after_accept = False
-        self.camera_defaults: dict[str, str] = {}
         self.preview_fps = 20
         self.keep_raw = True
-        self.load_from_camera = True
         self.test_result = ""
 
         # runtime
@@ -269,7 +267,6 @@ class WebUI:
         self.preview_on = True
         self.busy = ""
         self.fps = 0.0
-        self.camera_settings: dict = {}
         self.bg_range: tuple[int, int] | None = None
         self.processing_file: str | None = None
         self.gallery_session: str | None = None
@@ -336,21 +333,6 @@ class WebUI:
         with self.lock:
             self.connected = True
         self._log("Aparat połączony — live view aktywny.", "ok")
-        try:
-            self.camera_settings = self.session.get_settings()
-        except CAMERA_ERRORS as e:
-            self._log(f"Nie udało się odczytać ustawień aparatu: {e}", "warn")
-        if not self.load_from_camera and self.camera_defaults:
-            for key, val in self.camera_defaults.items():
-                try:
-                    self.session.set_setting(key, val)
-                except Exception as e:
-                    self._log(f"Domyślne {key}={val} nie weszło: {e}", "warn")
-            try:
-                self.camera_settings = self.session.get_settings()
-            except CAMERA_ERRORS:
-                pass
-
         frames = 0
         fps_frames = 0
         fps_t0 = time.monotonic()
@@ -399,17 +381,6 @@ class WebUI:
         kind, *rest = cmd
         if kind == "shoot":
             self._do_capture(rest[0])
-        elif kind == "set_camera":
-            key, value = rest
-            try:
-                self.session.set_setting(key, value)
-                self._log(f"Aparat: {key} = {value}", "ok")
-            except Exception as e:
-                self._log(f"✗ {key} = {value} nie weszło: {e}", "err")
-            try:
-                self.camera_settings = self.session.get_settings()
-            except CAMERA_ERRORS:
-                pass
 
     def _update_bg_stats(self, jpeg: bytes) -> None:
         try:
@@ -744,9 +715,6 @@ class WebUI:
                 self.logo_opacity = max(0, min(100, int(val)))
                 image_processing.LOGO_OPACITY = self.logo_opacity / 100.0
 
-    def _act_set_camera(self, data: dict) -> None:
-        self._cam_q.put(("set_camera", data["key"], str(data["value"])))
-
     def _act_review(self, data: dict) -> None:
         self._review_mark(data["session"], data["file"], data["verdict"])
 
@@ -783,7 +751,6 @@ class WebUI:
         "shoot": _act_shoot,
         "toggle": _act_toggle,
         "set_post": _act_set_post,
-        "set_camera": _act_set_camera,
         "review": _act_review,
         "reject_last": _act_reject_last,
         "gallery_session": _act_gallery_session,
@@ -831,10 +798,6 @@ class WebUI:
                 self.preview_fps = max(1, min(30, int(value)))
             elif key == "keep_raw":
                 self.keep_raw = bool(value)
-            elif key == "load_from_camera":
-                self.load_from_camera = bool(value)
-            elif key.startswith("default_"):
-                self.camera_defaults[key.removeprefix("default_")] = str(value)
 
     # ---------- stan dla frontu ----------
 
@@ -856,7 +819,6 @@ class WebUI:
                     reverse=True,
                 )
             bg = self.bg_range
-            exposure = self.camera_settings.get("exposurecompensation", {}).get("current", "")
             return {
                 "connected": self.connected,
                 "fps": round(self.fps),
@@ -871,9 +833,6 @@ class WebUI:
                 },
                 "shots": shots,
                 "camera": {
-                    "settings": {k: v for k, v in self.camera_settings.items()
-                                 if k != "exposurecompensation"},
-                    "exposure": exposure,
                     "bg": f"{bg[0]}–{bg[1]}" if bg else "—",
                     "bgOk": bool(bg and bg[0] >= 230 and bg[1] <= 254),
                 },
@@ -901,10 +860,8 @@ class WebUI:
                     "automatUrl": self.automat_url,
                     "tokenMasked": ("•" * 12 + self.automat_token[-4:]) if self.automat_token else "",
                     "autoUploadAfterAccept": self.auto_upload_after_accept,
-                    "defaults": dict(self.camera_defaults),
                     "previewFps": self.preview_fps,
                     "keepRaw": self.keep_raw,
-                    "loadFromCamera": self.load_from_camera,
                     "testResult": self.test_result,
                 },
                 "log": list(self.log),

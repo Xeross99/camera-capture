@@ -22,8 +22,6 @@ const MARKS = {
   cur:  { mark: "●", color: ACCENT,   border: ACCENT },
   wait: { mark: "…", color: "#e0b96a", border: "#3a3a42" },
 };
-const CAM_FIELDS = [["iso", "ISO"], ["aperture", "Przysłona"], ["shutterspeed", "Czas"],
-                    ["whitebalance", "Balans bieli"], ["afmode", "Tryb AF"]];
 
 function shell() {
   const st = S.state;
@@ -144,12 +142,6 @@ function sesjaScreen() {
   const st = S.state, post_ = st.post, cam = st.camera;
   const bgColor = cam.bgOk ? "#9fe0a8" : "#e0b96a";
   const histText = cam.bgOk ? "HISTOGRAM OK" : "HISTOGRAM !";
-  const camSelects = CAM_FIELDS.map(([key, lab]) => {
-    const w = cam.settings[key];
-    const opts = w ? w.choices.map(c => `<option ${c === w.current ? "selected" : ""}>${c}</option>`).join("") : "<option>—</option>";
-    return `<div style="color: #b4b4bb;">${lab}</div>
-      <select data-cam="${key}" ${w ? "" : "disabled"} style="${sel}">${opts}</select>`;
-  }).join("");
   const badge = `background: rgba(0,0,0,.55); border: 1px solid #3c3c44; padding: 3px 8px; ${mono} font-size: 10.5px; color: #d0d0d6;`;
   return `
     <div style="flex: 1; display: flex; flex-direction: column; min-width: 0; background: #161618;">
@@ -209,14 +201,6 @@ function sesjaScreen() {
           </div>
           <div style="${mono} font-size: 10.5px; color: #77777f; word-break: break-all;">${st.session.dir || "(bez nazwy nie da się strzelić)"}</div>
           <div onclick="S.pendingNew = null; post({action: 'clear_session'})" style="${mono} font-size: 10.5px; color: #6aa6ff;">‹ lista sesji</div>
-        </div>
-
-        <div style="display: flex; flex-direction: column; gap: 10px;">
-          <div style="${head}">Aparat</div>
-          <div style="display: grid; grid-template-columns: 84px 1fr; gap: 8px 10px; align-items: center;">${camSelects}</div>
-          <div style="display: flex; align-items: center; justify-content: space-between; background: #1c1c1f; border: 1px solid #303036; border-radius: 4px; padding: 7px 10px; ${mono} font-size: 10.5px; color: #8b8b93;">
-            <span>ekspozycja ${cam.exposure || "—"} EV</span><span id="bg-span" style="color: ${bgColor};">tło ${cam.bg}</span>
-          </div>
         </div>
 
         <div style="display: flex; flex-direction: column; gap: 9px;">
@@ -490,14 +474,8 @@ function galeriaScreen() {
 }
 
 function ustawieniaScreen() {
-  const st = S.state, cfg = st.settings, cam = st.camera.settings;
+  const st = S.state, cfg = st.settings;
   const card = `display: flex; flex-direction: column; gap: 12px; background: #232326; border: 1px solid #2f2f35; border-radius: 6px; padding: 16px 18px;`;
-  const defSel = (key) => {
-    const w = cam[key];
-    const cur = cfg.defaults[key] || (w ? w.current : "");
-    const opts = w ? w.choices.map(c => `<option ${c === cur ? "selected" : ""}>${c}</option>`).join("") : `<option>${cur || "—"}</option>`;
-    return `<select onchange="post({action:'set_app', key:'default_${key}', value:this.value})" ${w ? "" : "disabled"} style="${sel}">${opts}</select>`;
-  };
   return `
     <div style="${card}">
       <div style="${head}">Pliki i katalogi</div>
@@ -531,17 +509,13 @@ function ustawieniaScreen() {
     </div>
 
     <div style="${card}">
-      <div style="${head}">Domyślne ustawienia aparatu</div>
+      <div style="${head}">Podgląd</div>
       <div style="display: grid; grid-template-columns: 120px 1fr; gap: 8px 10px; align-items: center;">
-        <div style="color: #b4b4bb;">ISO</div>${defSel("iso")}
-        <div style="color: #b4b4bb;">Przysłona</div>${defSel("aperture")}
-        <div style="color: #b4b4bb;">Czas</div>${defSel("shutterspeed")}
         <div style="color: #b4b4bb;">FPS podglądu</div>
         <select onchange="post({action:'set_app', key:'preview_fps', value:this.value})" style="${sel}">
           ${[10, 15, 20, 25, 30].map(f => `<option ${f === cfg.previewFps ? "selected" : ""}>${f}</option>`).join("")}
         </select>
       </div>
-      <label style="${label}"><input type="checkbox" ${cfg.loadFromCamera ? "checked" : ""} onchange="post({action:'set_app', key:'load_from_camera', value:this.checked})" style="${chk}" />Wczytaj ustawienia z aparatu przy starcie</label>
     </div>
 
     <div style="display: flex; flex-direction: column; gap: 10px; background: #232326; border: 1px solid #2f2f35; border-radius: 6px; padding: 16px 18px;">
@@ -560,7 +534,7 @@ function ustawieniaScreen() {
 let lastShellKey = "", lastSesja = "", lastGaleria = "", lastUstawienia = "";
 
 const sesjaKey = st => JSON.stringify([st.session.name, st.session.dir, st.shots,
-  st.processing, st.camera.settings, st.post, st.previewOn, S.selShot, S.logOpen,
+  st.processing, st.post, st.previewOn, S.selShot, S.logOpen,
   S.gridOn, S.kadrOn, S.reviewMode]);
 
 function renderShell(force) {
@@ -589,11 +563,6 @@ function updateVolatile(st) {
   if (hist) {
     hist.textContent = st.camera.bgOk ? "HISTOGRAM OK" : "HISTOGRAM !";
     hist.style.color = bgColor;
-  }
-  const bg = $("bg-span");
-  if (bg) {
-    bg.textContent = `tło ${st.camera.bg}`;
-    bg.style.color = bgColor;
   }
   const sl = $("shoot-label");
   if (sl) sl.textContent = st.busy || "Zrób zdjęcie";
@@ -645,8 +614,6 @@ function renderScreens(force) {
       const lp = $("log-panel");
       if (lp) lp.scrollTop = lp.scrollHeight;
       bindOpacity();
-      document.querySelectorAll("[data-cam]").forEach(s =>
-        s.onchange = () => post({ action: "set_camera", key: s.dataset.cam, value: s.value }));
     }
   } else if (S.screen === "galeria") {
     const key = JSON.stringify([st.gallery, S.selGal, S.galFilter]);
@@ -655,7 +622,7 @@ function renderScreens(force) {
       $("screen-galeria").innerHTML = galeriaScreen();
     }
   } else {
-    const key = JSON.stringify([st.settings, Object.keys(st.camera.settings)]);
+    const key = JSON.stringify([st.settings]);
     if (force || key !== lastUstawienia) {
       if (document.activeElement && document.activeElement.tagName === "INPUT") return;
       lastUstawienia = key;

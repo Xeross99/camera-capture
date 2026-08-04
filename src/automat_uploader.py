@@ -165,6 +165,21 @@ class AutomatUploader:
                 timeout=self.timeout_upload,
             )
 
+    def delete_photo(self, photo_id: int) -> None:
+        """DELETE zdjecia z sesji — operator skasowal je w aplikacji.
+        404 (zdjecie/sesja juz nie istnieje) traktowane jako sukces."""
+        if self.session_id is None:
+            raise RuntimeError("open_session() musi byc zawolane wczesniej.")
+        r = requests.delete(
+            f"{self.base}/api/photo_studio/sessions/{self.session_id}/photos/{photo_id}",
+            headers=self.headers,
+            timeout=self.timeout_open,
+        )
+        if r.status_code == 404:
+            return
+        if not r.ok:
+            raise self._err("delete", r)
+
     def upload_processed(self, processed_path: Path, photo_id: int | None = None) -> dict:
         """Upload przetworzonego JPEG. Jesli `photo_id` podany — atachuje do
         istniejacego placeholdera (PUT). W innym razie tworzy nowy rekord (POST).

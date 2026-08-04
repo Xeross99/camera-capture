@@ -2,7 +2,7 @@
 const ACCENT = "#4a8cff";
 const S = {           // stan klienta
   screen: "sesja", logOpen: false, state: null,
-  selShot: -1, selGal: -1, galFilter: "all",
+  selShot: -1,
   gridOn: true, kadrOn: true, reviewMode: false, lastLogLen: -1,
   pendingNew: null,   // {name, match} — wpisana nazwa koliduje z istniejącą sesją Automatu
 };
@@ -33,7 +33,6 @@ function shell() {
 
   <div style="height: 34px; flex: 0 0 34px; background: #2a2a2d; border-bottom: 1px solid #17171a; display: flex; align-items: stretch; padding: 0 10px; gap: 2px;">
     <div onclick="go('sesja')" style="display: flex; align-items: center; padding: 0 18px; font-size: 12.5px; font-weight: 500; cursor: default; color: ${tab("sesja")}; border-bottom: 2px solid ${bar("sesja")};">Sesja</div>
-    <div onclick="go('galeria')" style="display: flex; align-items: center; padding: 0 18px; font-size: 12.5px; font-weight: 500; cursor: default; color: ${tab("galeria")}; border-bottom: 2px solid ${bar("galeria")};">Galeria</div>
     <div onclick="go('ustawienia')" style="display: flex; align-items: center; padding: 0 18px; font-size: 12.5px; font-weight: 500; cursor: default; color: ${tab("ustawienia")}; border-bottom: 2px solid ${bar("ustawienia")};">Ustawienia</div>
     <div style="margin-left: auto; display: flex; align-items: center; gap: 14px; ${mono} font-size: 11px; color: #7e7e85;">
       <div>sesja: <span style="color: #c9c9cf;" id="stat-name">—</span></div>
@@ -46,7 +45,6 @@ function shell() {
   </div>
 
   <div id="screen-sesja" style="flex: 1; display: ${S.screen === "sesja" ? "flex" : "none"}; min-height: 0;"></div>
-  <div id="screen-galeria" style="flex: 1; display: ${S.screen === "galeria" ? "flex" : "none"}; flex-direction: column; min-height: 0; background: #1d1d20;"></div>
   <div id="screen-ustawienia" style="flex: 1; display: ${S.screen === "ustawienia" ? "grid" : "none"}; overflow: auto; background: #1d1d20; padding: 24px 28px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-content: start;"></div>
 </div>`;
 }
@@ -215,7 +213,6 @@ function sesjaScreen() {
           <label style="${label}"><input type="checkbox" ${post_.zoom ? "checked" : ""} onchange="toggle('zoom', this.checked)" style="${chk}" />Przybliżanie (zoom do produktu)</label>
           <label style="${label}"><input type="checkbox" ${post_.center ? "checked" : ""} onchange="toggle('center', this.checked)" style="${chk}" />Centrowanie</label>
           <label style="${label}"><input type="checkbox" ${post_.cleanBg ? "checked" : ""} onchange="toggle('cleanbg', this.checked)" style="${chk}" />Wyrównanie tła do bieli</label>
-          <label style="${label}"><input type="checkbox" ${post_.upload ? "checked" : ""} onchange="toggle('upload', this.checked)" style="${chk}" />Upload do Automatu (aplikacja web)</label>
         </div>
 
       </div>
@@ -413,58 +410,6 @@ function logLines() {
   return S.state.log.map(l => `<div>${logMark(l.kind)}${l.t} · ${l.text}</div>`).join("");
 }
 
-function galFiltered() {
-  const files = S.state.gallery.files;
-  if (S.galFilter === "ok") return files.filter(f => f.status !== "rejected");
-  if (S.galFilter === "bad") return files.filter(f => f.status === "rejected");
-  return files;
-}
-
-function galeriaScreen() {
-  const g = S.state.gallery;
-  const nAll = g.files.length;
-  const nOk = g.files.filter(f => f.status !== "rejected").length;
-  const nBad = nAll - nOk;
-  const nSend = g.files.filter(f => f.status !== "rejected" && !f.uploaded).length;
-  const seg = (key, text) => {
-    const on = S.galFilter === key;
-    return `<div onclick="S.galFilter='${key}'; S.selGal=-1; renderScreens()" style="padding: 5px 12px; background: ${on ? ACCENT : "#1a1a1d"}; color: ${on ? "#fff" : "#b4b4bb"}; font-size: 11.5px; ${key !== "all" ? "border-left: 1px solid #3d3d44;" : ""}">${text}</div>`;
-  };
-  const tiles = galFiltered().map((f, i) => {
-    const m = i === S.selGal ? MARKS.cur : (f.status === "rejected" ? MARKS.bad : (f.uploaded ? MARKS.ok : MARKS.ok));
-    return `
-    <div onclick="S.selGal = ${i}; renderScreens()" ondblclick="openFull('${g.session}', '${f.file}')" style="border: 1px solid ${m.border}; background: #232329;">
-      <div style="aspect-ratio: 3 / 2; ${tileBg(g.session, f.file)} display: flex; align-items: flex-end; justify-content: space-between; padding: 6px;">
-        <span style="${mono} font-size: 10px; color: #fff; text-shadow: 0 1px 2px #000;">#${i + 1}</span>
-        <span style="${mono} font-size: 10px; color: ${m.color}; text-shadow: 0 1px 2px #000;">${f.status === "rejected" ? MARKS.bad.mark : (i === S.selGal ? MARKS.cur.mark : MARKS.ok.mark)}</span>
-      </div>
-      <div style="padding: 6px 7px 7px; display: flex; flex-direction: column; gap: 3px;">
-        <div style="${mono} font-size: 9.5px; color: #9a9aa2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${f.file}</div>
-        <div style="${mono} font-size: 9px; color: #6c6c74;">${f.meta || "&nbsp;"}</div>
-      </div>
-    </div>`;
-  }).join("");
-  return `
-    <div style="flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid #2c2c31;">
-      <select onchange="post({action:'gallery_session', name:this.value}); S.selGal=-1;" style="${sel} height: 26px; padding: 0 8px;">
-        ${g.sessions.map(s => `<option ${s === g.session ? "selected" : ""}>${s}</option>`).join("") || "<option>—</option>"}
-      </select>
-      <div style="display: flex; border: 1px solid #3d3d44; border-radius: 4px; overflow: hidden;">
-        ${seg("all", `Wszystkie ${nAll}`)}${seg("ok", `Zaakceptowane ${nOk}`)}${seg("bad", `Odrzucone ${nBad}`)}
-      </div>
-      <div style="margin-left: auto; display: flex; gap: 8px;">
-        <button onclick="reprocess()" style="${btnGray}">Przetwórz ponownie</button>
-        <button onclick="post({action:'batch_upload', session:'${g.session}'})" style="height: 26px; padding: 0 12px; ${btnBlue} border-radius: 4px; font-size: 12px;">Wyślij do Automatu (${nSend})</button>
-      </div>
-    </div>
-    <div id="gal-grid" style="flex: 1; overflow: auto; padding: 16px; display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; align-content: start;">
-      ${tiles || `<div style="${mono} font-size: 11px; color: #6c6c74;">(pusto)</div>`}
-    </div>
-    <div style="flex: 0 0 auto; border-top: 1px solid #2c2c31; padding: 8px 16px; display: flex; gap: 16px; ${mono} font-size: 10.5px; color: #7e7e85;">
-      <div>ENTER pełny ekran</div><div>A akceptuj</div><div>X odrzuć</div><div>⌫ usuń plik</div><div>⌘R przetwórz ponownie</div>
-    </div>`;
-}
-
 function ustawieniaScreen() {
   const st = S.state, cfg = st.settings;
   const card = `display: flex; flex-direction: column; gap: 12px; background: #232326; border: 1px solid #2f2f35; border-radius: 6px; padding: 16px 18px;`;
@@ -493,7 +438,6 @@ function ustawieniaScreen() {
         <div style="color: #b4b4bb;">Token</div>
         <input value="${cfg.tokenMasked}" onchange="post({action:'set_app', key:'automat_token', value:this.value})" style="${inp}" />
       </div>
-      <label style="${label}"><input type="checkbox" ${cfg.autoUploadAfterAccept ? "checked" : ""} onchange="post({action:'set_app', key:'auto_upload_after_accept', value:this.checked})" style="${chk}" />Wysyłaj automatycznie po akceptacji</label>
       <div style="display: flex; align-items: center; gap: 10px;">
         <button onclick="post({action:'test_connection'})" style="${btnGray} font-size: 11.5px;">Testuj połączenie</button>
         <span style="${mono} font-size: 10.5px; color: ${cfg.testResult.startsWith("✓") ? "#9fe0a8" : "#e0b96a"};">${cfg.testResult}</span>
@@ -523,7 +467,7 @@ function ustawieniaScreen() {
 
 // ---------- rendering ----------
 
-let lastShellKey = "", lastSesja = "", lastGaleria = "", lastUstawienia = "";
+let lastShellKey = "", lastSesja = "", lastUstawienia = "";
 
 const sesjaKey = st => JSON.stringify([st.session.name, st.session.dir, st.shots,
   st.processing, st.post, st.previewOn, S.selShot, S.logOpen,
@@ -536,7 +480,7 @@ function renderShell(force) {
     lastShellKey = key;
     const focused = document.activeElement && document.activeElement.id;
     $("app").innerHTML = shell();
-    lastSesja = lastGaleria = lastUstawienia = "";
+    lastSesja = lastUstawienia = "";
     renderScreens(true);
     if (focused === "session-input") $("session-input").focus();
     return;
@@ -606,12 +550,6 @@ function renderScreens(force) {
       const lp = $("log-panel");
       if (lp) lp.scrollTop = lp.scrollHeight;
     }
-  } else if (S.screen === "galeria") {
-    const key = JSON.stringify([st.gallery, S.selGal, S.galFilter]);
-    if (force || key !== lastGaleria) {
-      lastGaleria = key;
-      $("screen-galeria").innerHTML = galeriaScreen();
-    }
   } else {
     const key = JSON.stringify([st.settings]);
     if (force || key !== lastUstawienia) {
@@ -653,29 +591,9 @@ function toggleReview() {
 }
 function toggle(key, value) { post({ action: "toggle", key, value }); }
 
-function reprocess() {
-  const g = S.state.gallery;
-  const files = S.selGal >= 0 ? [galFiltered()[S.selGal].file] : galFiltered().filter(f => f.status !== "rejected").map(f => f.file);
-  if (files.length) post({ action: "reprocess", session: g.session, files });
-}
-
-function openFull(sess, file) {
-  $("fullscreen-img").src = `/img?s=${encodeURIComponent(sess)}&f=${encodeURIComponent(file)}`;
-  $("fullscreen").style.display = "flex";
-}
-
-$("fullscreen").onclick = () => $("fullscreen").style.display = "none";
-
 // ---------- klawiatura ----------
 
 document.addEventListener("keydown", e => {
-  if ($("fullscreen").style.display !== "none") {
-    if (e.key === "Escape" || e.key === "Enter" || e.key === " ") {
-      $("fullscreen").style.display = "none";
-      e.preventDefault();
-    }
-    return;
-  }
   const tag = document.activeElement ? document.activeElement.tagName : "";
   if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") {
     if (e.key === "Enter") {
@@ -689,77 +607,37 @@ document.addEventListener("keydown", e => {
     }
     return;
   }
-  const meta = e.metaKey || e.ctrlKey;
-  if (meta && e.key.toLowerCase() === "r") { e.preventDefault(); if (S.screen === "galeria") reprocess(); return; }
-  if (meta && e.key.toLowerCase() === "u") { e.preventDefault(); post({ action: "batch_upload", session: S.state.gallery.session }); return; }
-  if (meta) return;
+  if (e.metaKey || e.ctrlKey) return;
 
-  const inGal = S.screen === "galeria";
-  const list = inGal ? galFiltered() : S.state.shots;
-  const selKey = inGal ? "selGal" : "selShot";
   // preventDefault na wszystkim co obslugujemy — bez tego WKWebView puszcza
   // klawisz w gore responder chain i macOS robi systemowy beep
-  if (["Enter", " ", "Escape", "ArrowLeft", "ArrowRight", "Backspace",
+  if (["Enter", " ", "Escape", "ArrowLeft", "ArrowRight",
        "p", "P", "a", "A", "x", "X"].includes(e.key)) {
     e.preventDefault();
   }
   switch (e.key) {
-    case "Enter":
-      if (inGal) {
-        const f = list[S.selGal];
-        if (f) openFull(S.state.gallery.session, f.file);
-      } else {
-        e.preventDefault();
-        shoot();
-      }
-      break;
-    case " ":
-      e.preventDefault();
-      if (!inGal) toggleReview();
-      break;
+    case "Enter": shoot(); break;
+    case " ": toggleReview(); break;
     case "Escape":
-      if (!inGal && S.reviewMode) deleteReviewed();
+      if (S.reviewMode) deleteReviewed();
       break;
     case "p": case "P": toggle("preview", !S.state.previewOn); break;
-    case "ArrowLeft":
-      if (inGal) {
-        if (list.length) { S.selGal = Math.max(0, (S.selGal < 0 ? list.length : S.selGal) - 1); renderScreens(); }
-      } else {
-        navShot(-1);
-      }
-      break;
-    case "ArrowRight":
-      if (inGal) {
-        if (list.length) { S.selGal = Math.min(list.length - 1, S.selGal + 1); renderScreens(); }
-      } else {
-        navShot(1);
-      }
-      break;
+    case "ArrowLeft": navShot(-1); break;
+    case "ArrowRight": navShot(1); break;
     case "a": case "A": reviewSelected("accepted"); break;
     case "x": case "X":
-      if (S[selKey] >= 0) reviewSelected("rejected");
-      else if (!inGal) post({ action: "reject_last" });
+      if (S.selShot >= 0) reviewSelected("rejected");
+      else post({ action: "reject_last" });
       break;
-    case "Backspace": {
-      const f = list[S[selKey]];
-      if (inGal && f && confirm(`Usunąć ${f.file} (final + raw)?`)) {
-        post({ action: "delete", session: S.state.gallery.session, files: [f.file] });
-        S.selGal = -1;
-      }
-      break;
-    }
   }
 });
 
 function reviewSelected(verdict) {
-  const inGal = S.screen === "galeria";
-  const list = inGal ? galFiltered() : S.state.shots;
-  const idx = inGal ? S.selGal : S.selShot;
-  const f = list[idx];
+  const f = S.state.shots[S.selShot];
   if (!f) return;
   post({
     action: "review", verdict,
-    session: inGal ? S.state.gallery.session : S.state.session.name,
+    session: S.state.session.name,
     file: f.file,
   });
 }

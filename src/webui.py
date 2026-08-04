@@ -3,7 +3,7 @@
 Serwer HTTP (stdlib) + trzy watki jak w poprzednim GUI:
 - camera: JEDYNY wlasciciel gphoto2 (preview loop z throttlingiem do
   preview_fps, komendy: shoot / preview on-off),
-- worker: obrobka (rembg) + Automat (announce/upload/batch/reprocess),
+- worker: obrobka (rembg) + Automat (announce/upload/delete),
 - HTTP (ThreadingHTTPServer): index.html, MJPEG stream, /api/state,
   /api/action (dispatcher), /img (pliki sesji + cache miniatur).
 
@@ -80,6 +80,7 @@ def _load_review(session_dir: Path) -> dict:
     data.setdefault("rejected", [])
     data.setdefault("uploaded", [])
     data.setdefault("meta", {})
+    data.setdefault("automat", {})  # plik -> id zdjecia w Automacie (do DELETE)
     return data
 
 
@@ -105,19 +106,16 @@ def _find_raw(session_dir: Path, final_name: str) -> Path | None:
     return None
 
 
-def _shot_entries(session_dir: Path | None, review: dict, with_meta: bool = False) -> list[dict]:
-    """Wpisy zdjec dla frontu (filmstrip sesji / siatka galerii)."""
-    entries = []
-    for f in (_finals(session_dir) if session_dir else []):
-        entry = {
+def _shot_entries(session_dir: Path | None, review: dict) -> list[dict]:
+    """Wpisy zdjec dla frontu (filmstrip sesji)."""
+    return [
+        {
             "file": f,
             "status": "rejected" if f in review["rejected"] else "ok",
             "uploaded": f in review["uploaded"],
         }
-        if with_meta:
-            entry["meta"] = review["meta"].get(f, "")
-        entries.append(entry)
-    return entries
+        for f in (_finals(session_dir) if session_dir else [])
+    ]
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -270,7 +268,6 @@ class WebUI:
         self.name_pattern = DEFAULT_NAME_PATTERN
         self.automat_url = AUTOMAT_BASE_URL
         self.automat_token = AUTOMAT_API_TOKEN or ""
-        self.auto_upload_after_accept = False
         self.preview_fps = 20
         self.keep_raw = True
         self.test_result = ""
@@ -282,7 +279,6 @@ class WebUI:
         self.fps = 0.0
         self.bg_range: tuple[int, int] | None = None
         self.processing_file: str | None = None
-        self.gallery_session: str | None = None
         self.automat_sessions: list[dict] = []
         self.automat_sessions_error = ""
         self.attach_to: dict | None = None  # {"id", "name"} — podłączenie do istniejącej sesji Automatu
@@ -514,84 +510,27 @@ class WebUI:
         review["meta"][out.name] = " · ".join(bits)
         n = len([f for f in _finals(outdir) if f not in review["rejected"]])
         uploaded_note = ""
+        if announced_id:
+            # nawet gdy upload nizej padnie, placeholder w Automacie istnieje —
+            # delete musi go umiec sprzatnac
+            review["automat"][out.name] = announced_id
         if job["upload"] and self.uploader is not None:
             try:
-                self.uploader.upload_processed(out, photo_id=announced_id)
+                resp = self.uploader.upload_processed(out, photo_id=announced_id)
                 review["uploaded"].append(out.name)
+                pid = resp.get("id") or announced_id
+                if pid:
+                    review["automat"][out.name] = int(pid)
                 uploaded_note = " · upload do Automatu OK"
             except Exception as e:
                 self._log(f"✗ Upload do Automatu nie wyszedł: {e}", "err")
         _save_review(outdir, review)
         self._log(f"Zapisano {out.name} (#{n}){uploaded_note}", "ok")
 
-    def _job_upload_one(self, session: str, filename: str) -> None:
-        outdir = self.base_output / session
-        if self.uploader is None:
-            self._job_open_session(session)
-        if self.uploader is None:
-            return
-        try:
-            self.uploader.upload_processed(outdir / filename)
-        except Exception as e:
-            self._log(f"✗ Upload {filename} nie wyszedł: {e}", "err")
-            return
-        review = _load_review(outdir)
-        if filename not in review["uploaded"]:
-            review["uploaded"].append(filename)
-        _save_review(outdir, review)
-        self._log(f"↑ Wysłano {filename} do Automatu", "ok")
-
-    def _job_batch(self, session: str) -> None:
-        outdir = self.base_output / session
-        review = _load_review(outdir)
-        todo = [f for f in _finals(outdir)
-                if f not in review["rejected"] and f not in review["uploaded"]]
-        if not todo:
-            self._log("Brak zaakceptowanych zdjęć do wysłania.", "warn")
-            return
-        self._job_open_session(session)
-        if self.uploader is None:
-            return
-        sent = 0
-        for f in todo:
-            try:
-                self.uploader.upload_processed(outdir / f)
-                review["uploaded"].append(f)
-                sent += 1
-            except Exception as e:
-                self._log(f"✗ Upload {f} nie wyszedł: {e}", "err")
-        _save_review(outdir, review)
-        self._log(f"↑ Wysłano {sent}/{len(todo)} zdjęć do Automatu", "ok")
-
-    def _job_reprocess(self, session: str, files: list[str]) -> None:
-        outdir = self.base_output / session
-        with self.lock:
-            opts = dict(clean_bg=self.clean_bg, add_logo=self.add_logo,
-                        logo_position=self.logo_position,
-                        auto_center=self.auto_center, auto_zoom=self.auto_zoom)
-        done = 0
-        for f in files:
-            raw = _find_raw(outdir, f)
-            if raw is None:
-                self._log(f"✗ Brak raw dla {f} — pomijam.", "warn")
-                continue
-            with self.lock:
-                self.busy = f"Przetwarzam ponownie {f}…"
-            try:
-                process(raw, self.logo_path, outdir, out_name=f, **opts)
-                done += 1
-            except Exception as e:
-                self._log(f"✗ Reprocess {f}: {e}", "err")
-            finally:
-                with self.lock:
-                    self.busy = ""
-            thumb = outdir / ".thumbs" / f
-            thumb.unlink(missing_ok=True)
-        self._log(f"Przetworzono ponownie {done}/{len(files)} zdjęć.", "ok")
-
     def _job_delete(self, session: str, files: list[str]) -> None:
         outdir = self.base_output / session
         review = _load_review(outdir)
+        automat_ids = []
         for f in files:
             (outdir / f).unlink(missing_ok=True)
             (outdir / ".thumbs" / f).unlink(missing_ok=True)
@@ -602,8 +541,24 @@ class WebUI:
                 if f in review[key]:
                     review[key].remove(f)
             review["meta"].pop(f, None)
+            pid = review["automat"].pop(f, None)
+            if pid:
+                automat_ids.append((f, int(pid)))
         _save_review(outdir, review)
         self._log(f"Usunięto {len(files)} plik(ów) z {session}.", "warn")
+        if not automat_ids:
+            return
+        if self.uploader is None:
+            self._job_open_session(session)
+        if self.uploader is None:
+            self._log("✗ Nie usunięto zdjęć z Automatu (brak połączenia).", "err")
+            return
+        for f, pid in automat_ids:
+            try:
+                self.uploader.delete_photo(pid)
+                self._log(f"Usunięto {f} także z Automatu.", "warn")
+            except Exception as e:
+                self._log(f"✗ Usuwanie {f} z Automatu nie wyszło: {e}", "err")
 
     def _job_list_sessions(self) -> None:
         try:
@@ -634,10 +589,7 @@ class WebUI:
         "photo": _job_photo,
         "open_session": _job_open_session,
         "upload_off": _job_upload_off,
-        "upload_one": _job_upload_one,
-        "batch": _job_batch,
         "list_sessions": _job_list_sessions,
-        "reprocess": _job_reprocess,
         "delete": _job_delete,
         "test": _job_test,
     }
@@ -659,7 +611,6 @@ class WebUI:
         sid = data.get("session_id")
         with self.lock:
             self.name = name
-            self.gallery_session = name
             self.attach_to = {"id": int(sid), "name": name} if sid else None
         self._log(f"Sesja: {name} → {self.base_output / name}")
         if self.upload_enabled:
@@ -708,16 +659,6 @@ class WebUI:
         with self.lock:
             if key in self._TOGGLE_ATTRS:
                 setattr(self, self._TOGGLE_ATTRS[key], val)
-            elif key == "upload":
-                if val and not self.automat_token:
-                    self._log("Brak tokenu Automatu — upload zostaje OFF", "warn")
-                    val = False
-                self.upload_enabled = val
-        if key == "upload":
-            if val and self.name:
-                self._jobs.put(("open_session", self.name))
-            elif not val:
-                self._jobs.put(("upload_off",))
 
     def _act_set_post(self, data: dict) -> None:
         key, val = data["key"], data["value"]
@@ -735,18 +676,8 @@ class WebUI:
             if fresh:
                 self._review_mark(self.name, fresh[-1], "rejected")
 
-    def _act_gallery_session(self, data: dict) -> None:
-        with self.lock:
-            self.gallery_session = sanitize_name(str(data.get("name", "")))
-
     def _act_delete(self, data: dict) -> None:
         self._jobs.put(("delete", data["session"], list(data["files"])))
-
-    def _act_reprocess(self, data: dict) -> None:
-        self._jobs.put(("reprocess", data["session"], list(data["files"])))
-
-    def _act_batch_upload(self, data: dict) -> None:
-        self._jobs.put(("batch", data["session"]))
 
     def _act_test_connection(self, data: dict) -> None:
         self._jobs.put(("test",))
@@ -763,10 +694,7 @@ class WebUI:
         "set_post": _act_set_post,
         "review": _act_review,
         "reject_last": _act_reject_last,
-        "gallery_session": _act_gallery_session,
         "delete": _act_delete,
-        "reprocess": _act_reprocess,
-        "batch_upload": _act_batch_upload,
         "test_connection": _act_test_connection,
         "set_app": _act_set_app,
     }
@@ -783,8 +711,6 @@ class WebUI:
             if was_rejected:
                 review["rejected"].remove(filename)
                 self._log(f"Zdjęcie {filename} zaakceptowane.", "ok")
-            if self.auto_upload_after_accept and filename not in review["uploaded"]:
-                self._jobs.put(("upload_one", session, filename))
         _save_review(outdir, review)
 
     def _set_app_setting(self, key: str, value) -> None:
@@ -804,10 +730,11 @@ class WebUI:
                 if not str(value).startswith("•"):
                     self.automat_token = str(value)
                     self.uploader = None
+                    self.upload_enabled = bool(self.automat_token)
                     _persist_env("AUTOMAT_TOKEN", self.automat_token)
                     self._log("Token Automatu zapisany w .env", "ok")
-            elif key == "auto_upload_after_accept":
-                self.auto_upload_after_accept = bool(value)
+                    if self.upload_enabled and self.name:
+                        self._jobs.put(("open_session", self.name))
             elif key == "preview_fps":
                 self.preview_fps = max(1, min(30, int(value)))
             elif key == "keep_raw":
@@ -818,20 +745,9 @@ class WebUI:
     def state(self) -> dict:
         with self.lock:
             sdir = self.session_dir
-            review = _load_review(sdir) if sdir else {"rejected": [], "uploaded": [], "meta": {}}
+            review = _load_review(sdir) if sdir else {
+                "rejected": [], "uploaded": [], "meta": {}, "automat": {}}
             shots = _shot_entries(sdir, review)
-            gsess = self.gallery_session or self.name
-            gdir = (self.base_output / gsess) if gsess else None
-            greview = _load_review(gdir) if gdir else review
-            gfiles = _shot_entries(gdir, greview, with_meta=True)
-            sessions = []
-            if self.base_output.is_dir():
-                sessions = sorted(
-                    (p.name for p in self.base_output.iterdir()
-                     if p.is_dir() and not p.name.startswith(".")),
-                    key=lambda n: (self.base_output / n).stat().st_mtime,
-                    reverse=True,
-                )
             bg = self.bg_range
             return {
                 "connected": self.connected,
@@ -857,14 +773,11 @@ class WebUI:
                     "zoom": self.auto_zoom,
                     "center": self.auto_center,
                     "cleanBg": self.clean_bg,
-                    "upload": self.upload_enabled,
                 },
-                "gallery": {"session": gsess or "", "sessions": sessions, "files": gfiles},
                 "automat": {
                     "sessions": self.automat_sessions,
                     "error": self.automat_sessions_error,
                     "hasToken": bool(self.automat_token),
-                    "localSessions": sessions,
                 },
                 "settings": {
                     "photosDir": str(self.base_output),
@@ -872,7 +785,6 @@ class WebUI:
                     "namePattern": self.name_pattern,
                     "automatUrl": self.automat_url,
                     "tokenMasked": ("•" * 12 + self.automat_token[-4:]) if self.automat_token else "",
-                    "autoUploadAfterAccept": self.auto_upload_after_accept,
                     "previewFps": self.preview_fps,
                     "keepRaw": self.keep_raw,
                     "testResult": self.test_result,

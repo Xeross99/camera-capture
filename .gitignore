@@ -1,5 +1,8 @@
 .env
 .venv/
+.venv-win/
+build/
+dist/
 __pycache__/
 *.pyc
 photos/*

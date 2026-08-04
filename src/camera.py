@@ -4,9 +4,30 @@ import threading
 import time
 from pathlib import Path
 
-import gphoto2 as gp
+try:
+    import gphoto2 as gp
+except ImportError:
+    # libgphoto2 nie istnieje na Windows — tam aparat obsluguje backend
+    # digiCamControl (src/camera_digicam.py), wybierany przez make_camera_session().
+    gp = None
 
-from .config import CAMERA_IMAGE_FORMAT
+from .config import CAMERA_BACKEND, CAMERA_IMAGE_FORMAT
+
+if gp is not None:
+    GPhoto2Error = gp.GPhoto2Error
+else:
+    class GPhoto2Error(Exception):
+        pass
+
+# Wspolna tupla bledow aparatu dla obu backendow: gphoto2 + digiCamControl
+# (requests.RequestException dziedziczy po OSError).
+CAMERA_ERRORS: tuple = (GPhoto2Error, RuntimeError, OSError)
+
+GPHOTO2_MISSING_HINT = (
+    "python-gphoto2 nie jest zainstalowane (na Windowsie niedostepne). "
+    "Na Windowsie uzyj backendu digiCamControl: zainstaluj digiCamControl, "
+    "wlacz w nim webserver (port 5513) i ustaw CAMERA_BACKEND=digicamcontrol w .env."
+)
 
 GP_ERROR_UNSPECIFIED = -1
 GP_ERROR_IO_IN_PROGRESS = -110
@@ -151,6 +172,8 @@ def _drain_events(camera, timeout_ms: int = 2000) -> None:
 
 
 def _kill_ptpcamera() -> None:
+    if sys.platform != "darwin":
+        return
     # `PTPCamera` was the legacy macOS app; newer macOS (Sonoma+) uses
     # `ptpcamerad` daemon at /usr/libexec/ptpcamerad. Both auto-claim a
     # connected PTP camera and need to be killed before gphoto2 can init.
@@ -180,6 +203,8 @@ class _PtpCameradReaper:
         self._thread: threading.Thread | None = None
 
     def start(self) -> None:
+        if sys.platform != "darwin":
+            return
         self._stop.clear()
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
@@ -238,6 +263,8 @@ def _reset_usb_device() -> bool:
 
 
 def _init_camera() -> tuple["gp.Camera | None", Exception | None]:
+    if gp is None:
+        return None, RuntimeError(GPHOTO2_MISSING_HINT)
     last_err: Exception | None = None
     camera = None
     reaper = _PtpCameradReaper()
@@ -383,7 +410,9 @@ class CameraSession:
     watku (gphoto2 nie jest thread-safe)."""
 
     def __init__(self) -> None:
-        self.camera: gp.Camera | None = None
+        # Anotacja w cudzyslowie — atrybutowe anotacje sa ewaluowane w runtime,
+        # a gp moze byc None (brak gphoto2 na tej platformie).
+        self.camera: "gp.Camera | None" = None
 
     def open(self) -> None:
         camera, last_err = _init_camera()
@@ -482,3 +511,26 @@ class CameraSession:
         except gp.GPhoto2Error:
             pass
         self.camera = None
+
+
+def make_camera_session():
+    """Wybiera backend aparatu wg CAMERA_BACKEND (auto/gphoto2/digicamcontrol).
+
+    auto: gphoto2 jesli zaimportowalne, inaczej na Windows digiCamControl.
+    Zwracany obiekt ma interfejs CameraSession (open/preview_frame/capture_to/
+    get_settings/set_setting/close)."""
+    backend = CAMERA_BACKEND
+    if backend == "auto":
+        if gp is not None:
+            backend = "gphoto2"
+        elif sys.platform == "win32":
+            backend = "digicamcontrol"
+        else:
+            backend = "gphoto2"
+
+    if backend == "digicamcontrol":
+        from .camera_digicam import DigiCamControlSession
+        return DigiCamControlSession()
+    if backend != "gphoto2":
+        print(f"Uwaga: nieznany CAMERA_BACKEND='{backend}', uzywam gphoto2.")
+    return CameraSession()

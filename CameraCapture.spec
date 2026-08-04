@@ -4,7 +4,7 @@
 # Wynik: dist/CameraCapture/CameraCapture.exe (onedir; .env i photos/ zyja
 # obok .exe — patrz PROJECT_DIR w src/config.py).
 
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_all, copy_metadata
 
 datas = [
     ("src/webui_static", "src/webui_static"),
@@ -17,12 +17,18 @@ hiddenimports = [
 ]
 
 # rembg/onnxruntime maja natywne DLL-e i dane poza importami — collect_all
-# jest najpewniejsze; webview dla platform backends.
-for pkg in ("rembg", "onnxruntime", "webview"):
+# jest najpewniejsze; webview dla platform backends; pymatting czyta wlasna
+# wersje z importlib.metadata przy imporcie ("No package metadata was found
+# for pymatting" bez tego).
+for pkg in ("rembg", "onnxruntime", "webview", "pymatting"):
     d, b, h = collect_all(pkg)
     datas += d
     binaries += b
     hiddenimports += h
+
+# zaleznosci pymatting, tez odpytywane o wersje przez importlib.metadata
+for pkg in ("numba", "llvmlite"):
+    datas += copy_metadata(pkg)
 
 a = Analysis(
     ["gui.py"],

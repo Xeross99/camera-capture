@@ -29,3 +29,5 @@ jobs:
         with:
           name: CameraCapture-windows
           path: dist/CameraCapture
+          # bez tego .env.example (dotfile) wypada z paczki
+          include-hidden-files: true

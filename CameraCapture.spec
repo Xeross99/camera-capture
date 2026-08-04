@@ -42,11 +42,13 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="CameraCapture",
+    name="Trixbrix - Camera Capture",
     debug=False,
     strip=False,
     upx=False,
     console=False,
+    icon="assets/icons/trixbrix.ico",
+    version="version_info.txt",
 )
 coll = COLLECT(
     exe,

@@ -52,7 +52,7 @@ Na Windowsie, w katalogu projektu:
 build_windows.bat
 ```
 
-Wynik: `dist\CameraCapture\CameraCapture.exe` (folder onedir — do
+Wynik: `dist\CameraCapture\Trixbrix - Camera Capture.exe` (folder onedir — do
 przeniesienia w całości). Obok `.exe` połóż `.env`; tam też powstaje
 katalog `photos\`. Przy pierwszym czyszczeniu tła rembg pobiera model
 u2netp do `%USERPROFILE%\.u2net\` (jednorazowo potrzebny internet —

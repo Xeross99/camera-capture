@@ -19,11 +19,10 @@ from rich.prompt import Confirm, Prompt
 
 from src.automat_uploader import (AutomatUploader, describe_opened_session,
                                   find_existing_session)
-from src.camera import list_image_formats
 from src.cli import add_capture_args
 from src.config import AUTOMAT_API_TOKEN
 from src.image_processing import process
-from src.tui import CaptureTUI, sanitize_name
+from src.naming import sanitize_name
 
 console = Console()
 
@@ -91,6 +90,8 @@ def main() -> None:
     if args.list_formats:
         import gphoto2 as gp
 
+        from src.camera import list_image_formats
+
         cam = gp.Camera()
         cam.init()
         try:
@@ -115,6 +116,15 @@ def main() -> None:
         console.print(f"[bold green]✓ Zapisano[/] [yellow]{out}[/]")
         uploader = make_uploader(args.upload, name)
         upload_raw_or_log(uploader, out)
+        return
+
+    try:
+        # Import leniwy: TUI ciagnie termios/tty (unix-only) — na Windowsie
+        # dziala tylko sciezka --input oraz aplikacja okienkowa (gui.py).
+        from src.tui import CaptureTUI
+    except ImportError:
+        console.print("[red]TUI działa tylko na macOS/Linux — na Windowsie "
+                      "użyj [bold]python gui.py[/bold] albo --input.[/]")
         return
 
     try:

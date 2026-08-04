@@ -4,7 +4,6 @@ zdjec pod spodem, menu opcji rozwijane strzalka w dol."""
 import contextlib
 import io
 import os
-import re
 import select
 import sys
 import tempfile
@@ -24,12 +23,9 @@ from .automat_uploader import (AutomatUploader, describe_opened_session,
 from .camera import capture_from_camera
 from .config import AUTOMAT_API_TOKEN
 from .image_processing import LOGO_POSITIONS, process
+from .naming import sanitize_name
 
-
-def sanitize_name(name: str) -> str:
-    name = name.strip()
-    name = re.sub(r"[^A-Za-z0-9_\-. ]+", "_", name)
-    return name.strip(" .") or "default"
+__all__ = ["CaptureTUI", "sanitize_name"]
 
 
 class _KeyReader:

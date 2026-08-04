@@ -25,13 +25,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-import gphoto2 as gp
 import numpy as np
 from PIL import Image
 
 from . import image_processing
 from .automat_uploader import AutomatUploader, describe_opened_session
-from .camera import CameraSession
+from .camera import CAMERA_ERRORS, make_camera_session
 from .config import (
     AUTOMAT_API_TOKEN,
     AUTOMAT_BASE_URL,
@@ -39,7 +38,7 @@ from .config import (
     OUTPUT_SIZE,
 )
 from .image_processing import LOGO_POSITIONS, process
-from .tui import sanitize_name
+from .naming import sanitize_name
 
 STATIC_DIR = Path(__file__).parent / "webui_static"
 STATIC_TYPES = {
@@ -280,7 +279,7 @@ class WebUI:
         self.log: deque[dict] = deque(maxlen=500)
         self.uploader: AutomatUploader | None = None  # tylko watek worker
 
-        self.session = CameraSession()
+        self.session = make_camera_session()
         self._stop = threading.Event()
         self._frame_lock = threading.Lock()
         self._frame: bytes | None = None
@@ -339,7 +338,7 @@ class WebUI:
         self._log("Aparat połączony — live view aktywny.", "ok")
         try:
             self.camera_settings = self.session.get_settings()
-        except gp.GPhoto2Error as e:
+        except CAMERA_ERRORS as e:
             self._log(f"Nie udało się odczytać ustawień aparatu: {e}", "warn")
         if not self.load_from_camera and self.camera_defaults:
             for key, val in self.camera_defaults.items():
@@ -349,7 +348,7 @@ class WebUI:
                     self._log(f"Domyślne {key}={val} nie weszło: {e}", "warn")
             try:
                 self.camera_settings = self.session.get_settings()
-            except gp.GPhoto2Error:
+            except CAMERA_ERRORS:
                 pass
 
         frames = 0
@@ -375,7 +374,7 @@ class WebUI:
                     continue
                 try:
                     data = self.session.preview_frame()
-                except gp.GPhoto2Error as e:
+                except CAMERA_ERRORS as e:
                     self._log(f"✗ Podgląd przerwany: {e}", "err")
                     with self.lock:
                         self.connected = False
@@ -409,7 +408,7 @@ class WebUI:
                 self._log(f"✗ {key} = {value} nie weszło: {e}", "err")
             try:
                 self.camera_settings = self.session.get_settings()
-            except gp.GPhoto2Error:
+            except CAMERA_ERRORS:
                 pass
 
     def _update_bg_stats(self, jpeg: bytes) -> None:
@@ -434,7 +433,7 @@ class WebUI:
         tmpdir = Path(tempfile.mkdtemp(prefix="capture_"))
         try:
             captured = self.session.capture_to(tmpdir)
-        except (SystemExit, gp.GPhoto2Error) as e:
+        except (SystemExit, *CAMERA_ERRORS) as e:
             self._log(f"✗ Błąd aparatu: {e}", "err")
             shutil.rmtree(tmpdir, ignore_errors=True)
             with self.lock:

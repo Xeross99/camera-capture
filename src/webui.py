@@ -28,14 +28,13 @@ from urllib.parse import parse_qs, urlparse
 import numpy as np
 from PIL import Image
 
-from . import image_processing
 from .automat_uploader import AutomatUploader, describe_opened_session
 from .camera import CAMERA_ERRORS, make_camera_session
 from .config import (
     AUTOMAT_API_TOKEN,
     AUTOMAT_BASE_URL,
-    LOGO_OPACITY,
     OUTPUT_SIZE,
+    PROJECT_DIR,
 )
 from .image_processing import LOGO_POSITIONS, process
 from .naming import sanitize_name
@@ -52,6 +51,21 @@ DEFAULT_NAME_PATTERN = "photo_{data}_{godzina}.jpg"
 
 def _now() -> str:
     return datetime.now().strftime("%H:%M:%S")
+
+
+def _persist_env(key: str, value: str) -> None:
+    """Zapisuje/nadpisuje klucz w PROJECT_DIR/.env (tworzy plik gdy brak) —
+    token/URL Automatu wpisane w Ustawieniach przezywaja restart aplikacji."""
+    path = PROJECT_DIR / ".env"
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    entry = f"{key}={value}"
+    for i, ln in enumerate(lines):
+        if ln.split("=", 1)[0].strip() == key:
+            lines[i] = entry
+            break
+    else:
+        lines.append(entry)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _review_path(session_dir: Path) -> Path:
@@ -247,7 +261,6 @@ class WebUI:
         # postprocessing (sekcja "Postprocessing" w sidebarze)
         self.add_logo = add_logo
         self.logo_position = logo_position
-        self.logo_opacity = int(LOGO_OPACITY * 100)
         self.auto_zoom = auto_zoom
         self.auto_center = auto_center
         self.clean_bg = True
@@ -711,9 +724,6 @@ class WebUI:
         with self.lock:
             if key == "logo_position" and val in LOGO_POSITIONS:
                 self.logo_position = val
-            elif key == "opacity":
-                self.logo_opacity = max(0, min(100, int(val)))
-                image_processing.LOGO_OPACITY = self.logo_opacity / 100.0
 
     def _act_review(self, data: dict) -> None:
         self._review_mark(data["session"], data["file"], data["verdict"])
@@ -788,10 +798,14 @@ class WebUI:
             elif key == "automat_url":
                 self.automat_url = str(value).rstrip("/")
                 self.uploader = None
+                _persist_env("AUTOMAT_URL", self.automat_url)
+                self._log("Adres Automatu zapisany w .env", "ok")
             elif key == "automat_token":
                 if not str(value).startswith("•"):
                     self.automat_token = str(value)
                     self.uploader = None
+                    _persist_env("AUTOMAT_TOKEN", self.automat_token)
+                    self._log("Token Automatu zapisany w .env", "ok")
             elif key == "auto_upload_after_accept":
                 self.auto_upload_after_accept = bool(value)
             elif key == "preview_fps":
@@ -840,7 +854,6 @@ class WebUI:
                     "logo": self.add_logo,
                     "logoPosition": self.logo_position,
                     "logoPositions": list(LOGO_POSITIONS),
-                    "opacity": self.logo_opacity,
                     "zoom": self.auto_zoom,
                     "center": self.auto_center,
                     "cleanBg": self.clean_bg,

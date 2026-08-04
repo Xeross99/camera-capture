@@ -14,6 +14,33 @@ import requests
 from .config import AUTOMAT_API_TOKEN, AUTOMAT_BASE_URL
 
 
+def describe_opened_session(uploader: "AutomatUploader", name: str) -> tuple[str, str]:
+    """Komunikat do logu po open_session() -> (tekst, poziom 'ok'|'warn')."""
+    suffix = (
+        f" — podłączono do istniejącej ({uploader.photos_count} zdjęć)"
+        if uploader.reattached
+        else ""
+    )
+    base = f"↑ Automat: sesja {uploader.session_id} ({name})"
+    if uploader.product_found:
+        return f"{base}{suffix}", "ok"
+    return f"{base} — produkt nie znaleziony, sesja luźna{suffix}", "warn"
+
+
+def find_existing_session(uploader: "AutomatUploader", name: str) -> dict | None:
+    """Najnowsza sesja photo_studio o tej nazwie (case-insensitive) albo None.
+    Blad listy (brak sieci itd.) -> None, flow po prostu otworzy sesje po nazwie."""
+    try:
+        sessions = uploader.list_sessions()
+    except Exception:
+        return None
+    matches = [s for s in sessions
+               if (s.get("name") or "").strip().lower() == name.strip().lower()]
+    if not matches:
+        return None
+    return max(matches, key=lambda s: s.get("created_at") or "")
+
+
 class AutomatUploader:
     def __init__(
         self,
@@ -48,6 +75,18 @@ class AutomatUploader:
     def _err(self, kind: str, r) -> RuntimeError:
         return RuntimeError(f"Automat {kind} {r.status_code} {r.reason} — {self._strip_body(r)}")
 
+    def list_sessions(self) -> list[dict]:
+        """GET wszystkich sesji photo_studio: [{id, name, product, created_at,
+        photos_count}, ...] — dla ekranu startowego aplikacji."""
+        r = requests.get(
+            f"{self.base}/api/photo_studio/sessions",
+            headers=self.headers,
+            timeout=self.timeout_open,
+        )
+        if not r.ok:
+            raise self._err("lista sesji", r)
+        return r.json()
+
     def open_session(self, product_name: str) -> int:
         r = requests.post(
             f"{self.base}/api/photo_studio/sessions",
@@ -63,6 +102,23 @@ class AutomatUploader:
         self.product_found = bool(payload.get("product_found", True))
         self.reattached = bool(payload.get("reattached", False))
         self.photos_count = int(payload.get("photos_count", 0))
+        return self.session_id
+
+    def attach_session(
+        self,
+        session_id: int,
+        product_name: str,
+        product_found: bool = True,
+        photos_count: int = 0,
+    ) -> int:
+        """Podłącza się do istniejącej sesji po id, bez POST-a (announce/upload
+        idą na /sessions/:id/photos). Jeśli sesja zniknęła po stronie Rails,
+        pierwszy 404 przejdzie przez _reopen() i otworzy nową po nazwie."""
+        self.session_id = int(session_id)
+        self.product_name = product_name
+        self.product_found = product_found
+        self.reattached = True
+        self.photos_count = photos_count
         return self.session_id
 
     def _reopen(self) -> None:

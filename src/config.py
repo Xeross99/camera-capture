@@ -1,9 +1,15 @@
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
 
-PROJECT_DIR = Path(__file__).resolve().parent.parent
+if getattr(sys, "frozen", False):
+    # PyInstaller: __file__ wskazuje na rozpakowane _internal/_MEIPASS —
+    # .env i photos/ maja zyc obok .exe, nie w katalogu tymczasowym.
+    PROJECT_DIR = Path(sys.executable).resolve().parent
+else:
+    PROJECT_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_DIR / ".env")
 DEFAULT_ASSETS_DIR = PROJECT_DIR / "assets"
 DEFAULT_LOGO = DEFAULT_ASSETS_DIR / "logos" / "trixbrix_eu.webp"
@@ -19,6 +25,12 @@ LOGO_OPACITY = 0.5
 JPEG_QUALITY = 95
 
 CAMERA_IMAGE_FORMAT: str | None = "L"
+
+# Backend aparatu: "auto" (gphoto2 jesli dostepne, na Windows digiCamControl),
+# "gphoto2" lub "digicamcontrol".
+CAMERA_BACKEND = os.environ.get("CAMERA_BACKEND", "auto").strip().lower()
+# Webserver digiCamControl (Settings -> Webserver -> Enable, domyslny port 5513).
+DIGICAMCONTROL_URL = os.environ.get("DIGICAMCONTROL_URL", "http://127.0.0.1:5513").rstrip("/")
 
 CLEAN_BG_MODEL = "u2netp"
 CLEAN_BG_INFERENCE_SIZE = 768

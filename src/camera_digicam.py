@@ -10,21 +10,32 @@ Interfejs 1:1 z CameraSession (open/preview_frame/capture_to/get_settings/
 set_setting/close) — webui nie widzi roznicy miedzy backendami.
 """
 
+import subprocess
+import sys
 import time
 from pathlib import Path
 
 import requests
 
-from .config import DIGICAMCONTROL_URL
+from .config import DIGICAMCONTROL_EXE, DIGICAMCONTROL_URL
 
 _CAPTURE_TIMEOUT_S = 60
 _JPEG_MAGIC = b"\xff\xd8"
+
+# Typowe sciezki instalatora digiCamControl (uzywane gdy DIGICAMCONTROL_EXE
+# nie jest ustawione w .env).
+_DEFAULT_EXES = (
+    r"C:\Program Files (x86)\digiCamControl\CameraControl.exe",
+    r"C:\Program Files\digiCamControl\CameraControl.exe",
+)
 
 
 class DigiCamControlSession:
     def __init__(self) -> None:
         self.base = DIGICAMCONTROL_URL
         self._http = requests.Session()
+        self._launched = False       # auto-start dCC tylko raz na zycie sesji
+        self._minimize_ok = True     # All_Minimize wylaczane gdy psuje live view
 
     def _get(self, path: str, timeout: float = 10, **params) -> requests.Response:
         r = self._http.get(f"{self.base}{path}", params=params or None, timeout=timeout)
@@ -39,23 +50,37 @@ class DigiCamControlSession:
             raise RuntimeError(f"digiCamControl: {cmd} → {text}")
         return text
 
-    def open(self) -> None:
+    def _server_up(self, timeout: float = 3) -> bool:
         try:
-            self._get("/session.json", timeout=3)
-        except requests.RequestException as e:
-            raise RuntimeError(
-                f"Brak połączenia z digiCamControl ({self.base}). "
-                "Uruchom digiCamControl, włącz webserver "
-                "(Settings → Webserver → Enable) i podepnij aparat."
-            ) from e
+            self._get("/session.json", timeout=timeout)
+            return True
+        except requests.RequestException:
+            return False
+
+    def _launch_app(self) -> bool:
+        """Startuje CameraControl.exe gdy webserver nie odpowiada — operator
+        nie musi recznie uruchamiac digiCamControl przed nasza aplikacja."""
+        if self._launched or sys.platform != "win32":
+            return False
+        candidates = ([DIGICAMCONTROL_EXE] if DIGICAMCONTROL_EXE else []) + list(_DEFAULT_EXES)
+        exe = next((p for p in candidates if p and Path(p).exists()), None)
+        if exe is None:
+            return False
+        subprocess.Popen([exe], close_fds=True)
+        self._launched = True
+        return True
+
+    def _show_live_view(self) -> None:
         # /liveview.jpg zwraca klatki dopiero gdy okno live view jest otwarte.
         try:
             self._get("/", timeout=5, CMD="LiveViewWnd_Show")
         except requests.RequestException:
             pass
+
+    def _first_frame(self, timeout_s: float) -> None:
         # Pierwsza klatka potwierdza, ze aparat faktycznie jest podpiety —
         # sam webserver odpowiada takze bez aparatu.
-        deadline = time.monotonic() + 10
+        deadline = time.monotonic() + timeout_s
         while True:
             try:
                 self.preview_frame()
@@ -67,6 +92,32 @@ class DigiCamControlSession:
                         "sprawdź czy aparat jest podłączony i wykryty."
                     )
                 time.sleep(0.5)
+
+    def open(self) -> None:
+        if not self._server_up():
+            if self._launch_app():
+                deadline = time.monotonic() + 30
+                while not self._server_up(timeout=2) and time.monotonic() < deadline:
+                    time.sleep(1.0)
+            if not self._server_up():
+                raise RuntimeError(
+                    f"Brak połączenia z digiCamControl ({self.base}). "
+                    "Zainstaluj digiCamControl, włącz webserver "
+                    "(Settings → Webserver → Enable) i podepnij aparat."
+                )
+        self._show_live_view()
+        self._first_frame(10)
+        # dCC to tylko sterownik w tle — chowamy jego okna. Gdy minimalizacja
+        # zabija live view (rozne wersje dCC), wracamy do widocznego okna
+        # i wiecej nie probujemy.
+        if self._minimize_ok:
+            try:
+                self._get("/", timeout=5, CMD="All_Minimize")
+                self._first_frame(5)
+            except (requests.RequestException, RuntimeError):
+                self._minimize_ok = False
+                self._show_live_view()
+                self._first_frame(10)
 
     def preview_frame(self) -> bytes:
         data = self._get("/liveview.jpg", timeout=5).content

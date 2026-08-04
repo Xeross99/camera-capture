@@ -18,9 +18,11 @@ Automatu — działa identycznie.
    - zrestartuj digiCamControl po włączeniu webservera,
    - sprawdź w przeglądarce: `http://127.0.0.1:5513` powinno odpowiadać.
 
-   digiCamControl musi być **uruchomiony przez cały czas pracy aplikacji**
-   (to on trzyma USB aparatu). Nasza aplikacja łączy się z nim po HTTP,
-   sama otwiera live view i ściąga zdjęcia do katalogu sesji.
+   Po tej jednorazowej konfiguracji **nie musisz go już uruchamiać ręcznie** —
+   nasza aplikacja sama startuje CameraControl.exe (typowe ścieżki instalatora;
+   inne miejsce wskaż przez `DIGICAMCONTROL_EXE` w `.env`), otwiera live view
+   i minimalizuje jego okna. dCC działa w tle jako "sterownik" USB aparatu
+   przez cały czas pracy aplikacji.
 
 ## Uruchomienie z kodu
 

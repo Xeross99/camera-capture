@@ -279,6 +279,7 @@ class WebUI:
         self.fps = 0.0
         self.bg_range: tuple[int, int] | None = None
         self.processing_file: str | None = None
+        self.syncing: list[str] = []  # nazwy zdjec pobieranych wlasnie z Automatu (skeletony w filmstripie)
         self.automat_sessions: list[dict] = []
         self.automat_sessions_error = ""
         self.attach_to: dict | None = None  # {"id", "name"} — podłączenie do istniejącej sesji Automatu
@@ -459,9 +460,72 @@ class WebUI:
             return
         self._log(*describe_opened_session(u, name))
         self.uploader = u
+        self._jobs.put(("sync_session", name))
 
     def _job_upload_off(self) -> None:
         self.uploader = None
+
+    def _job_sync_session(self, name: str) -> None:
+        """Sciaga z Automatu zdjecia sesji, ktorych nie ma lokalnie — operator
+        wszedl w sesje na maszynie, ktora jej nie strzelala (inny komputer,
+        wyczyszczone photos/). Raw nigdy nie szedl po sieci, wiec wraca sam
+        finalny JPEG; nie odtwarzamy podkatalogu raw/."""
+        u = self.uploader
+        if u is None or u.session_id is None:
+            return
+        try:
+            photos = u.session_photos()
+        except Exception as e:
+            self._log(f"✗ Lista zdjęć sesji z Automatu: {e}", "err")
+            return
+        outdir = self.base_output / name
+        have = set(_finals(outdir))
+        missing = []
+        for p in photos:
+            # `processed`/`filename` doklada dopiero nowszy Automat — na starszym
+            # instancie jedziemy po samym statusie, plik i tak sprawdzi endpoint
+            if p.get("status") != "processed" or p.get("processed") is False:
+                continue
+            # nazwa jest zdalna — bierzemy sam basename, zeby nie wyjsc
+            # z katalogu sesji; brak nazwy = nazywamy po id
+            fname = Path(str(p.get("filename") or "").strip()).name
+            if not fname.lower().endswith(".jpg") or fname.startswith("."):
+                fname = f"photo_{p['id']}.jpg"
+            if fname.endswith("_raw.jpg") or fname in have:
+                continue
+            have.add(fname)
+            missing.append((int(p["id"]), fname))
+        if not missing:
+            return
+        self._log(f"↓ Pobieram {len(missing)} zdjęć sesji z Automatu…")
+        outdir.mkdir(parents=True, exist_ok=True)
+        review = _load_review(outdir)
+        ok = 0
+        with self.lock:
+            self.syncing = [f for _, f in missing]
+        try:
+            for pid, fname in missing:
+                try:
+                    u.download_photo(pid, outdir / fname)
+                except Exception as e:
+                    self._log(f"✗ Pobranie {fname} z Automatu nie wyszło: {e}", "err")
+                    continue
+                finally:
+                    # skeleton znika razem z proba, nie dopiero z sukcesem —
+                    # inaczej po bledzie wisialby do konca sesji
+                    with self.lock:
+                        if fname in self.syncing:
+                            self.syncing.remove(fname)
+                review["automat"][fname] = pid
+                if fname not in review["uploaded"]:
+                    review["uploaded"].append(fname)
+                ok += 1
+        finally:
+            with self.lock:
+                self.syncing = []
+        _save_review(outdir, review)
+        if ok:
+            self._log(f"↓ Pobrano {ok} zdjęć z Automatu do {name}.", "ok")
 
     def _job_photo(self, job: dict) -> None:
         filename = job["filename"]
@@ -589,6 +653,7 @@ class WebUI:
         "photo": _job_photo,
         "open_session": _job_open_session,
         "upload_off": _job_upload_off,
+        "sync_session": _job_sync_session,
         "list_sessions": _job_list_sessions,
         "delete": _job_delete,
         "test": _job_test,
@@ -755,6 +820,7 @@ class WebUI:
                 "previewOn": self.preview_on,
                 "busy": self.busy,
                 "processing": self.processing_file,
+                "downloading": list(self.syncing),
                 "session": {
                     "name": self.name or "",
                     "dir": str(sdir) if sdir else "",

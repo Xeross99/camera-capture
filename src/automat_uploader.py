@@ -87,6 +87,46 @@ class AutomatUploader:
             raise self._err("lista sesji", r)
         return r.json()
 
+    def session_photos(self, session_id: int | None = None) -> list[dict]:
+        """Zdjecia sesji z Automatu: [{id, status, filename, processed}, ...] —
+        zrodlo prawdy przy otwarciu sesji na maszynie bez jej lokalnych plikow."""
+        sid = session_id if session_id is not None else self.session_id
+        if sid is None:
+            raise RuntimeError("open_session()/attach_session() musi byc zawolane wczesniej.")
+        r = requests.get(
+            f"{self.base}/api/photo_studio/sessions/{sid}",
+            headers=self.headers,
+            timeout=self.timeout_open,
+        )
+        if not r.ok:
+            raise self._err("zdjecia sesji", r)
+        return r.json().get("photos") or []
+
+    def download_photo(self, photo_id: int, dest: Path, session_id: int | None = None) -> Path:
+        """Pobiera przetworzony JPEG do `dest`. Zapis idzie do `.part` i dopiero
+        rename — przerwane pobieranie nie zostawi obcietego pliku, ktory
+        filmstrip pokazalby jako zdjecie sesji."""
+        sid = session_id if session_id is not None else self.session_id
+        if sid is None:
+            raise RuntimeError("open_session()/attach_session() musi byc zawolane wczesniej.")
+        r = requests.get(
+            f"{self.base}/api/photo_studio/sessions/{sid}/photos/{photo_id}/file",
+            headers=self.headers,
+            timeout=self.timeout_upload,
+            stream=True,
+        )
+        if not r.ok:
+            raise self._err("pobranie zdjecia", r)
+        tmp = dest.with_name(dest.name + ".part")
+        try:
+            with open(tmp, "wb") as fh:
+                for chunk in r.iter_content(64 * 1024):
+                    fh.write(chunk)
+            tmp.replace(dest)
+        finally:
+            tmp.unlink(missing_ok=True)
+        return dest
+
     def open_session(self, product_name: str) -> int:
         r = requests.post(
             f"{self.base}/api/photo_studio/sessions",

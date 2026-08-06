@@ -191,13 +191,30 @@ function sesjaScreen() {
       <div style="flex: 1; overflow: auto; padding: 16px 16px 8px; display: flex; flex-direction: column; gap: 18px;">
 
         <div style="display: flex; flex-direction: column; gap: 8px;">
+          <nav aria-label="Breadcrumb" style="display: flex;">
+            <ol role="list" style="display: flex; align-items: center; gap: 8px; margin: 0; padding: 0; list-style: none;">
+              <li style="display: flex;">
+                <a href="#" class="crumb" onclick="S.pendingNew = null; post({action: 'clear_session'}); return false;" style="display: flex;">
+                  <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" style="width: 15px; height: 15px; flex-shrink: 0; display: block;">
+                    <path d="M9.293 2.293a1 1 0 0 1 1.414 0l7 7A1 1 0 0 1 17 11h-1v6a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1v-3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-6H3a1 1 0 0 1-.707-1.707l7-7Z" clip-rule="evenodd" fill-rule="evenodd" />
+                  </svg>
+                  <span class="sr-only">Wszystkie sesje</span>
+                </a>
+              </li>
+              <li style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+                <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" style="width: 15px; height: 15px; flex-shrink: 0; color: #45454d;">
+                  <path d="M5.555 17.776l8-16 .894.448-8 16-.894-.448z" />
+                </svg>
+                <span aria-current="page" style="${mono} font-size: 11px; color: #b4b4bb; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${st.session.name}</span>
+              </li>
+            </ol>
+          </nav>
           <div style="${head}">Sesja zdjęciowa</div>
           <div style="display: flex; gap: 8px;">
             <input id="session-input" value="${st.session.name}" placeholder="nazwa produktu…" style="flex: 1; ${inp} font-size: 11.5px;" />
             <button onclick="commitName()" style="height: 26px; padding: 0 14px; background: linear-gradient(#4a4a50, #3d3d43); border: 1px solid #55555d; border-radius: 4px; color: #eaeaee; font-size: 12px; font-family: inherit;">Ustaw</button>
           </div>
           <div style="${mono} font-size: 10.5px; color: #77777f; word-break: break-all;">${st.session.dir || "(bez nazwy nie da się strzelić)"}</div>
-          <div onclick="S.pendingNew = null; post({action: 'clear_session'})" style="${mono} font-size: 10.5px; color: #6aa6ff;">‹ lista sesji</div>
         </div>
 
         <div style="display: flex; flex-direction: column; gap: 9px;">
@@ -234,7 +251,7 @@ function reviewShot() {
 }
 
 function reviewLabelText(shot) {
-  return `PODGLĄD ${shot.i + 1}/${S.state.shots.length} — ${shot.file} · ← → zmiana · ESC usuwa · SPACJA wraca do live`;
+  return `PODGLĄD ${shot.i + 1}/${S.state.shots.length} — ${shot.file} · ← → zmiana · BACKSPACE usuwa · ESC zamyka podgląd`;
 }
 
 function reviewOverlay() {
@@ -388,6 +405,16 @@ function filmstrip() {
       <div style="${mono} font-size: 9.5px; color: #6c6c74; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${st.processing}</div>
     </div>`);
   }
+  // pobieranie zdjec sesji z Automatu — kafelek-skeleton az plik wyladuje na dysku
+  (st.downloading || []).forEach(() => {
+    items.push(`
+    <div style="width: 104px; flex: 0 0 104px;">
+      <div class="skeleton" style="height: 72px; border: 1px solid #3a3a44; display: flex; align-items: flex-end; justify-content: space-between; padding: 4px; box-sizing: border-box;">
+        <span style="${mono} font-size: 10px; color: #8b8b93;">↓</span>
+      </div>
+      <div class="skeleton" style="height: 9px; margin-top: 6px;"></div>
+    </div>`);
+  });
   return items.join("") || `<div style="${mono} font-size: 10.5px; color: #6c6c74; padding: 26px 0;">(brak zdjęć w tej sesji)</div>`;
 }
 
@@ -468,7 +495,7 @@ function ustawieniaScreen() {
 let lastShellKey = "", lastSesja = "", lastUstawienia = "";
 
 const sesjaKey = st => JSON.stringify([st.session.name, st.session.dir, st.shots,
-  st.processing, st.post, st.previewOn, S.selShot, S.logOpen,
+  st.processing, st.downloading, st.post, st.previewOn, S.selShot, S.logOpen,
   S.gridOn, S.kadrOn, S.reviewMode]);
 
 function renderShell(force) {

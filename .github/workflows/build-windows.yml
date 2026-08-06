@@ -25,7 +25,7 @@ jobs:
       - name: Include .env template
         run: copy .env.example dist\CameraCapture\.env.example
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: CameraCapture-windows
           path: dist/CameraCapture

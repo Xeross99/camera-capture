@@ -19,14 +19,16 @@ else:
     class GPhoto2Error(Exception):
         pass
 
-# Wspolna tupla bledow aparatu dla obu backendow: gphoto2 + digiCamControl
-# (requests.RequestException dziedziczy po OSError).
+# Wspolna tupla bledow aparatu dla wszystkich backendow: gphoto2 + EDSDK +
+# digiCamControl (EdsdkError dziedziczy po RuntimeError,
+# requests.RequestException po OSError).
 CAMERA_ERRORS: tuple = (GPhoto2Error, RuntimeError, OSError)
 
 GPHOTO2_MISSING_HINT = (
     "python-gphoto2 nie jest zainstalowane (na Windowsie niedostepne). "
-    "Na Windowsie uzyj backendu digiCamControl: zainstaluj digiCamControl, "
-    "wlacz w nim webserver (port 5513) i ustaw CAMERA_BACKEND=digicamcontrol w .env."
+    "Na Windowsie uzyj backendu edsdk (poloz EDSDK.dll x64 obok aplikacji, "
+    "patrz WINDOWS.md) albo digiCamControl: zainstaluj dCC, wlacz webserver "
+    "(port 5513) i ustaw CAMERA_BACKEND=digicamcontrol w .env."
 )
 
 GP_ERROR_UNSPECIFIED = -1
@@ -514,9 +516,10 @@ class CameraSession:
 
 
 def make_camera_session():
-    """Wybiera backend aparatu wg CAMERA_BACKEND (auto/gphoto2/digicamcontrol).
+    """Wybiera backend aparatu wg CAMERA_BACKEND (auto/gphoto2/edsdk/digicamcontrol).
 
-    auto: gphoto2 jesli zaimportowalne, inaczej na Windows digiCamControl.
+    auto: gphoto2 jesli zaimportowalne; na Windows edsdk gdy lezy EDSDK.dll,
+    w przeciwnym razie digiCamControl.
     Zwracany obiekt ma interfejs CameraSession (open/preview_frame/capture_to/
     get_settings/set_setting/close)."""
     backend = CAMERA_BACKEND
@@ -524,10 +527,14 @@ def make_camera_session():
         if gp is not None:
             backend = "gphoto2"
         elif sys.platform == "win32":
-            backend = "digicamcontrol"
+            from .camera_edsdk import find_edsdk_dll
+            backend = "edsdk" if find_edsdk_dll() else "digicamcontrol"
         else:
             backend = "gphoto2"
 
+    if backend == "edsdk":
+        from .camera_edsdk import EdsdkSession
+        return EdsdkSession()
     if backend == "digicamcontrol":
         from .camera_digicam import DigiCamControlSession
         return DigiCamControlSession()

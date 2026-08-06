@@ -35,9 +35,12 @@ JPEG_QUALITY = 95
 
 CAMERA_IMAGE_FORMAT: str | None = "L"
 
-# Backend aparatu: "auto" (gphoto2 jesli dostepne, na Windows digiCamControl),
-# "gphoto2" lub "digicamcontrol".
+# Backend aparatu: "auto" (gphoto2 jesli dostepne; na Windows edsdk gdy jest
+# EDSDK.dll, inaczej digiCamControl), "gphoto2", "edsdk" lub "digicamcontrol".
 CAMERA_BACKEND = os.environ.get("CAMERA_BACKEND", "auto").strip().lower()
+# Canon EDSDK (backend Windows bez digiCamControl): sciezka do EDSDK.dll albo
+# katalogu z nia; bez tego szukana obok aplikacji (PROJECT_DIR i PROJECT_DIR/edsdk).
+EDSDK_DLL = os.environ.get("EDSDK_DLL", "").strip() or None
 # Webserver digiCamControl (Settings -> Webserver -> Enable, domyslny port 5513).
 DIGICAMCONTROL_URL = os.environ.get("DIGICAMCONTROL_URL", "http://127.0.0.1:5513").rstrip("/")
 # Sciezka do CameraControl.exe — gdy webserver nie odpowiada, backend sam

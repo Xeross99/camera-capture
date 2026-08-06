@@ -37,7 +37,6 @@ function shell() {
     <div style="margin-left: auto; display: flex; align-items: center; gap: 14px; ${mono} font-size: 11px; color: #7e7e85;">
       <div>sesja: <span style="color: #c9c9cf;" id="stat-name">—</span></div>
       <div>zdjęć: <span style="color: #c9c9cf;" id="stat-count">0</span></div>
-      <div>odrzuconych: <span style="color: #c9c9cf;" id="stat-rejected">0</span></div>
       <div style="display: flex; align-items: center; gap: 7px; font-family: -apple-system, 'Helvetica Neue', Helvetica, sans-serif; font-size: 11.5px; color: #9d9da3;">
         <div style="width: 7px; height: 7px; border-radius: 50%; background: ${conn ? "#34c759" : "#e05a5a"};"></div><span id="conn-label">${conn ? `Aparat połączony · ${st.fps} fps` : "Aparat rozłączony"}</span>
       </div>
@@ -172,7 +171,7 @@ function sesjaScreen() {
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
           <div style="font-size: 11.5px; font-weight: 600; color: #b6b6bd; letter-spacing: .03em; text-transform: uppercase;">Zdjęcia w sesji</div>
           <div style="display: flex; gap: 14px; ${mono} font-size: 10.5px; color: #7e7e85;">
-            <div>SPACJA podgląd</div><div>← → wybór</div><div>A akceptuj</div><div>X odrzuć</div>
+            <div>SPACJA podgląd</div><div>← → wybór</div><div>BACKSPACE usuń</div><div>ESC zamknij</div>
           </div>
         </div>
         <div id="filmstrip" style="display: flex; gap: 8px; overflow-x: auto; overflow-y: hidden;">${filmstrip()}</div>
@@ -459,8 +458,7 @@ function ustawieniaScreen() {
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; ${mono} font-size: 11px; color: #a8a8af;">
         <div>ENTER — zdjęcie</div><div>P — podgląd on/off</div>
         <div>SPACJA — podgląd zdjęć na live view</div><div>← → — zmiana zdjęcia / nawigacja</div>
-        <div>A — akceptuj</div><div>X — odrzuć</div>
-        <div>⌘R — przetwórz ponownie</div><div>⌘U — wyślij do Automatu</div>
+        <div>BACKSPACE — usuń oglądane zdjęcie</div><div>ESC — zamknij podgląd</div>
       </div>
     </div>`;
 }
@@ -518,7 +516,6 @@ function renderScreens(force) {
   const st = S.state;
   $("stat-name").textContent = st.session.name || "—";
   $("stat-count").textContent = st.session.count;
-  $("stat-rejected").textContent = st.session.rejected;
   updateVolatile(st);
 
   if (S.screen === "sesja" && !st.session.name) {
@@ -611,7 +608,7 @@ document.addEventListener("keydown", e => {
 
   // preventDefault na wszystkim co obslugujemy — bez tego WKWebView puszcza
   // klawisz w gore responder chain i macOS robi systemowy beep
-  if (["Enter", " ", "Escape", "ArrowLeft", "ArrowRight",
+  if (["Enter", " ", "Escape", "Backspace", "ArrowLeft", "ArrowRight",
        "p", "P", "a", "A", "x", "X"].includes(e.key)) {
     e.preventDefault();
   }
@@ -619,6 +616,9 @@ document.addEventListener("keydown", e => {
     case "Enter": shoot(); break;
     case " ": toggleReview(); break;
     case "Escape":
+      if (S.reviewMode) closeReview();
+      break;
+    case "Backspace":
       if (S.reviewMode) deleteReviewed();
       break;
     case "p": case "P": toggle("preview", !S.state.previewOn); break;

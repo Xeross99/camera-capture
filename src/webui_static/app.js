@@ -267,9 +267,9 @@ function navShot(dir) {
     const label = $("review-label");
     if (label) label.textContent = reviewLabelText(shot);
     img.style.transition = "none";
-    img.style.transform = `translateX(${dir * 14}px)`;
+    img.style.transform = `translateX(${dir * 6}px)`;
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      img.style.transition = "transform .12s ease-out";
+      img.style.transition = "transform .22s ease-out";
       img.style.transform = "none";
     }));
     [next - 1, next + 1].forEach(i => {

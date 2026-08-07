@@ -53,6 +53,8 @@ THUMB_SIZE = 360
 DEFAULT_NAME_PATTERN = "photo_{data}_{godzina}.jpg"
 TRASH_DIR = ".trash"        # photos/.trash/<data>-<godzina>_<sesja>/
 TRASH_STAMP = "%Y%m%d-%H%M%S"
+COVERS_DIR = ".covers"      # photos/.covers/<id sesji>.jpg — okladki ekranu startowego
+COVER_SIZE = 420
 
 
 def _now() -> str:
@@ -145,6 +147,17 @@ def _purge_trash(base_output: Path, days: int = TRASH_RETENTION_DAYS) -> int:
             shutil.rmtree(entry, ignore_errors=True)
             removed += 1
     return removed
+
+
+def _cover_path(base_output: Path, session_id: int) -> Path:
+    return base_output / COVERS_DIR / f"{int(session_id)}.jpg"
+
+
+def _make_cover(src: Path, dest: Path) -> None:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    img = Image.open(src)
+    img.thumbnail((COVER_SIZE, COVER_SIZE))
+    img.convert("RGB").save(dest, "JPEG", quality=82)
 
 
 def _trash_note() -> str:
@@ -277,10 +290,14 @@ class _Handler(BaseHTTPRequestHandler):
             pass
 
     def _serve_img(self, q: dict):
-        data = self.ui.image_bytes(
-            q.get("s", [""])[0], q.get("f", [""])[0],
-            thumb=q.get("thumb", ["0"])[0] == "1",
-        )
+        cover = q.get("cover", [""])[0]
+        if cover:
+            data = self.ui.cover_bytes(cover)
+        else:
+            data = self.ui.image_bytes(
+                q.get("s", [""])[0], q.get("f", [""])[0],
+                thumb=q.get("thumb", ["0"])[0] == "1",
+            )
         if data is None:
             self.send_error(404)
             return
@@ -832,9 +849,87 @@ class WebUI:
                 self.automat_sessions_error = str(e)
             self._log(f"✗ Lista sesji z Automatu: {e}", "err")
             return
+        for s in sessions:
+            s["cover"] = _cover_path(self.base_output, s.get("id") or 0).exists()
         with self.lock:
             self.automat_sessions = sessions
             self.automat_sessions_error = ""
+        self._jobs.put(("session_covers",))
+
+    def _local_cover_source(self, name: str) -> Path | None:
+        """Najnowsze zdjecie sesji lezace juz na dysku — okladka bez sieci."""
+        outdir = self.base_output / sanitize_name(name or "")
+        finals = _finals(outdir)
+        return (outdir / finals[-1]) if finals else None
+
+    @staticmethod
+    def _remote_cover_photo(uploader: AutomatUploader, session_id: int) -> int | None:
+        """Id najnowszego przetworzonego zdjecia sesji (kandydat na okladke)."""
+        for p in reversed(uploader.session_photos(session_id)):
+            if p.get("status") == "processed" and p.get("processed") is not False:
+                return int(p["id"])
+        return None
+
+    def _job_session_covers(self) -> None:
+        """Okladki kafelkow na ekranie startowym.
+
+        Automat nie oddaje miniatury w liscie sesji (`GET /sessions` to same
+        liczniki), wiec bierzemy najnowsze zdjecie sesji: najpierw z LOKALNEGO
+        folderu (zero sieci), a dopiero gdy go nie ma — `GET /sessions/:id` +
+        pobranie pliku. Wynik ladu je w photos/.covers/<id>.jpg i zostaje na
+        stale, wiec kolejne wejscia na ekran startowy juz nic nie sciagaja.
+
+        Robimy to tylko przy zamknietej sesji: ekran startowy nie jest wtedy
+        widoczny, a job workera nie moze opozniac obrobki zdjec."""
+        with self.lock:
+            sessions = list(self.automat_sessions)
+            in_session = self.name
+        if in_session:
+            return
+        uploader = None
+        made = 0
+        failed = 0
+        for s in sessions:
+            if self._stop.is_set():
+                return
+            sid = int(s.get("id") or 0)
+            if not sid or not int(s.get("photos_count") or 0):
+                continue
+            dest = _cover_path(self.base_output, sid)
+            if dest.exists():
+                continue
+            tmp = dest.with_suffix(".src")
+            try:
+                local = self._local_cover_source(str(s.get("name") or ""))
+                if local is not None:
+                    _make_cover(local, dest)
+                else:
+                    if uploader is None:
+                        uploader = self._make_uploader()
+                    pid = self._remote_cover_photo(uploader, sid)
+                    if pid is None:
+                        continue
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    # session_id jawnie — uploader okladek nie ma otwartej sesji
+                    uploader.download_photo(pid, tmp, session_id=sid)
+                    _make_cover(tmp, dest)
+                    made += 1
+            except Exception as e:
+                # brak okladki to kosmetyka, wiec nie przerywamy listy — ale
+                # pierwszy blad musi byc widoczny, inaczej cicha literowka
+                # w wywolaniu API zostaje w kodzie na zawsze
+                if not failed:
+                    self._log(f"✗ Okładka sesji {s.get('name')!r}: {e}", "warn")
+                failed += 1
+                continue
+            finally:
+                tmp.unlink(missing_ok=True)
+            with self.lock:
+                for entry in self.automat_sessions:
+                    if int(entry.get("id") or 0) == sid:
+                        entry["cover"] = True
+        if made:
+            self._log(f"↓ Pobrano {made} {_photos_word(made)} na okładki sesji.")
 
     def _job_purge_trash(self) -> None:
         """Dopiero TU pliki znikaja naprawde — wpisy kosza starsze niz
@@ -948,6 +1043,7 @@ class WebUI:
         "upload_off": _job_upload_off,
         "sync_session": _job_sync_session,
         "list_sessions": _job_list_sessions,
+        "session_covers": _job_session_covers,
         "delete": _job_delete,
         "test": _job_test,
         "check_update": _job_check_update,
@@ -1198,6 +1294,15 @@ class WebUI:
     def latest_frame(self) -> bytes | None:
         with self._frame_lock:
             return self._frame
+
+    def cover_bytes(self, session_id: str) -> bytes | None:
+        """Okladka sesji z photos/.covers — id jest liczba, wiec sciezka nie
+        moze uciec z katalogu (zadnego skladania nazw z wejscia)."""
+        try:
+            path = _cover_path(self.base_output, int(session_id))
+        except (TypeError, ValueError):
+            return None
+        return path.read_bytes() if path.is_file() else None
 
     def image_bytes(self, session: str, filename: str, thumb: bool) -> bytes | None:
         base = self.base_output.resolve()

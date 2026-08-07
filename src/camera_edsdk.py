@@ -121,6 +121,7 @@ class EdsdkSession:
         self._initialized = False
         self._handler_ref = None      # WINFUNCTYPE — musi zyc tak dlugo jak sesja
         self._pending_item = None     # DirItem czekajacy na download (z callbacka)
+        self._com_ready = False       # czy to MY zainicjowalismy COM w tym watku
 
     # --- niskopoziomowe ---
 
@@ -173,6 +174,25 @@ class EdsdkSession:
         code = self._sdk.EdsGetPropertyData(self._camera, prop, 0, 4, ctypes.byref(val))
         return val.value if code == _EDS_ERR_OK else None
 
+    def _init_com(self) -> None:
+        """COM w apartamencie jednowatkowym MUSI byc zainicjowany w tym samym
+        watku, ktory wola SDK.
+
+        Na Windowsie EDSDK dostarcza zdarzenia aparatu przez kolejke komunikatow
+        COM, a `EdsGetEvent()` je z niej zbiera. Bez `CoInitializeEx` migawka
+        strzela normalnie (to zwykla komenda po USB), ale zdarzenie
+        `DirItemRequestTransfer` nigdy nie dolatuje — aplikacja stoi na
+        „Wyzwalam migawke…", az wpadnie w timeout. Objaw myli, bo aparat
+        slychac, wiec wyglada na zaciecie aplikacji, a nie na brak zdarzenia.
+
+        RPC_E_CHANGED_MODE (0x80010106) = ktos juz zainicjowal ten watek w innym
+        modelu; S_FALSE = juz zainicjowany. Oba sa nieszkodliwe."""
+        try:
+            hr = ctypes.windll.ole32.CoInitializeEx(None, 0x2)  # APARTMENTTHREADED
+            self._com_ready = hr in (0, 1)   # S_OK / S_FALSE — nasze CoUninitialize
+        except OSError:
+            self._com_ready = False
+
     def _pump(self) -> None:
         self._sdk.EdsGetEvent()
 
@@ -181,6 +201,7 @@ class EdsdkSession:
     def open(self) -> None:
         if sys.platform != "win32":
             raise RuntimeError("backend edsdk dziala tylko na Windows")
+        self._init_com()
         self._sdk = self._load()
         self._check(self._sdk.EdsInitializeSDK(), "EdsInitializeSDK")
         self._initialized = True
@@ -262,6 +283,10 @@ class EdsdkSession:
 
     def capture_to(self, workdir: Path) -> Path:
         self._pending_item = None
+        # Pojemnosc hosta odswiezana PRZED kazdym strzalem: aparat odejmuje sobie
+        # zadeklarowane miejsce po kazdym zdjeciu i po kilku ujeciach uznaje, ze
+        # nie ma gdzie odeslac pliku — przestaje go wtedy oddawac bez zadnego bledu.
+        self._sdk.EdsSetCapacity(self._camera, _EdsCapacity(0x7FFFFFFF, 0x1000, 1))
         code = self._sdk.EdsSendCommand(self._camera, _CMD_PRESS_SHUTTER,
                                         _SHUTTER_COMPLETELY)
         self._sdk.EdsSendCommand(self._camera, _CMD_PRESS_SHUTTER, _SHUTTER_OFF)
@@ -271,8 +296,10 @@ class EdsdkSession:
         while self._pending_item is None:
             if time.monotonic() >= deadline:
                 raise RuntimeError(
-                    f"EDSDK: aparat nie oddal zdjecia w {_CAPTURE_TIMEOUT_S} s "
-                    "(transfer nie doszedl?)"
+                    f"EDSDK: migawka zadzialala, ale aparat nie oddal pliku w "
+                    f"{_CAPTURE_TIMEOUT_S} s. Najczestsze przyczyny: zdjecia ida "
+                    "na karte zamiast do komputera, albo zdarzenia SDK nie docieraja "
+                    "do aplikacji. Sprobuj wypiac i wpiac kabel USB."
                 )
             self._pump()
             time.sleep(0.05)
@@ -361,3 +388,9 @@ class EdsdkSession:
                 pass
             self._initialized = False
         self._sdk = None
+        if self._com_ready:
+            try:
+                ctypes.windll.ole32.CoUninitialize()
+            except OSError:
+                pass
+            self._com_ready = False

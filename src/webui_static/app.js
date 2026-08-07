@@ -5,6 +5,8 @@ const S = {           // stan klienta
   selShot: -1,
   gridOn: true, kadrOn: true, reviewMode: false, lastLogLen: -1,
   pendingNew: null,   // {name, match} — wpisana nazwa koliduje z istniejącą sesją Automatu
+  updateDismissed: "",// wersja, dla której operator kliknął „Później"
+  checkStartedAt: 0,  // klik w „Sprawdź aktualizacje" — minimalny czas spinnera
 };
 const $ = id => document.getElementById(id);
 const post = (payload) => fetch("/api/action", { method: "POST", body: JSON.stringify(payload) });
@@ -23,6 +25,24 @@ const MARKS = {
   wait: { mark: "…", color: "#e0b96a", border: "#3a3a42" },
 };
 
+// Baner aktualizacji nad zakladkami. Widoczny dopiero gdy backend znajdzie
+// nowszy release; „Później" chowa go do konca uruchomienia (per wersja).
+function updateBanner() {
+  const u = S.state && S.state.update;
+  if (!u || !u.available || S.updateDismissed === u.available) return "";
+  const right = u.canApply
+    ? `<button onclick="applyUpdate()" ${u.busy ? "disabled" : ""} style="height: 24px; padding: 0 12px; ${btnBlue} border-radius: 4px; font-size: 11.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 7px; ${u.busy ? "opacity: .6;" : ""}">${u.busy ? `<span class="spinner"></span>Aktualizuję…` : "Zaktualizuj i uruchom ponownie"}</button>
+       <button onclick="S.updateDismissed = '${u.available}'; renderShell(true)" style="${btnGray} height: 24px; padding: 0 10px; font-size: 11.5px; opacity: .75;">Później</button>`
+    : `<span style="${mono} font-size: 11px; color: #d8c39a;">uruchomienie ze źródeł — zaktualizuj przez <b>git pull</b></span>
+       <button onclick="S.updateDismissed = '${u.available}'; renderShell(true)" style="${btnGray} height: 24px; padding: 0 10px; font-size: 11.5px; opacity: .75;">Ukryj</button>`;
+  return `
+  <div style="flex: 0 0 auto; background: #2e2921; border-bottom: 1px solid #4d4126; display: flex; align-items: center; gap: 12px; padding: 7px 14px;">
+    <span style="font-size: 12.5px; color: #f0e2c2;">Dostępna aktualizacja <b>${u.available}</b> <span style="${mono} font-size: 11px; color: #b9a888;">(masz ${u.current})</span></span>
+    <span id="update-progress" style="${mono} font-size: 11px; color: #b9a888;">${u.busy && u.progress ? u.progress + "%" : ""}</span>
+    <span style="margin-left: auto; display: flex; align-items: center; gap: 8px;">${right}</span>
+  </div>`;
+}
+
 function shell() {
   const st = S.state;
   const conn = st && st.connected;
@@ -30,6 +50,7 @@ function shell() {
   const bar = k => S.screen === k ? ACCENT : "transparent";
   return `
 <div style="width: 100%; height: 100%; background: #232326; overflow: hidden; display: flex; flex-direction: column; font-family: -apple-system, 'Helvetica Neue', Helvetica, sans-serif; color: #e8e8ea; font-size: 13px;">
+  ${updateBanner()}
 
   <div style="height: 34px; flex: 0 0 34px; background: #2a2a2d; border-bottom: 1px solid #17171a; display: flex; align-items: stretch; padding: 0 10px; gap: 2px;">
     <div onclick="go('sesja')" style="display: flex; align-items: center; padding: 0 18px; font-size: 12.5px; font-weight: 500; cursor: default; color: ${tab("sesja")}; border-bottom: 2px solid ${bar("sesja")};">Sesja</div>
@@ -425,19 +446,34 @@ function logMark(kind) {
   return "";
 }
 
+// Powtórzony wpis nie jest dopisywany drugi raz (patrz WebUI._log) — backend
+// podbija licznik, my doklejamy „×N".
+const logCount = l => (l.n > 1 ? ` <span style="color: #7e7e85;">×${l.n}</span>` : "");
+
+// Sygnatura logu dla updateVolatile(): sama długość nie wystarczy, bo powtórki
+// rosną licznikiem w OSTATNIM wpisie, nie nowym elementem.
+function logSig(st) {
+  const last = st.log[st.log.length - 1];
+  return `${st.log.length}:${last ? last.n : 0}`;
+}
+
 function lastLogLine() {
   const log = S.state.log;
   const last = log[log.length - 1];
   if (!last) return `<span style="flex: 1;"></span>`;
-  return `${logMark(last.kind)}<span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${last.text}</span>`;
+  return `${logMark(last.kind)}<span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${last.text}${logCount(last)}</span>`;
 }
 
 function logLines() {
-  return S.state.log.map(l => `<div>${logMark(l.kind)}${l.t} · ${l.text}</div>`).join("");
+  return S.state.log.map(l => `<div>${logMark(l.kind)}${l.t} · ${l.text}${logCount(l)}</div>`).join("");
 }
 
 function ustawieniaScreen() {
-  const st = S.state, cfg = st.settings;
+  const st = S.state, cfg = st.settings, u = st.update || {current: "?", status: ""};
+  // Backend ustawia `checking` już w handlerze akcji, ale poll ma 500 ms —
+  // `S.checkStartedAt` trzyma spinner od razu po kliknięciu (i minimum ~600 ms,
+  // żeby szybka odpowiedź nie mignęła bez śladu).
+  const checking = u.checking || (S.checkStartedAt && Date.now() - S.checkStartedAt < 600);
   const card = `display: flex; flex-direction: column; gap: 12px; background: #232326; border: 1px solid #2f2f35; border-radius: 6px; padding: 16px 18px;`;
   return `
     <div style="${card}">
@@ -480,6 +516,21 @@ function ustawieniaScreen() {
       </div>
     </div>
 
+    <div style="${card}">
+      <div style="${head}">Aktualizacje</div>
+      <div style="display: grid; grid-template-columns: 120px 1fr; gap: 8px 10px; align-items: center;">
+        <div style="color: #b4b4bb;">Wersja</div>
+        <div style="${mono} font-size: 11.5px; color: #c9c9cf;">${u.current}</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+        <button onclick="checkUpdate()" ${checking ? "disabled" : ""} style="${btnGray} font-size: 11.5px; display: inline-flex; align-items: center; gap: 7px; ${checking ? "opacity: .7;" : ""}">${checking ? `<span class="spinner"></span>Sprawdzam…` : "Sprawdź aktualizacje"}</button>
+        ${u.available && u.canApply ? `<button onclick="applyUpdate()" ${u.busy ? "disabled" : ""} style="height: 26px; padding: 0 12px; ${btnBlue} border-radius: 4px; font-size: 11.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 7px; ${u.busy ? "opacity: .6;" : ""}">${u.busy ? `<span class="spinner"></span>Aktualizuję…` : `Zainstaluj ${u.available}`}</button>` : ""}
+        <span style="${mono} font-size: 10.5px; color: ${checking ? "#9d9da3" : u.status.startsWith("✗") ? "#e07a7a" : u.available ? "#e0b96a" : "#9fe0a8"};">${checking ? "Pytam GitHuba o najnowsze wydanie…" : u.status}</span>
+      </div>
+      ${u.available && !u.canApply ? `<div style="${mono} font-size: 10.5px; color: #77777f;">Uruchomienie ze źródeł — aktualizacja przez <b>git pull</b>. Automatyczna podmiana działa tylko dla .exe na Windowsie.</div>` : ""}
+      ${u.available && u.notes ? `<div style="${mono} font-size: 10.5px; color: #8f8f97; white-space: pre-wrap; max-height: 96px; overflow: auto;">${u.notes}</div>` : ""}
+    </div>
+
     <div style="display: flex; flex-direction: column; gap: 10px; background: #232326; border: 1px solid #2f2f35; border-radius: 6px; padding: 16px 18px;">
       <div style="${head}">Skróty klawiszowe</div>
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; ${mono} font-size: 11px; color: #a8a8af;">
@@ -500,7 +551,11 @@ const sesjaKey = st => JSON.stringify([st.session.name, st.session.dir, st.shots
 
 function renderShell(force) {
   const st = S.state;
-  const key = JSON.stringify([S.screen, st.connected]);
+  const u = st.update || {};
+  // progress pobierania NIE jest w kluczu — łata go updateVolatile(), bo
+  // rebuild shella niszczy <img> streamu (miganie przy każdym procencie)
+  const key = JSON.stringify([S.screen, st.connected,
+    u.available, u.busy, u.canApply, S.updateDismissed]);
   if (force || key !== lastShellKey) {
     lastShellKey = key;
     const focused = document.activeElement && document.activeElement.id;
@@ -527,8 +582,14 @@ function updateVolatile(st) {
   }
   const sl = $("shoot-label");
   if (sl) sl.textContent = st.busy || "Zrób zdjęcie";
-  if (st.log.length !== S.lastLogLen) {
-    S.lastLogLen = st.log.length;
+  const up = $("update-progress");
+  if (up) {
+    const u = st.update || {};
+    up.textContent = u.busy && u.progress ? `${u.progress}%` : "";
+  }
+  const sig = logSig(st);
+  if (sig !== S.lastLogLen) {
+    S.lastLogLen = sig;
     const line = $("log-line");
     if (line) line.innerHTML = lastLogLine();
     const lp = $("log-panel");
@@ -563,7 +624,7 @@ function renderScreens(force) {
     const key = sesjaKey(st);
     if (force || key !== lastSesja) {
       lastSesja = key;
-      S.lastLogLen = st.log.length;
+      S.lastLogLen = logSig(st);
       const el = document.activeElement;
       const editing = el && (el.id === "session-input") && el.value !== st.session.name;
       const keep = editing ? el.value : null;
@@ -575,7 +636,7 @@ function renderScreens(force) {
       if (lp) lp.scrollTop = lp.scrollHeight;
     }
   } else {
-    const key = JSON.stringify([st.settings]);
+    const key = JSON.stringify([st.settings, st.update]);
     if (force || key !== lastUstawienia) {
       if (document.activeElement && document.activeElement.tagName === "INPUT") return;
       lastUstawienia = key;
@@ -614,6 +675,23 @@ function toggleReview() {
   renderScreens();
 }
 function toggle(key, value) { post({ action: "toggle", key, value }); }
+
+function checkUpdate() {
+  S.checkStartedAt = Date.now();
+  post({ action: "check_update" });
+  renderScreens(true);
+  // pod koniec minimalnego czasu spinnera przemaluj — poll mógł w tym czasie
+  // przynieść już gotowy wynik, a klucz ekranu się wtedy nie zmienił
+  setTimeout(() => { S.checkStartedAt = 0; renderScreens(true); }, 650);
+}
+
+// Backend pobiera paczke, zamyka aplikacje i odpala updater .bat, ktory
+// podmienia pliki i uruchamia .exe z powrotem — okno zniknie samo.
+function applyUpdate() {
+  const u = S.state.update || {};
+  if (!u.canApply || u.busy) return;
+  post({ action: "apply_update" });
+}
 
 // ---------- klawiatura ----------
 

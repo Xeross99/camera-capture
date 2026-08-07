@@ -4,7 +4,49 @@
 # Wynik: dist/CameraCapture/CameraCapture.exe (onedir; .env i photos/ zyja
 # obok .exe — patrz PROJECT_DIR w src/config.py).
 
+import os
+import sys
+
 from PyInstaller.utils.hooks import collect_all, copy_metadata
+
+# Wersja z src/version.py (jedno zrodlo prawdy — porownuje ja tez updater
+# z tagiem na GitHubie), stad generowany zasob VS_VERSION_INFO dla .exe.
+sys.path.insert(0, SPECPATH)
+from src.version import APP_VERSION
+
+_v = tuple(int(x) for x in (APP_VERSION.split(".") + ["0", "0", "0"])[:3]) + (0,)
+_build = os.path.join(SPECPATH, "build")
+os.makedirs(_build, exist_ok=True)
+version_res = os.path.join(_build, "version_info.txt")
+with open(version_res, "w", encoding="utf-8") as fh:
+    fh.write(f"""# GENEROWANE przez CameraCapture.spec z src/version.py — nie edytowac recznie.
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers={_v},
+    prodvers={_v},
+    mask=0x3F,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0),
+  ),
+  kids=[
+    StringFileInfo([
+      StringTable("040904B0", [
+        StringStruct("ProductName", "Trixbrix - Camera Capture"),
+        StringStruct("FileDescription", "Trixbrix - Camera Capture"),
+        StringStruct("CompanyName", "TrixBrix.eu"),
+        StringStruct("LegalCopyright", "Autor: Michał Krzysteczko"),
+        StringStruct("FileVersion", "{APP_VERSION}"),
+        StringStruct("ProductVersion", "{APP_VERSION}"),
+        StringStruct("OriginalFilename", "Trixbrix - Camera Capture.exe"),
+      ]),
+    ]),
+    VarFileInfo([VarStruct("Translation", [1045, 1200])]),
+  ],
+)
+""")
 
 datas = [
     ("src/webui_static", "src/webui_static"),
@@ -54,7 +96,7 @@ exe = EXE(
     upx=False,
     console=False,
     icon="assets/icons/trixbrix.ico",
-    version="version_info.txt",
+    version=version_res,
 )
 coll = COLLECT(
     exe,

@@ -8,6 +8,7 @@ import select
 import sys
 import tempfile
 import termios
+import threading
 import tty
 from collections import deque
 from datetime import datetime
@@ -24,6 +25,7 @@ from .camera import capture_from_camera
 from .config import AUTOMAT_API_TOKEN
 from .image_processing import LOGO_POSITIONS, process
 from .naming import sanitize_name
+from .version import APP_VERSION
 
 __all__ = ["CaptureTUI", "sanitize_name"]
 
@@ -444,9 +446,25 @@ class CaptureTUI:
 
     # ---------- petla ----------
 
+    def _check_update_bg(self) -> None:
+        """Sprawdzenie nowszego wydania w tle (sekundy sieci — nie blokujemy
+        startu). TUI chodzi ze zrodel, wiec tylko informujemy o `git pull`;
+        samo-aktualizacja jest w aplikacji okienkowej na Windowsie."""
+        try:
+            from .updater import check_for_update
+
+            info = check_for_update()
+        except Exception:
+            return
+        if info:
+            self.log(Text(
+                f"Dostepna nowa wersja {info['version']} (masz {APP_VERSION}) — git pull",
+                style="yellow"))
+
     def run(self) -> None:
         from rich.live import Live
 
+        threading.Thread(target=self._check_update_bg, daemon=True).start()
         with _KeyReader() as keys, Live(
             console=self.console, screen=True, auto_refresh=True,
             refresh_per_second=12, transient=True,

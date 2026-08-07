@@ -83,6 +83,30 @@ katalog `photos\`. Przy pierwszym czyszczeniu tła rembg pobiera model
 u2netp do `%USERPROFILE%\.u2net\` (jednorazowo potrzebny internet —
 albo skopiuj tam gotowy `u2netp.onnx`).
 
+Numer wersji bierze się z `src/version.py` — `CameraCapture.spec` generuje z
+niego zasób wersji `.exe` (`build\version_info.txt`), więc nie ma czego
+edytować ręcznie.
+
+## Aktualizacje
+
+Aplikacja przy starcie sprawdza GitHub Releases i gdy jest nowsze wydanie,
+pokazuje nad zakładkami baner **„Dostępna aktualizacja X.Y.Z"** z przyciskiem
+**„Zaktualizuj i uruchom ponownie"**. Klik = pobranie paczki, zamknięcie
+aplikacji, podmiana plików i automatyczny restart (kilkanaście–kilkadziesiąt
+sekund, zależnie od łącza). „Później" chowa baner do następnego uruchomienia.
+
+Co przeżywa aktualizację: `.env`, `photos\`, ręcznie dołożone `EDSDK.dll` —
+podmieniany jest tylko `.exe` i `_internal\`. Ręczna alternatywa: pobrać
+`CameraCapture-windows-vX.Y.Z.zip` z zakładki Releases i rozpakować go
+na istniejący katalog aplikacji (z zamkniętą aplikacją).
+
+Nowa wersja jest niepodpisana, więc Windows SmartScreen może przy pierwszym
+uruchomieniu pokazać ostrzeżenie („Więcej informacji" → „Uruchom mimo to").
+
+Wydanie nowej wersji (dla dewelopera): podbij `APP_VERSION` w
+`src/version.py`, commit, `git tag vX.Y.Z`, `git push --tags` — CI zbuduje
+`.exe` i opublikuje release z paczką.
+
 ## Ograniczenia backendu EDSDK
 
 - Ekspozycję (ISO/przysłona/czas/WB/AF) ustawia się na aparacie —

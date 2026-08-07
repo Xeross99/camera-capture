@@ -65,6 +65,10 @@ SHADOW_RADIUS_RATIO = 0.20
 
 SHARPEN_PERCENT = 120
 
+# Lokalny kosz (photos/.trash): zdjecia i sesje skasowane w aplikacji nie znikaja
+# od razu, tylko po tylu dniach. 0 = kasowanie natychmiastowe (bez kosza).
+TRASH_RETENTION_DAYS = int(os.environ.get("TRASH_RETENTION_DAYS", "30"))
+
 AUTOMAT_BASE_URL = os.environ.get("AUTOMAT_URL", "http://localhost:3000")
 AUTOMAT_API_TOKEN = os.environ.get("AUTOMAT_TOKEN")
 AUTOMAT_UPLOAD_ENABLED = os.environ.get("AUTOMAT_UPLOAD_ENABLED", "true").lower() in ("1", "true", "yes", "on")

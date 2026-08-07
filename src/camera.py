@@ -113,11 +113,27 @@ def list_image_formats(camera) -> dict[str, list[str]]:
     return out
 
 
+_warned_once: set[str] = set()
+
+
+def _warn_once(key: str, message: str) -> None:
+    """Ostrzezenia konfiguracyjne leca RAZ na proces.
+
+    GUI ma petle auto-reconnectu (co 2–5 s), a `_configure_camera()` chodzi
+    przy kazdym udanym init — bez tego jedno urzadzenie, ktore nie eksponuje
+    'imageformat', zalewa terminal setkami identycznych linii."""
+    if key in _warned_once:
+        return
+    _warned_once.add(key)
+    print(message)
+
+
 def _apply_image_format(camera, target: str) -> None:
     config = camera.get_config()
     name, widget = _find_widget(config, _CONFIG_NAMES)
     if widget is None:
-        print(f"Uwaga: aparat nie eksponuje {_CONFIG_NAMES}, pomijam zmiane formatu.")
+        _warn_once("imageformat-missing",
+                   f"Uwaga: aparat nie eksponuje {_CONFIG_NAMES}, pomijam zmiane formatu.")
         return
 
     choices = [widget.get_choice(i) for i in range(widget.count_choices())]
@@ -126,9 +142,10 @@ def _apply_image_format(camera, target: str) -> None:
     else:
         chosen = next((c for c in choices if target.lower() in c.lower()), None)
     if chosen is None:
-        print(
+        _warn_once(
+            f"imageformat-choice:{name}:{target}",
             f"Uwaga: '{target}' niedostepny w {name}. "
-            f"Dostepne: {choices}. Zostawiam bez zmian."
+            f"Dostepne: {choices}. Zostawiam bez zmian.",
         )
         return
 
@@ -156,7 +173,8 @@ def _disable_autorotation(camera) -> None:
             None,
         )
     if target is None:
-        print(f"Uwaga: '{name}' nie ma wartosci 'Off'. Dostepne: {choices}")
+        _warn_once(f"autorotate:{name}",
+                   f"Uwaga: '{name}' nie ma wartosci 'Off'. Dostepne: {choices}")
         return
     if widget.get_value() == target:
         return
@@ -311,11 +329,13 @@ def _configure_camera(camera) -> None:
         try:
             _apply_image_format(camera, CAMERA_IMAGE_FORMAT)
         except gp.GPhoto2Error as e:
-            print(f"Uwaga: nie udalo sie ustawic formatu obrazu ({e}).")
+            _warn_once("imageformat-error",
+                       f"Uwaga: nie udalo sie ustawic formatu obrazu ({e}).")
     try:
         _disable_autorotation(camera)
     except gp.GPhoto2Error as e:
-        print(f"Uwaga: nie udalo sie wylaczyc auto-rotacji ({e}).")
+        _warn_once("autorotate-error",
+                   f"Uwaga: nie udalo sie wylaczyc auto-rotacji ({e}).")
 
 
 def _capture_with_retry(camera) -> tuple["gp.CameraFilePath", "gp.Camera"]:

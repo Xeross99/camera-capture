@@ -59,6 +59,15 @@ _SHUTTER_COMPLETELY = 3
 
 _OBJECT_EVENT_ALL = 0x0200
 _OBJECT_EVENT_DIR_ITEM_REQUEST_TRANSFER = 0x0208
+# Zdarzenia, przy ktorych dostajemy uchwyt do POBRANIA pliku. `RequestTransfer`
+# przychodzi przy SaveTo=Host, `DirItemCreated` gdy zdjecie wyladowalo na karcie
+# (SaveTo nie zaskoczylo) — sciagnac da sie w obu przypadkach, wiec bierzemy oba
+# zamiast czekac w nieskonczonosc na ten jeden wlasciwy.
+_OBJECT_EVENTS_WITH_ITEM = (
+    0x0208,   # kEdsObjectEvent_DirItemRequestTransfer
+    0x0209,   # kEdsObjectEvent_DirItemRequestTransferDT
+    0x0204,   # kEdsObjectEvent_DirItemCreated  (plik na karcie)
+)
 
 _CAPTURE_TIMEOUT_S = 30
 _FIRST_FRAME_TIMEOUT_S = 10
@@ -122,6 +131,7 @@ class EdsdkSession:
         self._handler_ref = None      # WINFUNCTYPE — musi zyc tak dlugo jak sesja
         self._pending_item = None     # DirItem czekajacy na download (z callbacka)
         self._com_ready = False       # czy to MY zainicjowalismy COM w tym watku
+        self._seen_events = []        # kody zdarzen obiektowych — diagnostyka
 
     # --- niskopoziomowe ---
 
@@ -235,7 +245,11 @@ class EdsdkSession:
                                        ctypes.c_void_p, ctypes.c_void_p)
 
         def _on_object(event, obj, _ctx):
-            if event == _OBJECT_EVENT_DIR_ITEM_REQUEST_TRANSFER:
+            # Kazde zdarzenie zapamietujemy: gdy zdjecie nie dojdzie, to jedyny
+            # slad, czy aparat w ogole cos przyslal, czy nic do nas nie dociera.
+            if event not in self._seen_events:
+                self._seen_events.append(event)
+            if event in _OBJECT_EVENTS_WITH_ITEM and self._pending_item is None:
                 self._pending_item = obj
             elif obj:
                 self._sdk.EdsRelease(obj)
@@ -283,6 +297,7 @@ class EdsdkSession:
 
     def capture_to(self, workdir: Path) -> Path:
         self._pending_item = None
+        self._seen_events = []
         # Pojemnosc hosta odswiezana PRZED kazdym strzalem: aparat odejmuje sobie
         # zadeklarowane miejsce po kazdym zdjeciu i po kilku ujeciach uznaje, ze
         # nie ma gdzie odeslac pliku — przestaje go wtedy oddawac bez zadnego bledu.
@@ -293,15 +308,29 @@ class EdsdkSession:
         self._check(code, "PressShutterButton")
 
         deadline = time.monotonic() + _CAPTURE_TIMEOUT_S
+        last_evf = 0.0
         while self._pending_item is None:
             if time.monotonic() >= deadline:
+                seen = ", ".join(f"0x{e:04X}" for e in self._seen_events) or "ZADNYCH"
+                save_to = self._get_u32(_PROP_SAVE_TO)
                 raise RuntimeError(
                     f"EDSDK: migawka zadzialala, ale aparat nie oddal pliku w "
-                    f"{_CAPTURE_TIMEOUT_S} s. Najczestsze przyczyny: zdjecia ida "
-                    "na karte zamiast do komputera, albo zdarzenia SDK nie docieraja "
-                    "do aplikacji. Sprobuj wypiac i wpiac kabel USB."
+                    f"{_CAPTURE_TIMEOUT_S} s. Zdarzenia od aparatu: {seen}; "
+                    f"SaveTo={save_to} (2 = do komputera). "
+                    "Sprobuj wypiac i wpiac kabel USB."
                 )
             self._pump()
+            # Podglad jest ciagniety dalej, mimo ze klatki lecą do kosza. W GUI
+            # Canona petla EVF chodzi przez caly czas robienia zdjecia i to ona
+            # jest wzorcem; przy bezlusterkowcu przerwanie odbioru EVF potrafi
+            # zatrzymac aparat w polowie transakcji. Bledy sa tu bez znaczenia —
+            # w trakcie zapisu EVF ma prawo nie odpowiadac.
+            if time.monotonic() - last_evf >= 0.2:
+                last_evf = time.monotonic()
+                try:
+                    self.preview_frame()
+                except Exception:
+                    pass
             time.sleep(0.05)
 
         item = self._pending_item

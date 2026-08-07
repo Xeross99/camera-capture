@@ -1015,14 +1015,28 @@ class WebUI:
                          daemon=True).start()
 
     def _restart_into(self, staging) -> None:
+        """Odpala aktualizator i dopiero WTEDY zamyka aplikacje.
+
+        Kolejnosc jest istotna: gdy `.bat` nie wystartuje (zla sciezka, brak
+        uprawnien), aplikacja MUSI zostac otwarta z czytelnym bledem. Wczesniej
+        `os._exit(0)` siedzial w `finally` i kazda wtopa aktualizatora wygladala
+        identycznie — program znikal, nic sie nie zmienialo, nie bylo sladu."""
         from . import updater
 
         time.sleep(0.6)  # niech front zdazy pokazac status przed zniknieciem okna
-        self.stop()      # domkniecie sesji aparatu — porzucone PTP = BUSY po restarcie
         try:
-            updater.apply_update_and_restart(staging)
-        finally:
-            os._exit(0)
+            log = updater.apply_update_and_restart(staging)
+        except Exception as e:
+            self._log(f"✗ Nie udało się uruchomić aktualizatora: {e}", "err")
+            self._log("Aplikacja działa dalej — zaktualizuj ręcznie z GitHub Releases.",
+                      "warn")
+            with self.lock:
+                self.update_busy = False
+                self.update_status = f"✗ {e}"
+            return
+        self._log(f"Aktualizator wystartował (log: {log}).", "ok")
+        self.stop()   # domkniecie sesji aparatu — porzucone PTP = BUSY po restarcie
+        os._exit(0)
 
     def _job_test(self) -> None:
         import requests

@@ -3,7 +3,7 @@ const ACCENT = "#4a8cff";
 const S = {           // stan klienta
   screen: "sesja", logOpen: false, state: null,
   selShot: -1,
-  gridOn: true, kadrOn: true, reviewMode: false, lastLogLen: -1,
+  grid: 0, kadrOn: true, reviewMode: false, lastLogLen: -1,
   pendingNew: null,   // {name, match} — wpisana nazwa koliduje z istniejącą sesją Automatu
   updateDismissed: "",// wersja, dla której operator kliknął „Później"
   checkStartedAt: 0,  // klik w „Sprawdź aktualizacje" — minimalny czas spinnera
@@ -19,6 +19,30 @@ const btnBlue = `background: linear-gradient(#4a8cff, #2f72e8); border: 1px soli
 const chk = `accent-color: ${ACCENT}; width: 14px; height: 14px;`;
 const label = `display: flex; align-items: center; gap: 8px; color: #dcdce1;`;
 const head = `font-size: 11px; font-weight: 600; color: #8f8f97; letter-spacing: .06em; text-transform: uppercase;`;
+// Siatka kadrowania jak w aparacie (M50 II: 3×3 / 6×4). Domyślnie 6×4 — to
+// samo, co operator widzi na ekranie aparatu. Klik w badge cykluje.
+const GRIDS = [
+  { cols: 6, rows: 4, label: "SIATKA 6×4" },
+  { cols: 3, rows: 3, label: "SIATKA 3×3" },
+  { cols: 0, rows: 0, label: "SIATKA OFF" },
+];
+
+/** Linie siatki jako gradienty CSS — ciemne, bo produktówka jest na bieli
+ *  (poprzednia biała siatka na białym tle była po prostu niewidoczna). */
+function gridBackground(cols, rows) {
+  const line = "rgba(0, 0, 0, .3)";
+  const parts = [];
+  for (let i = 1; i < cols; i++) {
+    const p = (100 * i / cols).toFixed(3);
+    parts.push(`linear-gradient(to right, transparent calc(${p}% - .5px), ${line} ${p}%, transparent calc(${p}% + .5px))`);
+  }
+  for (let i = 1; i < rows; i++) {
+    const p = (100 * i / rows).toFixed(3);
+    parts.push(`linear-gradient(to bottom, transparent calc(${p}% - .5px), ${line} ${p}%, transparent calc(${p}% + .5px))`);
+  }
+  return parts.join(", ");
+}
+
 const MARKS = {
   ok:   { mark: "✓", color: "#9fe0a8", border: "#3a3a42" },
   bad:  { mark: "✕", color: "#e07a7a", border: "#5a3a3a" },
@@ -242,24 +266,25 @@ function resolvePending(attach) {
 
 function sesjaScreen() {
   const st = S.state, post_ = st.post, cam = st.camera;
-  const bgColor = cam.bgOk ? "#9fe0a8" : "#e0b96a";
-  const histText = cam.bgOk ? "HISTOGRAM OK" : "HISTOGRAM !";
+  // Sam <img> musi zniknąć przy rozłączeniu: MJPEG zostawia ostatnią odebraną
+  // klatkę na ekranie, więc backend może przestać nadawać, a obraz i tak wisi
+  // — status mówiłby „rozłączony" nad żywo wyglądającym podglądem.
+  const liveOn = st.previewOn && st.connected;
+  const grid = GRIDS[S.grid % GRIDS.length];
+  const bgColor = histColor(st);
+  const histText = histLabel(st);
   const badge = `background: rgba(0,0,0,.55); border: 1px solid #3c3c44; padding: 3px 8px; ${mono} font-size: 10.5px; color: #d0d0d6;`;
   return `
     <div style="flex: 1; display: flex; flex-direction: column; min-width: 0; background: #161618;">
       <div style="flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; position: relative; padding: 14px;">
         <div style="height: 100%; aspect-ratio: 3 / 2; background: repeating-linear-gradient(135deg, #202024 0 10px, #26262b 10px 20px); border: 1px solid #34343a; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; position: relative;">
-          <img id="live" src="/stream" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: ${st.previewOn ? "block" : "none"};" />
-          <div style="${mono} font-size: 12px; color: #8b8b93; letter-spacing: .04em;">live view — 1024 × 683</div>
-          <div style="${mono} font-size: 11px; color: #63636b;">${st.previewOn ? "czekam na klatki z aparatu…" : "podgląd wyłączony (P)"}</div>
-          <div id="grid-overlay" style="position: absolute; inset: 0; display: ${S.gridOn && st.previewOn ? "block" : "none"}; background:
-            linear-gradient(to right, transparent calc(33.33% - .5px), rgba(255,255,255,.13) 33.33%, transparent calc(33.33% + .5px)),
-            linear-gradient(to right, transparent calc(66.66% - .5px), rgba(255,255,255,.13) 66.66%, transparent calc(66.66% + .5px)),
-            linear-gradient(to bottom, transparent calc(33.33% - .5px), rgba(255,255,255,.13) 33.33%, transparent calc(33.33% + .5px)),
-            linear-gradient(to bottom, transparent calc(66.66% - .5px), rgba(255,255,255,.13) 66.66%, transparent calc(66.66% + .5px));"></div>
-          <div id="kadr-overlay" style="position: absolute; top: 0; bottom: 0; left: 16.67%; right: 16.67%; border: 1px dashed rgba(255,255,255,.14); display: ${S.kadrOn && st.previewOn ? "block" : "none"};"></div>
+          ${liveOn ? `<img id="live" src="/stream" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;" />` : ""}
+          <div style="${mono} font-size: 12px; color: ${st.connected ? "#8b8b93" : "#e07a7a"}; letter-spacing: .04em;">${st.connected ? "live view — 1024 × 683" : "aparat rozłączony"}</div>
+          <div style="${mono} font-size: 11px; color: #63636b;">${!st.connected ? "sprawdź kabel i tryb aparatu — łączę ponownie…" : st.previewOn ? "czekam na klatki z aparatu…" : "podgląd wyłączony (P)"}</div>
+          <div id="grid-overlay" style="position: absolute; inset: 0; display: ${grid.cols && liveOn ? "block" : "none"}; background: ${gridBackground(grid.cols, grid.rows)};"></div>
+          <div id="kadr-overlay" style="position: absolute; top: 0; bottom: 0; left: 16.67%; right: 16.67%; border: 1px dashed rgba(255,255,255,.14); display: ${S.kadrOn && liveOn ? "block" : "none"};"></div>
           <div style="position: absolute; left: 12px; top: 12px; display: flex; gap: 6px;">
-            <div onclick="S.gridOn = !S.gridOn; renderScreens()" style="${badge} ${S.gridOn ? "" : "opacity: .45;"}">SIATKA 3×3</div>
+            <div onclick="cycleGrid()" style="${badge} ${grid.cols ? "" : "opacity: .45;"}">${grid.label}</div>
             <div onclick="S.kadrOn = !S.kadrOn; renderScreens()" style="${badge} ${S.kadrOn ? "" : "opacity: .45;"}">KADR 1:1</div>
           </div>
           ${st.previewOn && st.connected ? `
@@ -347,6 +372,16 @@ function sesjaScreen() {
       </div>
     </div>`;
 }
+
+// Badge jasności tła: percentyle 10/90 z pasków przy krawędziach klatki.
+// Zakres 230–254 = biel jest biała, ale jeszcze nie przepalona. Liczby są
+// pokazywane wprost — samo „HISTOGRAM !" nie mówiło, co właściwie jest nie tak.
+// Po rozłączeniu nie ma z czego liczyć: badge musi zgasnąć, a nie zostać
+// z ostatnim odczytem, bo wygląda wtedy jak żywy pomiar.
+const histLabel = st => !st.connected
+  ? "TŁO —"
+  : `TŁO ${st.camera.bg} ${st.camera.bgOk ? "OK" : "· celuj w 230–254"}`;
+const histColor = st => !st.connected ? "#6c6c74" : st.camera.bgOk ? "#9fe0a8" : "#e0b96a";
 
 function reviewShot() {
   const shots = S.state.shots;
@@ -631,7 +666,7 @@ let lastShellKey = "", lastSesja = "", lastUstawienia = "";
 
 const sesjaKey = st => JSON.stringify([st.session.name, st.session.dir, st.shots,
   st.processing, st.downloading, st.post, st.previewOn, S.selShot, S.logOpen,
-  S.gridOn, S.kadrOn, S.reviewMode]);
+  S.grid, S.kadrOn, S.reviewMode]);
 
 function renderShell(force) {
   const st = S.state;
@@ -658,11 +693,10 @@ function renderShell(force) {
 function updateVolatile(st) {
   const conn = $("conn-label");
   if (conn) conn.textContent = st.connected ? `Aparat połączony · ${st.fps} fps` : "Aparat rozłączony";
-  const bgColor = st.camera.bgOk ? "#9fe0a8" : "#e0b96a";
   const hist = $("hist-badge");
   if (hist) {
-    hist.textContent = st.camera.bgOk ? "HISTOGRAM OK" : "HISTOGRAM !";
-    hist.style.color = bgColor;
+    hist.textContent = histLabel(st);
+    hist.style.color = histColor(st);
   }
   const sl = $("shoot-label");
   if (sl) sl.textContent = st.busy || "Zrób zdjęcie";
@@ -763,6 +797,11 @@ function toggleReview() {
   renderScreens();
 }
 function toggle(key, value) { post({ action: "toggle", key, value }); }
+
+function cycleGrid() {
+  S.grid = (S.grid + 1) % GRIDS.length;
+  renderScreens();
+}
 
 function checkUpdate() {
   S.checkStartedAt = Date.now();

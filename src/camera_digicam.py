@@ -189,12 +189,14 @@ class DigiCamControlSession:
         # Front i tak porownuje liczbowo, wiec niedopasowany zapis mu nie wadzi.
         return {"exposurecompensation": {"current": current, "choices": choices}}
 
-    def set_setting(self, key: str, value: str) -> None:
+    def set_setting(self, key: str, value: str) -> str:
+        """Zwraca surową odpowiedź dCC — gdy aparat nie przyjmie wartości,
+        webui wkleja ją do logu; bez tego zostawało samo „wróciło na stare"."""
         if key != "exposurecompensation":
             raise RuntimeError(
                 f"zmiana '{key}' niedostępna przez digiCamControl — "
                 "ustaw w oknie digiCamControl lub na aparacie")
-        self._slc("set", _EV_KEY, str(value), timeout=10)
+        return self._slc("set", _EV_KEY, str(value), timeout=10)
 
     def describe_contrast(self) -> dict | None:
         return None

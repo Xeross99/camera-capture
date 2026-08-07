@@ -204,6 +204,33 @@ def _shot_entries(session_dir: Path | None, review: dict) -> list[dict]:
     ]
 
 
+def _ev_number(value) -> float | None:
+    """Kompensacja ekspozycji na liczbe — odpowiednik `evNumber()` z app.js.
+
+    Zapisy roznia sie miedzy backendami, a nawet w obrebie jednego aparatu
+    ("+2 2/3" na liscie kroków, "+3.0" w odczycie biezacej wartosci), wiec
+    porownanie tekstem daloby falszywy alarm "aparat nie przyjal"."""
+    text = str(value or "").strip().replace("−", "-").lstrip("+")
+    if not text:
+        return None
+    sign = 1
+    if text.startswith("-"):
+        sign, text = -1, text[1:].strip()
+    total = 0.0
+    seen = False
+    for part in text.split():
+        try:
+            if "/" in part:
+                num, _, den = part.partition("/")
+                total += int(num) / int(den)
+            else:
+                total += float(part)
+            seen = True
+        except (ValueError, ZeroDivisionError):
+            return None
+    return sign * total if seen else None
+
+
 BG_MIN = 230
 
 
@@ -602,12 +629,27 @@ class WebUI:
             self.ev = ev
 
     def _do_set_ev(self, value: str) -> None:
+        reply = None
         try:
-            self.session.set_setting("exposurecompensation", value)
+            reply = self.session.set_setting("exposurecompensation", value)
         except Exception as e:
             self._log(f"✗ Kompensacja ekspozycji: {e}", "err")
+            return
         self._ev_t0 = time.monotonic()
         self._refresh_ev()   # źródłem prawdy jest aparat, nie to, co wysłaliśmy
+
+        # Odrzucenie wartości było do tej pory CICHE: UI pokazywał nową wartość,
+        # a po sekundzie wracała stara i wyglądało to na błąd aplikacji. Aparat
+        # bywa jedyną stroną, która wie, czemu nie przyjął — trzeba to powiedzieć.
+        now = (self.ev or {}).get("current")
+        want, got = _ev_number(value), _ev_number(now)
+        if want is not None and got is not None and abs(want - got) < 0.01:
+            return
+        detail = f" Odpowiedź sterownika: {reply}." if reply else ""
+        self._log(
+            f"✗ Aparat nie przyjął kompensacji {value} — zostało {now}. "
+            f"Sprawdź tryb: kompensacja działa w P/Av/Tv, a w M z ręcznym ISO "
+            f"aparat ją ignoruje.{detail}", "err")
 
     def _update_bg_stats(self, jpeg: bytes) -> None:
         try:

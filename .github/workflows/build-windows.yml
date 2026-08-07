@@ -47,17 +47,32 @@ jobs:
           # bez tego .env.example (dotfile) wypada z paczki
           include-hidden-files: true
 
+      # Wydanie leci SAMO z pushu na main: bierzemy APP_VERSION i publikujemy
+      # v<APP_VERSION>, o ile takiego release'a jeszcze nie ma. Dzieki temu
+      # "commit and push" = nowa wersja u operatora, bez recznego tagowania
+      # (tag zaklada samo `gh release create` na biezacym commicie).
+      #
       # Zip pakowany Z POZIOMU katalogu (na wierzchu .exe i _internal/) —
       # updater kopiuje zawartosc obok istniejacego .exe, wiec .env i photos/
       # operatora zostaja nietkniete.
-      - name: Package release zip
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: pwsh
-        run: Compress-Archive -Path dist\CameraCapture\* -DestinationPath CameraCapture-windows-${{ github.ref_name }}.zip
-
-      - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Publish release for APP_VERSION
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create ${{ github.ref_name }} "CameraCapture-windows-${{ github.ref_name }}.zip" --title "Camera Capture ${{ github.ref_name }}" --generate-notes
+        run: |
+          $ver = (Select-String -Path src/version.py -Pattern '^APP_VERSION = "(.+)"').Matches[0].Groups[1].Value
+          $tag = "v$ver"
+          # samo sprawdzenie "czy jest": brak release'a to normalny wynik, nie blad,
+          # wiec gasimy stderr i ErrorActionPreference na czas tego wywolania
+          $ErrorActionPreference = 'Continue'
+          gh release view $tag > $null 2> $null
+          $exists = ($LASTEXITCODE -eq 0)
+          $ErrorActionPreference = 'Stop'
+          if ($exists) {
+            Write-Host "Release $tag juz istnieje — podbij APP_VERSION, zeby wydac nowa wersje."
+            exit 0
+          }
+          $zip = "CameraCapture-windows-$tag.zip"
+          Compress-Archive -Path dist\CameraCapture\* -DestinationPath $zip
+          gh release create $tag $zip --title "Camera Capture $tag" --generate-notes --target $env:GITHUB_SHA
+          Write-Host "Opublikowano $tag"

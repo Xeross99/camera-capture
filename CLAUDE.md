@@ -128,7 +128,7 @@ Szczegóły implementacyjne:
 
 Kanał wydań to **GitHub Releases** publicznego repo `Xeross99/camera-capture` (`GITHUB_REPO` w `src/version.py`). Artefakty CI się nie nadają — wymagają logowania i wygasają po 90 dniach.
 
-**Wypuszczenie wersji**: podbij `APP_VERSION` w `src/version.py` → commit → `git tag vX.Y.Z && git push --tags`. Workflow buduje `.exe`, sprawdza że tag == `APP_VERSION` (rozjazd = fail builda, żeby aplikacja nie kłamała o swojej wersji) i publikuje release z paczką `CameraCapture-windows-vX.Y.Z.zip`. Zip jest pakowany **z poziomu katalogu** `dist/CameraCapture` — na wierzchu leżą `.exe` i `_internal/`, bez katalogu-opakowania.
+**Wypuszczenie wersji jest automatyczne**: podbij `APP_VERSION` w `src/version.py` → commit → push na `main`. Workflow buduje `.exe` i w kroku „Publish release for APP_VERSION" sam zakłada `v<APP_VERSION>` (`gh release create --target <sha>`, tag powstaje przy okazji) z paczką `CameraCapture-windows-vX.Y.Z.zip`. Gdy release o tej wersji już istnieje, krok wypisuje komunikat i kończy się sukcesem — nic się nie nadpisuje, po prostu nie ma nowego wydania. Ręczne `git tag` nadal działa (trigger na `v*` + krok „Verify tag matches APP_VERSION" pilnuje, żeby ręczny tag zgadzał się ze stałą), ale nie jest do niczego potrzebne. Zip jest pakowany **z poziomu katalogu** `dist/CameraCapture` — na wierzchu leżą `.exe` i `_internal/`, bez katalogu-opakowania.
 
 **Sprawdzanie** (`check_for_update()`): `GET /repos/<repo>/releases/latest`, porównanie `tag_name` z `APP_VERSION` przez `parse_version()`. Bez tokena (repo publiczne), limit 60 req/h na IP w zupełności starcza — pytamy raz przy starcie (job `check_update` w kolejce workera) i na żądanie z Ustawień. Repo bez żadnego wydania zwraca 404 — traktowane jak „brak nowszej wersji", nie jak błąd.
 
@@ -319,8 +319,9 @@ AUTOMAT_UPLOAD_ENABLED=true
 
 - **Dwa frontendy, oba zawsze działają**: TUI (`main.py`, w tym ścieżka `--input`) i aplikacja okienkowa (`gui.py`) to równorzędne wersje — każda zmiana w pipeline, uploadzie czy flow sesji musi być wprowadzona w OBU (wspólną logikę wyciągaj do `src/`, np. `find_existing_session`/`attach_session` w `automat_uploader.py`).
 - **Każdy commit podbija wersję — bez wyjątków**: przed `git commit` podnieś `APP_VERSION` w `src/version.py` (patch przy poprawkach i drobiazgach, minor przy nowej funkcji) i włóż tę zmianę do TEGO SAMEGO commita. Dotyczy też commitów z samą dokumentacją — reguła ma być bezmyślna do stosowania, a nie do rozważania „czy ta zmiana trafia do `.exe`".
-  - Wydanie bierze **bieżące** `APP_VERSION`: `git tag v<APP_VERSION> && git push --tags`. Numery mogą przeskakiwać (kilka commitów między wydaniami = kilka podbić i tylko ostatni numer dostaje tag) — to jest w porządku, nic się nie psuje. Faila wyłącznie tag, który NIE zgadza się z `APP_VERSION` (krok „Verify tag matches APP_VERSION" w CI).
-  - Po co: operator dostaje baner aktualizacji tylko wtedy, gdy tag wydania jest wyższy niż `APP_VERSION` w jego `.exe`. Wersja, która stoi w miejscu mimo zmian, to `.exe`, który kłamie o tym, co ma w środku.
+  - **Wydanie robi się samo**: push na `main` = build + `gh release create v<APP_VERSION>` (krok „Publish release for APP_VERSION"). Ręczne tagowanie nie jest potrzebne — tag zakłada CI na bieżącym commicie. Brak podbicia = release o tej wersji już istnieje, więc krok tylko wypisuje komunikat i kończy się sukcesem; **nowa wersja u operatora po prostu się nie pojawia**, i to jest jedyna kara za zapomniane podbicie.
+  - Numery mogą przeskakiwać (commit bez pushu, kilka zmian naraz) — nic się przez to nie psuje.
+  - Po co: operator dostaje baner aktualizacji tylko wtedy, gdy wydanie ma wyższy numer niż `APP_VERSION` w jego `.exe`. Wersja stojąca w miejscu mimo zmian to `.exe`, który kłamie o tym, co ma w środku.
 - Komunikaty UI po polsku (rich panels, prompty, błędy).
 - Nazwy folderów sanityzowane przez `sanitize_name()` w `src/naming.py` (regex: tylko `[A-Za-z0-9_\-. ]`).
 - Kod komentowany minimalnie, nazwy funkcji opisowe.

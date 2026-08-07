@@ -12,6 +12,18 @@ Uruchomienie:
     python3 gui.py --browser        # fallback: zwykla przegladarka zamiast okna
 """
 
+import sys
+
+if len(sys.argv) > 2 and sys.argv[1] == "--apply-update":
+    # Tryb aktualizatora: ten .exe lezy w rozpakowanej NOWEJ paczce i podmienia
+    # pliki dzialajacej instalacji (katalog w argv[2], pid starej aplikacji w
+    # argv[3]) — patrz src/updater.py. Musi byc PRZED reszta importow: nie
+    # potrzebuje ani UI, ani aparatu, a wchodzi tu .exe, ktory dopiero ma sie
+    # okazac sprawny.
+    from src.updater import run_apply_update
+
+    raise SystemExit(run_apply_update(sys.argv[2:]))
+
 import argparse
 import os
 import threading

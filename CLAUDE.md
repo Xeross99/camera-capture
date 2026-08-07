@@ -318,9 +318,9 @@ AUTOMAT_UPLOAD_ENABLED=true
 ## Konwencje
 
 - **Dwa frontendy, oba zawsze działają**: TUI (`main.py`, w tym ścieżka `--input`) i aplikacja okienkowa (`gui.py`) to równorzędne wersje — każda zmiana w pipeline, uploadzie czy flow sesji musi być wprowadzona w OBU (wspólną logikę wyciągaj do `src/`, np. `find_existing_session`/`attach_session` w `automat_uploader.py`).
-- **Każda zmiana podbija wersję**: przed commitem podnieś `APP_VERSION` w `src/version.py` (patch przy poprawkach i drobiazgach, minor przy nowej funkcji) i zawrzyj to w tym samym commicie. Bez tego operator nie dostanie banera aktualizacji — updater porównuje `APP_VERSION` z tagiem wydania. Po wypchnięciu na `main`: `git tag v<APP_VERSION> && git push --tags` publikuje release z paczką (szczegóły w sekcji „Aktualizacje").
-  - Wyjątek: gdy bieżące `APP_VERSION` **nie zostało jeszcze wydane** (nie ma takiego tagu — sprawdź `git tag -l` / `gh release list`), nie podbijaj — kolejna zmiana wchodzi do tego samego, jeszcze nieopublikowanego wydania. Podbicie przed tagiem rozjeżdża tag z `APP_VERSION`, a wtedy build z tagiem faila (krok „Verify tag matches APP_VERSION").
-  - Zmiany, które nie trafiają do `.exe` (sam `CLAUDE.md`, `README.md`, `WINDOWS.md`), wersji nie ruszają.
+- **Każdy commit podbija wersję — bez wyjątków**: przed `git commit` podnieś `APP_VERSION` w `src/version.py` (patch przy poprawkach i drobiazgach, minor przy nowej funkcji) i włóż tę zmianę do TEGO SAMEGO commita. Dotyczy też commitów z samą dokumentacją — reguła ma być bezmyślna do stosowania, a nie do rozważania „czy ta zmiana trafia do `.exe`".
+  - Wydanie bierze **bieżące** `APP_VERSION`: `git tag v<APP_VERSION> && git push --tags`. Numery mogą przeskakiwać (kilka commitów między wydaniami = kilka podbić i tylko ostatni numer dostaje tag) — to jest w porządku, nic się nie psuje. Faila wyłącznie tag, który NIE zgadza się z `APP_VERSION` (krok „Verify tag matches APP_VERSION" w CI).
+  - Po co: operator dostaje baner aktualizacji tylko wtedy, gdy tag wydania jest wyższy niż `APP_VERSION` w jego `.exe`. Wersja, która stoi w miejscu mimo zmian, to `.exe`, który kłamie o tym, co ma w środku.
 - Komunikaty UI po polsku (rich panels, prompty, błędy).
 - Nazwy folderów sanityzowane przez `sanitize_name()` w `src/naming.py` (regex: tylko `[A-Za-z0-9_\-. ]`).
 - Kod komentowany minimalnie, nazwy funkcji opisowe.

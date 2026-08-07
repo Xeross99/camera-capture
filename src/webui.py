@@ -204,6 +204,27 @@ def _shot_entries(session_dir: Path | None, review: dict) -> list[dict]:
     ]
 
 
+BG_MIN = 230
+
+
+def _bg_status(bg: tuple[int, int] | None) -> str:
+    """Werdykt o jasnosci tla dla UI: `ok` / `dark` / `unknown`.
+
+    Za ciemne tlo psuje wynik naprawde: `clean_background` liczy prog i alfe
+    wzgledem `bg_lum`, wiec przy szarawym stole maska lapie cien jak produkt,
+    a po wyrownaniu zostaje brudny nalot.
+
+    Gornego progu NIE MA, choc kiedys stalo tu 254 — tlo wypalone do 255 nie
+    szkodzi. Pipeline i tak dociaga je do czystej bieli, a wszystkie progi w
+    `background.py` (`gate`, falloff alfy) sa liczone jako ulamek `bg_lum`,
+    wiec przesuwaja sie razem z nim. Ryzykiem jest dopiero przeswietlony
+    PRODUKT, a tego pomiar z paskow brzegowych klatki nie widzi — badge
+    marudzil wiec na 255 przy zdjeciach, z ktorymi nie bylo nic nie tak."""
+    if bg is None:
+        return "unknown"
+    return "dark" if bg[0] < BG_MIN else "ok"
+
+
 class _Handler(BaseHTTPRequestHandler):
     """Handler HTTP (instancja per request). Atrybut klasowy `ui` wstrzykiwany
     w WebUI.start() przez subklase — jeden serwer = jedno WebUI."""
@@ -1300,7 +1321,7 @@ class WebUI:
                 "shots": shots,
                 "camera": {
                     "bg": f"{bg[0]}–{bg[1]}" if bg else "—",
-                    "bgOk": bool(bg and bg[0] >= 230 and bg[1] <= 254),
+                    "bgStatus": _bg_status(bg),
                 },
                 "post": {
                     "logo": self.add_logo,

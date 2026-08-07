@@ -50,3 +50,6 @@ button { cursor: default; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 @keyframes reviewIn { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
 @keyframes livePulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+/* Kręciołek przy operacjach sieciowych (sprawdzanie/pobieranie aktualizacji). */
+.spinner { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .2); border-top-color: #4a8cff; animation: spin .7s linear infinite; vertical-align: -1px; }
+@keyframes spin { to { transform: rotate(360deg); } }

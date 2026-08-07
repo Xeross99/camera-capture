@@ -14,6 +14,12 @@ import requests
 from .config import AUTOMAT_API_TOKEN, AUTOMAT_BASE_URL
 
 
+class AutomatNotFound(RuntimeError):
+    """404 z Automatu — sesja/zdjęcie zniknęło po drugiej stronie (skasowane
+    w UI Automatu, wyczyszczona baza). Podklasa RuntimeError, żeby istniejące
+    `except Exception` w wołających działały bez zmian."""
+
+
 def describe_opened_session(uploader: "AutomatUploader", name: str) -> tuple[str, str]:
     """Komunikat do logu po open_session() -> (tekst, poziom 'ok'|'warn')."""
     suffix = (
@@ -73,7 +79,11 @@ class AutomatUploader:
         return text.strip().replace("\n", " ")[:400] or "<empty>"
 
     def _err(self, kind: str, r) -> RuntimeError:
-        return RuntimeError(f"Automat {kind} {r.status_code} {r.reason} — {self._strip_body(r)}")
+        # 404 dostaje wlasna klase (nadal RuntimeError, wiec stare `except`
+        # lapia jak dotad) — wolajacy musi umiec odroznic "znikneło po drugiej
+        # stronie" od zwyklego bledu HTTP, np. zeby sprzatnac lokalna sesje.
+        cls = AutomatNotFound if r.status_code == 404 else RuntimeError
+        return cls(f"Automat {kind} {r.status_code} {r.reason} — {self._strip_body(r)}")
 
     def list_sessions(self) -> list[dict]:
         """GET wszystkich sesji photo_studio: [{id, name, product, created_at,

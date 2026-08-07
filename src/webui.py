@@ -13,6 +13,7 @@ Stan recenzji per sesja w photos/<sesja>/.review.json:
 
 import io
 import json
+import os
 import queue
 import secrets
 import shutil
@@ -20,7 +21,7 @@ import tempfile
 import threading
 import time
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -28,16 +29,19 @@ from urllib.parse import parse_qs, urlparse
 import numpy as np
 from PIL import Image
 
-from .automat_uploader import AutomatUploader, describe_opened_session
+from .automat_uploader import (AutomatNotFound, AutomatUploader,
+                               describe_opened_session)
 from .camera import CAMERA_ERRORS, make_camera_session
 from .config import (
     AUTOMAT_API_TOKEN,
     AUTOMAT_BASE_URL,
     OUTPUT_SIZE,
     PROJECT_DIR,
+    TRASH_RETENTION_DAYS,
 )
 from .image_processing import LOGO_POSITIONS, process
 from .naming import sanitize_name
+from .version import APP_VERSION
 
 STATIC_DIR = Path(__file__).parent / "webui_static"
 STATIC_TYPES = {
@@ -47,6 +51,8 @@ STATIC_TYPES = {
 }
 THUMB_SIZE = 360
 DEFAULT_NAME_PATTERN = "photo_{data}_{godzina}.jpg"
+TRASH_DIR = ".trash"        # photos/.trash/<data>-<godzina>_<sesja>/
+TRASH_STAMP = "%Y%m%d-%H%M%S"
 
 
 def _now() -> str:
@@ -95,6 +101,73 @@ def _finals(session_dir: Path) -> list[str]:
     return sorted(
         p.name for p in session_dir.glob("*.jpg") if not p.stem.endswith("_raw")
     )
+
+
+def _trash_batch(base_output: Path, session: str) -> Path:
+    """Nowy katalog w koszu: `photos/.trash/<data>-<godzina>_<sesja>`.
+
+    Data siedzi w NAZWIE, nie w mtime — mtime katalogu potrafi się zmienić
+    (kopiowanie/synchronizacja `photos/`) i kosz czyściłby się losowo."""
+    root = base_output / TRASH_DIR
+    stamp = datetime.now().strftime(TRASH_STAMP)
+    for n in range(1000):
+        cand = root / (f"{stamp}_{session}" + (f"-{n}" if n else ""))
+        if not cand.exists():
+            cand.mkdir(parents=True)
+            return cand
+    raise RuntimeError("kosz: nie mogę założyć katalogu na usunięte pliki")
+
+
+def _move_into(batch: Path, path: Path) -> None:
+    target = batch / path.name
+    n = 1
+    while target.exists():
+        target = batch / f"{path.stem}-{n}{path.suffix}"
+        n += 1
+    shutil.move(str(path), str(target))
+
+
+def _purge_trash(base_output: Path, days: int = TRASH_RETENTION_DAYS) -> int:
+    """Kasuje NAPRAWDĘ wpisy kosza starsze niż `days` dni. Zwraca ile poszło."""
+    root = base_output / TRASH_DIR
+    if days <= 0 or not root.is_dir():
+        return 0
+    cutoff = datetime.now() - timedelta(days=days)
+    removed = 0
+    for entry in sorted(root.iterdir()):
+        if not entry.is_dir():
+            continue
+        try:
+            when = datetime.strptime(entry.name.split("_", 1)[0], TRASH_STAMP)
+        except ValueError:
+            when = datetime.fromtimestamp(entry.stat().st_mtime)
+        if when < cutoff:
+            shutil.rmtree(entry, ignore_errors=True)
+            removed += 1
+    return removed
+
+
+def _trash_note() -> str:
+    return (f"→ kosz (usuwany po {TRASH_RETENTION_DAYS} dniach)"
+            if TRASH_RETENTION_DAYS > 0 else "— usunięte")
+
+
+def _photos_word(n: int) -> str:
+    """zdjecie / zdjecia / zdjec — polska odmiana licznika w komunikatach logu."""
+    if n == 1:
+        return "zdjęcie"
+    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        return "zdjęcia"
+    return "zdjęć"
+
+
+def _remote_filename(photo: dict) -> str:
+    """Nazwa pliku dla zdjecia z Automatu — sam basename (zdalna nazwa nie moze
+    uciec z katalogu sesji), a przy jej braku `photo_<id>.jpg`."""
+    fname = Path(str(photo.get("filename") or "").strip()).name
+    if not fname.lower().endswith(".jpg") or fname.startswith("."):
+        fname = f"photo_{photo['id']}.jpg"
+    return fname
 
 
 def _find_raw(session_dir: Path, final_name: str) -> Path | None:
@@ -268,7 +341,7 @@ class WebUI:
         self.name_pattern = DEFAULT_NAME_PATTERN
         self.automat_url = AUTOMAT_BASE_URL
         self.automat_token = AUTOMAT_API_TOKEN or ""
-        self.preview_fps = 20
+        self.preview_fps = 30
         self.keep_raw = True
         self.test_result = ""
 
@@ -283,6 +356,12 @@ class WebUI:
         self.automat_sessions: list[dict] = []
         self.automat_sessions_error = ""
         self.attach_to: dict | None = None  # {"id", "name"} — podłączenie do istniejącej sesji Automatu
+        # aktualizacje (GitHub Releases — patrz src/updater.py)
+        self.update_info: dict | None = None   # {"version", "url", "notes", "page", "size"}
+        self.update_status = ""                # tekst dla UI (zakładka Ustawienia)
+        self.update_checking = False           # trwa odpytanie GitHuba (spinner w UI)
+        self.update_busy = False
+        self.update_progress = 0
         self.log: deque[dict] = deque(maxlen=500)
         self.uploader: AutomatUploader | None = None  # tylko watek worker
 
@@ -297,7 +376,14 @@ class WebUI:
 
     def _log(self, text: str, kind: str = "info") -> None:
         with self.lock:
-            self.log.append({"t": _now(), "kind": kind, "text": text})
+            last = self.log[-1] if self.log else None
+            # powtorka pod rzad (petla reconnectu aparatu!) nie zalewa logu —
+            # rosnie licznik przy istniejacym wpisie, front dokleja "×N"
+            if last is not None and last["text"] == text and last["kind"] == kind:
+                last["n"] += 1
+                last["t"] = _now()
+                return
+            self.log.append({"t": _now(), "kind": kind, "text": text, "n": 1})
 
     # ---------- sciezki / sesja ----------
 
@@ -315,10 +401,22 @@ class WebUI:
 
     # ---------- watek aparatu ----------
 
+    RECONNECT_MIN = 2.0
+    RECONNECT_MAX = 30.0
+    _HEALTHY_AFTER = 5.0   # tyle sekund live view = polaczenie "zdrowe"
+
     def _camera_loop(self) -> None:
         """Petla zewnetrzna: laczy sie (retry co 5 s — np. gdy inna aplikacja
-        trzyma aparat), po utracie polaczenia wraca do laczenia."""
+        trzyma aparat), po utracie polaczenia wraca do laczenia.
+
+        Polaczenie, ktore pada natychmiast (urzadzenie PTP bez live view,
+        aparat w trybie odtwarzania), nie moze byc ponawiane co 2 s — kazda
+        proba przechodzi przez init + `_configure_camera`, wiec terminal i log
+        zalewaly setki identycznych linii. Przerwa rosnie 2 → 30 s i wraca do
+        2 s dopiero po polaczeniu, ktore pozylo dluzej niz `_HEALTHY_AFTER`."""
         first_fail = True
+        backoff = self.RECONNECT_MIN
+        flapping = False   # polaczenie pada od razu — cykl leci po cichu
         while not self._stop.is_set():
             try:
                 self.session.open()
@@ -331,18 +429,38 @@ class WebUI:
                     return
                 continue
             first_fail = True
-            self._run_connected()
+            started = time.monotonic()
+            self._run_connected(quiet=flapping)
             self.session.close()
             with self.lock:
                 self.connected = False
                 self.fps = 0.0
-            if self._stop.wait(2.0):
+            if time.monotonic() - started >= self._HEALTHY_AFTER:
+                backoff = self.RECONNECT_MIN
+                flapping = False
+            else:
+                if not flapping:
+                    flapping = True
+                    self._log(
+                        "Aparat rozłącza się zaraz po połączeniu — ponawiam "
+                        f"coraz rzadziej (do {int(self.RECONNECT_MAX)} s), po cichu. "
+                        "Sprawdź tryb aparatu (M/Av/Tv/P), kabel i czy nie trzyma "
+                        "go inna aplikacja.", "warn")
+                backoff = min(self.RECONNECT_MAX, backoff * 2)
+            if self._stop.wait(backoff):
                 return
 
-    def _run_connected(self) -> None:
+    def _run_connected(self, quiet: bool = False) -> None:
+        """`quiet` = jesteśmy w pętli reconnectu z padającym live view: nie
+        zaśmiecamy logu parą „połączony"/„podgląd przerwany" co cykl. Wpis
+        „połączony" pojawi się dopiero, gdy klatki polecą dłużej niż
+        `_HEALTHY_AFTER` — czyli gdy połączenie naprawdę wstało."""
         with self.lock:
             self.connected = True
-        self._log("Aparat połączony — live view aktywny.", "ok")
+        announced = not quiet
+        if announced:
+            self._log("Aparat połączony — live view aktywny.", "ok")
+        started = time.monotonic()
         frames = 0
         fps_frames = 0
         fps_t0 = time.monotonic()
@@ -367,11 +485,15 @@ class WebUI:
                 try:
                     data = self.session.preview_frame()
                 except CAMERA_ERRORS as e:
-                    self._log(f"✗ Podgląd przerwany: {e}", "err")
+                    if not quiet:
+                        self._log(f"✗ Podgląd przerwany: {e}", "err")
                     with self.lock:
                         self.connected = False
                     return
                 last_frame_t = time.monotonic()
+                if not announced and last_frame_t - started >= self._HEALTHY_AFTER:
+                    announced = True
+                    self._log("Aparat połączony — live view aktywny.", "ok")
                 with self._frame_lock:
                     self._frame = data
                 frames += 1
@@ -465,39 +587,126 @@ class WebUI:
     def _job_upload_off(self) -> None:
         self.uploader = None
 
+    def _discard_files(self, session: str, files: list[str], review: dict) -> dict:
+        """Lokalne usunięcie zdjęć — finalny JPEG i jego raw lądują w koszu
+        (`photos/.trash/<data>_<sesja>/`), nie na śmietniku od razu: dopiero
+        `_purge_trash()` po `TRASH_RETENTION_DAYS` kasuje je naprawdę.
+        Miniatura leci od razu (to cache, odtworzy się sama). Wpisy z
+        `.review.json` są czyszczone, a zdjęte mapowania na Automat wracają
+        do wołającego (`_job_delete` musi jeszcze skasować rekordy zdalne).
+
+        `TRASH_RETENTION_DAYS = 0` = stare zachowanie, kasowanie natychmiast."""
+        outdir = self.base_output / session
+        batch = _trash_batch(self.base_output, session) if TRASH_RETENTION_DAYS > 0 else None
+        automat_ids = {}
+        for f in files:
+            (outdir / ".thumbs" / f).unlink(missing_ok=True)
+            for p in ((outdir / f), _find_raw(outdir, f)):
+                if p is None or not p.exists():
+                    continue
+                if batch is None:
+                    p.unlink(missing_ok=True)
+                else:
+                    _move_into(batch, p)
+            for key in ("rejected", "uploaded"):
+                if f in review[key]:
+                    review[key].remove(f)
+            review["meta"].pop(f, None)
+            pid = review["automat"].pop(f, None)
+            if pid:
+                automat_ids[f] = int(pid)
+        return automat_ids
+
+    def _trash_session(self, name: str) -> None:
+        """Sesja zniknęła z Automatu (404 przy sync) — lokalny folder idzie do
+        kosza i wracamy na ekran startowy. Bez tego operator siedziałby w sesji,
+        do której nic już nie doleci."""
+        outdir = self.base_output / name
+        if outdir.is_dir():
+            if TRASH_RETENTION_DAYS > 0:
+                batch = _trash_batch(self.base_output, name)
+                for item in list(outdir.iterdir()):
+                    shutil.move(str(item), str(batch / item.name))
+                outdir.rmdir()
+            else:
+                shutil.rmtree(outdir, ignore_errors=True)
+            self._log(f"Sesja {name} nie istnieje już w Automacie — "
+                      f"lokalny folder {_trash_note()}.", "warn")
+        else:
+            self._log(f"Sesja {name} nie istnieje już w Automacie.", "warn")
+        with self.lock:
+            if self.name == name:
+                self.name = None
+                self.attach_to = None
+        self.uploader = None
+
+    def _prune_local(self, session: str, remote: dict[str, int]) -> int:
+        """Zdejmuje z filmstripa lokalne finalne JPEG-i, ktorych nie ma juz w
+        sesji Automatu (operator odsial zdjecia w UI Automatu) — ma pokazywac
+        to samo, co sesja po drugiej stronie.
+
+        Pliki ida do kosza (`_discard_files`), wiec prune jest odwracalny przez
+        TRASH_RETENTION_DAYS dni — wazne, bo leci automatycznie przy wejsciu w
+        sesje: nieudany upload sprzed chwili nie kasuje jedynego oryginalu.
+
+        Pusta lista zdalna = nie ruszamy NIC: to zwykle nowa sesja zalozona na
+        dzis (Rails deduplikuje per produkt+dzien), a nie "wszystko odsiane"."""
+        if not remote:
+            return 0
+        outdir = self.base_output / session
+        stale = [f for f in _finals(outdir) if f not in remote]
+        if not stale:
+            return 0
+        review = _load_review(outdir)
+        self._discard_files(session, stale, review)
+        _save_review(outdir, review)
+        self._log(f"Zdjęcia nieobecne w Automacie: {len(stale)} {_trash_note()}.",
+                  "warn")
+        return len(stale)
+
     def _job_sync_session(self, name: str) -> None:
-        """Sciaga z Automatu zdjecia sesji, ktorych nie ma lokalnie — operator
-        wszedl w sesje na maszynie, ktora jej nie strzelala (inny komputer,
-        wyczyszczone photos/). Raw nigdy nie szedl po sieci, wiec wraca sam
-        finalny JPEG; nie odtwarzamy podkatalogu raw/."""
+        """Dwustronne zrownanie filmstripa z sesja w Automacie — Automat jest
+        zrodlem prawdy: czego nie ma lokalnie, sciagamy (operator wszedl w
+        sesje na maszynie, ktora jej nie strzelala — inny komputer, wyczyszczone
+        photos/), czego nie ma juz zdalnie, kasujemy lokalnie (odsial zdjecia w
+        UI Automatu — pliki ida do kosza, nie od razu na zawsze). Raw nigdy nie
+        szedl po sieci, wiec wraca sam finalny JPEG; nie odtwarzamy raw/."""
         u = self.uploader
         if u is None or u.session_id is None:
             return
         try:
             photos = u.session_photos()
+        except AutomatNotFound:
+            # calej sesji nie ma juz po drugiej stronie — folder do kosza
+            self._trash_session(name)
+            return
         except Exception as e:
             self._log(f"✗ Lista zdjęć sesji z Automatu: {e}", "err")
             return
         outdir = self.base_output / name
         have = set(_finals(outdir))
+        remote: dict[str, int] = {}
         missing = []
         for p in photos:
+            fname = _remote_filename(p)
+            if fname.endswith("_raw.jpg"):
+                continue
+            # do prune licza sie WSZYSTKIE statusy — placeholder po announce
+            # (jeszcze nieprzetworzony) tez "istnieje" po drugiej stronie
+            remote[fname] = int(p["id"])
             # `processed`/`filename` doklada dopiero nowszy Automat — na starszym
             # instancie jedziemy po samym statusie, plik i tak sprawdzi endpoint
             if p.get("status") != "processed" or p.get("processed") is False:
                 continue
-            # nazwa jest zdalna — bierzemy sam basename, zeby nie wyjsc
-            # z katalogu sesji; brak nazwy = nazywamy po id
-            fname = Path(str(p.get("filename") or "").strip()).name
-            if not fname.lower().endswith(".jpg") or fname.startswith("."):
-                fname = f"photo_{p['id']}.jpg"
-            if fname.endswith("_raw.jpg") or fname in have:
+            if fname in have:
                 continue
             have.add(fname)
             missing.append((int(p["id"]), fname))
+        self._prune_local(name, remote)
         if not missing:
             return
-        self._log(f"↓ Pobieram {len(missing)} zdjęć sesji z Automatu…")
+        self._log(f"↓ Pobieram {len(missing)} {_photos_word(len(missing))} "
+                  "sesji z Automatu…")
         outdir.mkdir(parents=True, exist_ok=True)
         review = _load_review(outdir)
         ok = 0
@@ -525,7 +734,7 @@ class WebUI:
                 self.syncing = []
         _save_review(outdir, review)
         if ok:
-            self._log(f"↓ Pobrano {ok} zdjęć z Automatu do {name}.", "ok")
+            self._log(f"↓ Pobrano {ok} {_photos_word(ok)} z Automatu do {name}.", "ok")
 
     def _job_photo(self, job: dict) -> None:
         filename = job["filename"]
@@ -592,24 +801,15 @@ class WebUI:
         self._log(f"Zapisano {out.name} (#{n}){uploaded_note}", "ok")
 
     def _job_delete(self, session: str, files: list[str]) -> None:
+        """Świadome kasowanie (BACKSPACE / „Odrzuć"): lokalnie do kosza
+        (odwracalne przez TRASH_RETENTION_DAYS dni), w Automacie od razu —
+        rekordu po drugiej stronie i tak nie umiemy przywrócić."""
         outdir = self.base_output / session
         review = _load_review(outdir)
-        automat_ids = []
-        for f in files:
-            (outdir / f).unlink(missing_ok=True)
-            (outdir / ".thumbs" / f).unlink(missing_ok=True)
-            raw = _find_raw(outdir, f)
-            if raw is not None:
-                raw.unlink(missing_ok=True)
-            for key in ("rejected", "uploaded"):
-                if f in review[key]:
-                    review[key].remove(f)
-            review["meta"].pop(f, None)
-            pid = review["automat"].pop(f, None)
-            if pid:
-                automat_ids.append((f, int(pid)))
+        automat_ids = list(self._discard_files(session, files, review).items())
         _save_review(outdir, review)
-        self._log(f"Usunięto {len(files)} plik(ów) z {session}.", "warn")
+        self._log(f"{len(files)} {_photos_word(len(files))} z {session} "
+                  f"{_trash_note()}.", "warn")
         if not automat_ids:
             return
         if self.uploader is None:
@@ -636,6 +836,99 @@ class WebUI:
             self.automat_sessions = sessions
             self.automat_sessions_error = ""
 
+    def _job_purge_trash(self) -> None:
+        """Dopiero TU pliki znikaja naprawde — wpisy kosza starsze niz
+        TRASH_RETENTION_DAYS. Odpalane raz przy starcie aplikacji."""
+        try:
+            n = _purge_trash(self.base_output)
+        except Exception as e:
+            self._log(f"✗ Czyszczenie kosza: {e}", "err")
+            return
+        if n:
+            self._log(f"Kosz: skasowano {n} wpis(ów) starszych niż "
+                      f"{TRASH_RETENTION_DAYS} dni.")
+
+    def _job_check_update(self, manual: bool = False) -> None:
+        from . import updater
+
+        with self.lock:
+            self.update_checking = True
+            self.update_status = "Sprawdzam…"
+        try:
+            info = updater.check_for_update()
+        except Exception as e:
+            with self.lock:
+                self.update_status = f"✗ {e}"
+            if manual:
+                self._log(f"✗ Sprawdzenie aktualizacji: {e}", "err")
+            return
+        finally:
+            with self.lock:
+                self.update_checking = False
+        with self.lock:
+            self.update_info = info
+            self.update_status = (f"Dostępna wersja {info['version']}" if info
+                                  else f"Masz najnowszą wersję ({APP_VERSION})")
+        if info is None:
+            if manual:
+                self._log(f"Aktualizacje: masz najnowszą wersję ({APP_VERSION}).", "ok")
+            return
+        self._log(f"Dostępna aktualizacja {info['version']} (masz {APP_VERSION}).", "warn")
+        if not updater.can_self_update():
+            self._log("Uruchomienie ze źródeł — zaktualizuj przez `git pull`.", "warn")
+
+    def _job_apply_update(self) -> None:
+        """Pobiera paczke, po czym zamyka aplikacje — reszte (podmiana plikow
+        i restart) robi updater .bat, patrz src/updater.py."""
+        from . import updater
+
+        with self.lock:
+            info = self.update_info
+            busy = self.busy or self.processing_file
+        if not info or not info.get("url"):
+            self._log("✗ Brak paczki aktualizacji do pobrania.", "err")
+            return
+        if not updater.can_self_update():
+            self._log("✗ Samo-aktualizacja działa tylko dla .exe (Windows).", "err")
+            return
+        if busy:
+            self._log("✗ Trwa zdjęcie/obróbka — spróbuj aktualizacji za chwilę.", "err")
+            return
+        with self.lock:
+            self.update_busy = True
+            self.update_progress = 0
+            self.update_status = "Pobieram aktualizację…"
+        self._log(f"↓ Pobieram aktualizację {info['version']}…")
+
+        def progress(pct: int) -> None:
+            with self.lock:
+                self.update_progress = pct
+
+        try:
+            staging = updater.download_and_stage(info["url"], progress)
+        except Exception as e:
+            with self.lock:
+                self.update_busy = False
+                self.update_status = f"✗ {e}"
+            self._log(f"✗ Pobranie aktualizacji nie wyszło: {e}", "err")
+            return
+        with self.lock:
+            self.update_status = "Restartuję aplikację…"
+        self._log("Aktualizacja pobrana — zamykam i uruchamiam ponownie.", "ok")
+        # osobny watek: _restart_into() czeka na zamkniecie workera w stop()
+        threading.Thread(target=self._restart_into, args=(staging,),
+                         daemon=True).start()
+
+    def _restart_into(self, staging) -> None:
+        from . import updater
+
+        time.sleep(0.6)  # niech front zdazy pokazac status przed zniknieciem okna
+        self.stop()      # domkniecie sesji aparatu — porzucone PTP = BUSY po restarcie
+        try:
+            updater.apply_update_and_restart(staging)
+        finally:
+            os._exit(0)
+
     def _job_test(self) -> None:
         import requests
 
@@ -657,6 +950,9 @@ class WebUI:
         "list_sessions": _job_list_sessions,
         "delete": _job_delete,
         "test": _job_test,
+        "check_update": _job_check_update,
+        "apply_update": _job_apply_update,
+        "purge_trash": _job_purge_trash,
     }
 
     # ---------- akcje z frontu ----------
@@ -700,6 +996,11 @@ class WebUI:
             return {"ok": False, "error": "aparat nie jest połączony"}
         if not self.name:
             return {"ok": False, "error": "najpierw ustaw nazwę sesji"}
+        if self.update_busy:
+            # aplikacja zaraz sie zrestartuje — zdjecie zrobione teraz
+            # zgineloby razem z workerem (job by sie nie doczekal obrobki)
+            self._log("Trwa aktualizacja — migawka zablokowana do restartu.", "warn")
+            return {"ok": False, "error": "trwa aktualizacja"}
         with self.lock:
             opts = dict(
                 outdir=self.session_dir, filename=self._resolve_filename(),
@@ -750,6 +1051,21 @@ class WebUI:
     def _act_set_app(self, data: dict) -> None:
         self._set_app_setting(data["key"], data["value"])
 
+    def _act_check_update(self, data: dict) -> None:
+        # flaga ustawiana TU, jeszcze przed odpowiedzią na POST — worker może
+        # być zajęty innym jobem, a spinner ma ruszyć od razu po kliknięciu
+        with self.lock:
+            self.update_checking = True
+            self.update_status = "Sprawdzam…"
+        self._jobs.put(("check_update", True))
+
+    def _act_apply_update(self, data: dict) -> dict | None:
+        with self.lock:
+            if self.update_busy:
+                return {"ok": False, "error": "aktualizacja już trwa"}
+        self._jobs.put(("apply_update",))
+        return None
+
     _ACTIONS = {
         "set_session": _act_set_session,
         "clear_session": _act_clear_session,
@@ -762,6 +1078,8 @@ class WebUI:
         "delete": _act_delete,
         "test_connection": _act_test_connection,
         "set_app": _act_set_app,
+        "check_update": _act_check_update,
+        "apply_update": _act_apply_update,
     }
 
     def _review_mark(self, session: str, filename: str, verdict: str) -> None:
@@ -806,6 +1124,22 @@ class WebUI:
                 self.keep_raw = bool(value)
 
     # ---------- stan dla frontu ----------
+
+    def _update_state(self) -> dict:
+        from . import updater
+
+        info = self.update_info or {}
+        return {
+            "current": APP_VERSION,
+            "available": info.get("version", ""),
+            "notes": info.get("notes", "")[:400],
+            "page": info.get("page", ""),
+            "canApply": bool(info.get("url")) and updater.can_self_update(),
+            "checking": self.update_checking,
+            "busy": self.update_busy,
+            "progress": self.update_progress,
+            "status": self.update_status,
+        }
 
     def state(self) -> dict:
         with self.lock:
@@ -855,6 +1189,7 @@ class WebUI:
                     "keepRaw": self.keep_raw,
                     "testResult": self.test_result,
                 },
+                "update": self._update_state(),
                 "log": list(self.log),
             }
 
@@ -893,6 +1228,8 @@ class WebUI:
         self._worker_thread.start()
         if self.automat_token:
             self._jobs.put(("list_sessions",))
+        self._jobs.put(("check_update",))
+        self._jobs.put(("purge_trash",))
 
         handler = type("Handler", (_Handler,), {"ui": self})
         self._server = ThreadingHTTPServer(("127.0.0.1", self.port), handler)

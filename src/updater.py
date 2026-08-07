@@ -105,6 +105,11 @@ def _staging_root() -> Path:
     for base in (PROJECT_DIR / STAGING_DIR,
                  Path(tempfile.gettempdir()) / "cc_update"):
         try:
+            if base.exists() and _in_use(base):
+                # aktualizator wciaz stamtad dziala — skasowanie tego katalogu
+                # wyrwaloby mu biblioteki spod nog; bierzemy nastepny
+                last = RuntimeError(f"{base} jest w uzyciu")
+                continue
             shutil.rmtree(base, ignore_errors=True)
             base.mkdir(parents=True, exist_ok=True)
             probe = base / ".write-test"
@@ -235,20 +240,25 @@ def apply_update_and_restart(staging) -> Path:
     except OSError:
         pass
 
-    proc = subprocess.Popen(
-        [str(helper), APPLY_FLAG, str(target), str(os.getpid())],
-        cwd=str(staging), creationflags=_DETACHED, close_fds=True,
-    )
-    # Aktualizator ma teraz czekac na nas — jesli zdazyl umrzec, to znaczy, ze
-    # nowy .exe nie wstaje (brakujaca biblioteka, blokada antywirusa). Lepiej
-    # zostac w starej wersji z bledem w logu niz zamknac sie w nicosc.
-    time.sleep(2.0)
-    rc = proc.poll()
-    if rc is not None:
-        say(f"BLAD: aktualizator zakonczyl sie natychmiast (kod {rc})")
-        raise RuntimeError(f"aktualizator nie wystartowal (kod {rc}) — log: {log}")
-    say("aktualizator dziala, zamykam aplikacje")
-    return log
+    # Aktualizator ma czekac na nasze zamkniecie — jesli zdazyl umrzec, to znaczy,
+    # ze nowy .exe nie wstaje. Jedna powtorka, bo swiezo rozpakowany, niepodpisany
+    # plik potrafi raz polec na skanie antywirusa i wstac przy drugim podejsciu.
+    # Gdy i to nie wyjdzie, lepiej zostac w starej wersji z bledem w logu niz
+    # zamknac sie w nicosc.
+    rc = None
+    for attempt in (1, 2):
+        proc = subprocess.Popen(
+            [str(helper), APPLY_FLAG, str(target), str(os.getpid())],
+            cwd=str(staging), creationflags=_DETACHED, close_fds=True,
+        )
+        time.sleep(2.0)
+        rc = proc.poll()
+        if rc is None:
+            say(f"aktualizator dziala (proba {attempt}), zamykam aplikacje")
+            return log
+        say(f"aktualizator zakonczyl sie natychmiast (proba {attempt}, kod {rc})")
+        time.sleep(2.0)
+    raise RuntimeError(f"aktualizator nie wystartowal (kod {rc}) — log: {log}")
 
 
 # ---------------------------------------------------------------- tryb aktualizatora
@@ -402,9 +412,32 @@ def _message_box(text: str) -> None:
 # ---------------------------------------------------------------- sprzatanie
 
 
+def _in_use(root: Path) -> bool:
+    """Czy z tego katalogu chodzi jeszcze jakis proces.
+
+    Dzialajacy `.exe` jest zablokowany do zapisu — prostszy i pewniejszy test
+    niz enumerowanie procesow."""
+    for exe in root.rglob("*.exe"):
+        try:
+            with open(exe, "r+b"):
+                pass
+        except PermissionError:
+            return True
+        except OSError:
+            continue
+    return False
+
+
 def cleanup_after_update() -> str | None:
     """Wolane przy starcie aplikacji: kasuje katalogi robocze aktualizatora i
-    zwraca tresc markera bledu (albo None). Marker jest czyszczony."""
+    zwraca tresc markera bledu (albo None). Marker jest czyszczony.
+
+    Katalog, z ktorego cos jeszcze dziala, zostaje nietkniety — aktualizator
+    JEST uruchomiony wlasnie ze staging, a operator, ktoremu okno znika na
+    kilka sekund, potrafi w tym czasie kliknac skrot i uruchomic stara wersje.
+    Bezwarunkowy `rmtree` wyrywal wtedy aktualizatorowi biblioteki spod nog
+    (`No such file or directory: ...\\_internal\\base_library.zip`) i cala
+    aktualizacja szla sie paść. Zaleglosci sprzatnie kolejny start."""
     err = None
     marker = PROJECT_DIR / ERROR_MARKER
     try:
@@ -418,6 +451,6 @@ def cleanup_after_update() -> str | None:
     # katalogi po poprzedniej wersji aktualizatora (mechanizm z .bat)
     stale += list(Path(tempfile.gettempdir()).glob("cc_update_*"))
     for path in stale:
-        if path.exists():
+        if path.exists() and not _in_use(path):
             shutil.rmtree(path, ignore_errors=True)
     return err

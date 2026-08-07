@@ -307,7 +307,7 @@ function sesjaScreen() {
           <div style="position: absolute; right: 12px; top: 12px; display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,.55); border: 1px solid #3c3c44; padding: 3px 8px; ${mono} font-size: 10.5px; color: #d0d0d6;">
             <div style="width: 7px; height: 7px; border-radius: 50%; background: #ff4d4d; animation: livePulse 1.6s ease-in-out infinite;"></div>LIVE
           </div>` : ""}
-          <div id="hist-badge" style="position: absolute; right: 12px; bottom: 12px; background: rgba(0,0,0,.55); border: 1px solid #3c3c44; padding: 3px 8px; ${mono} font-size: 10.5px; color: ${bgColor};">${histText}</div>
+          <div id="hist-badge" title="${histTitle(st)}" style="position: absolute; right: 12px; bottom: 12px; background: rgba(0,0,0,.55); border: 1px solid #3c3c44; padding: 3px 8px; ${mono} font-size: 10.5px; color: ${bgColor};">${histText}</div>
           <div id="review-slot" style="position: absolute; inset: 0; z-index: 2; pointer-events: none;">${reviewOverlay()}</div>
           <div id="flash" style="position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 4;"></div>
         </div>
@@ -359,7 +359,7 @@ function sesjaScreen() {
 
         <div style="display: flex; flex-direction: column;">
           <div style="font-size: 14px; font-weight: 600; color: #eaeaee;">Postprocessing</div>
-          <div style="margin-top: 4px; font-size: 11.5px; line-height: 1.5; color: #85858e;">Co dzieje się ze zdjęciem po zejściu z aparatu. Surowa klatka i tak leży obok, w <span style="${mono}">raw/</span>.</div>
+          <div style="margin-top: 4px; font-size: 11.5px; line-height: 1.5; color: #85858e;">Każde zdjęcie przechodzi przez zaznaczone kroki zaraz po zrobieniu.</div>
           <div style="margin-top: 14px; border-top: 1px solid #2f2f35;"></div>
           ${optionRow("logo", post_.logo, "Nakładanie logo",
                       "Znak wodny TRIXBRIX.eu w rogu kadru.",
@@ -379,12 +379,8 @@ function sesjaScreen() {
 
       </div>
 
-      <div style="flex: 0 0 auto; border-top: 1px solid #17171a; background: #26262a; padding: 12px 16px 14px; display: flex; flex-direction: column; gap: 8px;">
-        <button onclick="shoot()" style="height: 44px; ${btnBlue} border-radius: 6px; font-size: 14px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 10px;"><span id="shoot-label">${st.busy || "Zrób zdjęcie"}</span> <span style="${mono} font-size: 11px; opacity: .75;">ENTER</span></button>
-        <div style="display: flex; gap: 8px;">
-          <button onclick="toggle('preview', !S.state.previewOn)" style="flex: 1; height: 30px; background: linear-gradient(#3f3f45, #35353a); border: 1px solid #4c4c54; border-radius: 5px; color: #eaeaee; font-size: 12px; font-family: inherit;">Podgląd: ${st.previewOn ? "ON" : "OFF"} <span style="${mono} font-size: 10.5px; color: #9d9da3;">P</span></button>
-          <button onclick="post({action:'reject_last'})" style="flex: 1; height: 30px; background: linear-gradient(#3f3f45, #35353a); border: 1px solid #4c4c54; border-radius: 5px; color: #eaeaee; font-size: 12px; font-family: inherit;">Odrzuć ostatnie <span style="${mono} font-size: 10.5px; color: #9d9da3;">X</span></button>
-        </div>
+      <div style="flex: 0 0 auto; border-top: 1px solid #17171a; background: #26262a; padding: 12px 16px 14px;">
+        <button onclick="shoot()" style="width: 100%; height: 44px; ${btnBlue} border-radius: 6px; font-size: 14px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 10px;"><span id="shoot-label">${st.busy || "Zrób zdjęcie"}</span> <span style="${mono} font-size: 11px; opacity: .75;">ENTER</span></button>
       </div>
     </div>`;
 }
@@ -394,10 +390,23 @@ function sesjaScreen() {
 // pokazywane wprost — samo „HISTOGRAM !" nie mówiło, co właściwie jest nie tak.
 // Po rozłączeniu nie ma z czego liczyć: badge musi zgasnąć, a nie zostać
 // z ostatnim odczytem, bo wygląda wtedy jak żywy pomiar.
-const histLabel = st => !st.connected
-  ? "TŁO —"
-  : `TŁO ${st.camera.bg} ${st.camera.bgOk ? "OK" : "· celuj w 230–254"}`;
-const histColor = st => !st.connected ? "#6c6c74" : st.camera.bgOk ? "#9fe0a8" : "#e0b96a";
+// Badge jasnosci tla mowi operatorowi, co ma zrobic — nie jakie sa liczby.
+// Wczesniej stalo tam „TŁO 255–255 · celuj w 230–254": zrozumiale dla kogos,
+// kto wie, ze to poziomy bieli, i dla nikogo wiecej. Zmierzone wartosci
+// zostaly w tooltipie.
+const BG_LABEL = {
+  ok: "TŁO OK",
+  dark: "TŁO ZA CIEMNE · rozjaśnij w aparacie",
+  unknown: "TŁO —",
+};
+const BG_COLOR = { ok: "#9fe0a8", dark: "#e0b96a", unknown: "#6c6c74" };
+
+const bgStatus = st => (st.connected && BG_LABEL[st.camera.bgStatus]) ? st.camera.bgStatus : "unknown";
+const histLabel = st => BG_LABEL[bgStatus(st)];
+const histColor = st => BG_COLOR[bgStatus(st)];
+const histTitle = st => bgStatus(st) === "unknown"
+  ? "Jasność tła — czekam na klatkę z aparatu."
+  : `Zmierzona jasność tła: ${st.camera.bg} ze skali 0–255 (im bliżej 255, tym bielszy stół; poniżej 230 robi się szaro).`;
 
 function reviewShot() {
   const shots = S.state.shots;
@@ -711,6 +720,7 @@ function updateVolatile(st) {
   if (hist) {
     hist.textContent = histLabel(st);
     hist.style.color = histColor(st);
+    hist.title = histTitle(st);
   }
   const sl = $("shoot-label");
   if (sl) sl.textContent = st.busy || "Zrób zdjęcie";

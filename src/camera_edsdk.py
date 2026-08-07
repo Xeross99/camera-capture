@@ -30,8 +30,28 @@ _EDS_ERR_TAKE_PICTURE_AF_NG = 0x8D01
 _PROP_SAVE_TO = 0x000B
 _PROP_EVF_MODE = 0x0501
 _PROP_EVF_OUTPUT_DEVICE = 0x0500
+_PROP_EXPOSURE_COMP = 0x0407      # kEdsPropID_ExposureCompensation
 _SAVE_TO_HOST = 2
 _EVF_OUTPUT_PC = 2
+
+# Kompensacja ekspozycji: kody Canona (bajt ze znakiem w uzupelnieniu do dwoch,
+# krok 1/3 EV to 0x03/0x05/0x08 na kolejna 1/3) -> etykieta dla UI. Tabela ma
+# tez wartosci polowkowe, bo aparat przestawiony na kroki 1/2 EV zwroci wlasnie
+# je i chcemy je UMIEC POKAZAC, nawet jesli sami proponujemy tylko trzecie.
+_EV_CODES = {
+    0x18: "+3", 0x15: "+2 2/3", 0x14: "+2 1/2", 0x13: "+2 1/3", 0x10: "+2",
+    0x0D: "+1 2/3", 0x0C: "+1 1/2", 0x0B: "+1 1/3", 0x08: "+1",
+    0x05: "+2/3", 0x04: "+1/2", 0x03: "+1/3", 0x00: "0",
+    0xFD: "-1/3", 0xFC: "-1/2", 0xFB: "-2/3", 0xF8: "-1",
+    0xF5: "-1 1/3", 0xF4: "-1 1/2", 0xF3: "-1 2/3", 0xF0: "-2",
+    0xED: "-2 1/3", 0xEC: "-2 1/2", 0xEB: "-2 2/3", 0xE8: "-3",
+}
+# Do wyboru w UI tylko kroki 1/3 EV — tak stoi M50 II fabrycznie. Kolejnosc od
+# najciemniejszej do najjasniejszej, bo UI przesuwa sie po indeksie.
+_EV_THIRDS = [0xE8, 0xEB, 0xED, 0xF0, 0xF3, 0xF5, 0xF8, 0xFB, 0xFD,
+              0x00, 0x03, 0x05, 0x08, 0x0B, 0x0D, 0x10, 0x13, 0x15, 0x18]
+_EV_LABEL_TO_CODE = {label: code for code, label in _EV_CODES.items()}
+_EV_UNKNOWN = 0xFFFFFFFF          # aparat w trybie, ktory nie ma kompensacji
 
 _CMD_PRESS_SHUTTER = 0x0004
 _SHUTTER_OFF = 0
@@ -132,6 +152,8 @@ class EdsdkSession:
         sdk.EdsGetLength.argtypes = [void_p, ctypes.POINTER(u64)]
         sdk.EdsSetPropertyData.argtypes = [void_p, ctypes.c_uint32, ctypes.c_int32,
                                            ctypes.c_uint32, void_p]
+        sdk.EdsGetPropertyData.argtypes = [void_p, ctypes.c_uint32, ctypes.c_int32,
+                                           ctypes.c_uint32, void_p]
         return sdk
 
     def _check(self, code: int, where: str) -> None:
@@ -143,6 +165,13 @@ class EdsdkSession:
         code = self._sdk.EdsSetPropertyData(self._camera, prop, 0, 4, ctypes.byref(val))
         if required:
             self._check(code, where)
+
+    def _get_u32(self, prop: int) -> int | None:
+        """None, gdy aparat nie oddaje wartosci (np. property niedostepne w
+        biezacym trybie) — wolajacy ma to potraktowac jak brak, nie jak blad."""
+        val = ctypes.c_uint32()
+        code = self._sdk.EdsGetPropertyData(self._camera, prop, 0, 4, ctypes.byref(val))
+        return val.value if code == _EDS_ERR_OK else None
 
     def _pump(self) -> None:
         self._sdk.EdsGetEvent()
@@ -279,12 +308,34 @@ class EdsdkSession:
         return ctypes.string_at(ptr, length.value)
 
     def get_settings(self) -> dict:
-        # ekspozycje ustawia sie na aparacie — jak w backendzie digiCamControl
-        return {}
+        """Tylko kompensacja ekspozycji — reszte (ISO, czas, przyslona) ustawia
+        sie na aparacie. Pusty slownik, gdy aparat jej teraz nie oddaje: tak
+        jest np. w trybie w pelni recznym, gdzie ta sama skala na ekranie
+        aparatu jest juz tylko swiatlomierzem."""
+        if self._camera is None:
+            return {}
+        raw = self._get_u32(_PROP_EXPOSURE_COMP)
+        if raw is None or raw == _EV_UNKNOWN:
+            return {}
+        label = _EV_CODES.get(raw & 0xFF)
+        if label is None:
+            return {}
+        return {"exposurecompensation": {
+            "current": label,
+            "choices": [_EV_CODES[c] for c in _EV_THIRDS],
+        }}
 
     def set_setting(self, key: str, value: str) -> None:
-        raise RuntimeError("zmiana ustawien aparatu niedostepna przez backend edsdk — "
-                           "ustaw na aparacie")
+        if key != "exposurecompensation":
+            raise RuntimeError(
+                f"zmiana '{key}' niedostepna przez backend edsdk — ustaw na aparacie")
+        code = _EV_LABEL_TO_CODE.get(str(value).strip())
+        if code is None:
+            raise RuntimeError(f"nieznana kompensacja ekspozycji: {value!r}")
+        # Aparat odrzuca wartosc spoza swojego zakresu/kroku (np. 1/3 EV, gdy
+        # ustawiony jest krok 1/2) — niech to wyjdzie jako czytelny blad,
+        # zamiast cicho nie zrobic nic.
+        self._set_u32(_PROP_EXPOSURE_COMP, code, "ExposureCompensation")
 
     def describe_contrast(self) -> dict | None:
         return None

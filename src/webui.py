@@ -389,6 +389,10 @@ class WebUI:
         self.busy = ""
         self.fps = 0.0
         self.bg_range: tuple[int, int] | None = None
+        # {"current", "choices"} albo None, gdy aparat nie oddaje kompensacji
+        # (tryb bez niej, backend jej nie umie, aparat rozłączony)
+        self.ev: dict | None = None
+        self._ev_t0 = 0.0
         self.processing_file: str | None = None
         self.syncing: list[str] = []  # nazwy zdjec pobieranych wlasnie z Automatu (skeletony w filmstripie)
         self.automat_sessions: list[dict] = []
@@ -442,6 +446,7 @@ class WebUI:
     RECONNECT_MIN = 2.0
     RECONNECT_MAX = 30.0
     _HEALTHY_AFTER = 5.0   # tyle sekund live view = polaczenie "zdrowe"
+    _EV_POLL_S = 2.0       # co tyle odpytujemy aparat o kompensacje ekspozycji
 
     def _camera_loop(self) -> None:
         """Petla zewnetrzna: laczy sie (retry co 5 s — np. gdy inna aplikacja
@@ -497,6 +502,7 @@ class WebUI:
             self.connected = False
             self.fps = 0.0
             self.bg_range = None
+            self.ev = None
         with self._frame_lock:
             self._frame = None
 
@@ -524,6 +530,11 @@ class WebUI:
                 if cmd is not None:
                     self._handle_cam_cmd(cmd)
                     continue
+                # przed gałęzią podglądu, żeby kompensacja odświeżała się także
+                # przy wyłączonym live view (operator wciąż kręci pokrętłem)
+                if time.monotonic() - self._ev_t0 >= self._EV_POLL_S:
+                    self._ev_t0 = time.monotonic()
+                    self._refresh_ev()
                 if not self.preview_on:
                     time.sleep(0.1)
                     continue
@@ -562,6 +573,30 @@ class WebUI:
         kind, *rest = cmd
         if kind == "shoot":
             self._do_capture(rest[0])
+        elif kind == "set_ev":
+            self._do_set_ev(rest[0])
+
+    # Kompensacja ekspozycji. Wszystko leci wątkiem camera — aparat ma JEDNEGO
+    # właściciela (gphoto2 nie jest thread-safe, EDSDK wymaga tego samego wątku
+    # co reszta wywołań).
+    def _refresh_ev(self) -> None:
+        """Odpytanie aparatu o bieżącą kompensację. Operator kręci też pokrętłem
+        na aparacie, więc UI musi za tym nadążać, a nie tylko pamiętać, co samo
+        ustawiło."""
+        try:
+            ev = self.session.get_settings().get("exposurecompensation")
+        except Exception:
+            ev = None
+        with self.lock:
+            self.ev = ev
+
+    def _do_set_ev(self, value: str) -> None:
+        try:
+            self.session.set_setting("exposurecompensation", value)
+        except Exception as e:
+            self._log(f"✗ Kompensacja ekspozycji: {e}", "err")
+        self._ev_t0 = time.monotonic()
+        self._refresh_ev()   # źródłem prawdy jest aparat, nie to, co wysłaliśmy
 
     def _update_bg_stats(self, jpeg: bytes) -> None:
         try:
@@ -1148,6 +1183,17 @@ class WebUI:
         if self.automat_token:
             self._jobs.put(("list_sessions",))
 
+    def _act_set_ev(self, data: dict) -> dict | None:
+        """Kompensacja ekspozycji: żądanie tylko kolejkujemy — wykona je wątek
+        camera, a stan i tak przyjdzie z aparatu przy najbliższym odpytaniu."""
+        if not self.connected:
+            return {"ok": False, "error": "aparat nie jest połączony"}
+        value = str(data.get("value") or "").strip()
+        if not value:
+            return {"ok": False, "error": "brak wartości"}
+        self._cam_q.put(("set_ev", value))
+        return None
+
     def _act_shoot(self, data: dict) -> dict | None:
         if not self.connected:
             return {"ok": False, "error": "aparat nie jest połączony"}
@@ -1228,6 +1274,7 @@ class WebUI:
         "clear_session": _act_clear_session,
         "refresh_sessions": _act_refresh_sessions,
         "shoot": _act_shoot,
+        "set_ev": _act_set_ev,
         "toggle": _act_toggle,
         "set_post": _act_set_post,
         "review": _act_review,
@@ -1322,6 +1369,7 @@ class WebUI:
                 "camera": {
                     "bg": f"{bg[0]}–{bg[1]}" if bg else "—",
                     "bgStatus": _bg_status(bg),
+                    "ev": self.ev,
                 },
                 "post": {
                     "logo": self.add_logo,

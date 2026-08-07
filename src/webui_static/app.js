@@ -19,6 +19,22 @@ const btnBlue = `background: linear-gradient(#4a8cff, #2f72e8); border: 1px soli
 const chk = `accent-color: ${ACCENT}; width: 14px; height: 14px;`;
 const label = `display: flex; align-items: center; gap: 8px; color: #dcdce1;`;
 const head = `font-size: 11px; font-weight: 600; color: #8f8f97; letter-spacing: .06em; text-transform: uppercase;`;
+
+// Wiersz opcji w sidebarze: checkbox, tytul i opis pod spodem, wiersze rozdzielone
+// hairline'em. Sam checkbox z jednym slowem nie mowil, co wlasciwie robi.
+// `extra` (np. wybor rogu logo) siedzi POZA <label>, inaczej klik w select
+// przelaczalby checkbox.
+const optionRow = (key, checked, title, desc, extra = "") => `
+  <div style="padding: 12px 0; border-bottom: 1px solid #2f2f35;">
+    <label style="display: flex; align-items: flex-start; gap: 9px;">
+      <input type="checkbox" ${checked ? "checked" : ""} onchange="toggle('${key}', this.checked)" style="${chk} margin-top: 1px; flex-shrink: 0;" />
+      <span style="flex: 1; min-width: 0;">
+        <span style="display: block; font-size: 12.5px; color: #eaeaee;">${title}</span>
+        <span style="display: block; margin-top: 3px; font-size: 11.5px; line-height: 1.5; color: #85858e;">${desc}</span>
+      </span>
+    </label>
+    ${extra ? `<div style="padding-left: 23px;">${extra}</div>` : ""}
+  </div>`;
 // Siatka kadrowania jak w aparacie (M50 II: 3×3 / 6×4). Domyślnie 6×4 — to
 // samo, co operator widzi na ekranie aparatu. Klik w badge cykluje.
 const GRIDS = [
@@ -324,12 +340,7 @@ function sesjaScreen() {
           <nav aria-label="Breadcrumb" style="display: flex;">
             <ol role="list" style="display: flex; align-items: center; gap: 8px; margin: 0; padding: 0; list-style: none;">
               <li style="display: flex;">
-                <a href="#" class="crumb" onclick="S.pendingNew = null; post({action: 'clear_session'}); return false;" style="display: flex;">
-                  <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" style="width: 15px; height: 15px; flex-shrink: 0; display: block;">
-                    <path d="M9.293 2.293a1 1 0 0 1 1.414 0l7 7A1 1 0 0 1 17 11h-1v6a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1v-3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-6H3a1 1 0 0 1-.707-1.707l7-7Z" clip-rule="evenodd" fill-rule="evenodd" />
-                  </svg>
-                  <span class="sr-only">Wszystkie sesje</span>
-                </a>
+                <a href="#" class="crumb" onclick="leaveSession(); return false;" style="${mono} font-size: 11px;">Camera Capture</a>
               </li>
               <li style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                 <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" style="width: 15px; height: 15px; flex-shrink: 0; color: #45454d;">
@@ -339,26 +350,31 @@ function sesjaScreen() {
               </li>
             </ol>
           </nav>
-          <div style="${head}">Sesja zdjęciowa</div>
-          <div style="display: flex; gap: 8px;">
-            <input id="session-input" value="${st.session.name}" placeholder="nazwa produktu…" style="flex: 1; ${inp} font-size: 11.5px;" />
-            <button onclick="commitName()" style="height: 26px; padding: 0 14px; background: linear-gradient(#4a4a50, #3d3d43); border: 1px solid #55555d; border-radius: 4px; color: #eaeaee; font-size: 12px; font-family: inherit;">Ustaw</button>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <h2 style="flex: 1; min-width: 0; margin: 0; font-size: 19px; font-weight: 600; color: #eaeaee; letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${st.session.name}</h2>
+            <button onclick="leaveSession()" style="flex-shrink: 0; height: 28px; padding: 0 12px; background: linear-gradient(#4a4a50, #3d3d43); border: 1px solid #55555d; border-radius: 4px; color: #eaeaee; font-size: 12px; font-family: inherit;">Wróć</button>
           </div>
-          <div style="${mono} font-size: 10.5px; color: #77777f; word-break: break-all;">${st.session.dir || "(bez nazwy nie da się strzelić)"}</div>
+          <div style="margin-top: 6px; border-top: 1px solid #2f2f35;"></div>
         </div>
 
-        <div style="display: flex; flex-direction: column; gap: 9px;">
-          <div style="${head}">Postprocessing</div>
-          <label style="${label}"><input type="checkbox" ${post_.logo ? "checked" : ""} onchange="toggle('logo', this.checked)" style="${chk}" />Nakładanie logo</label>
-          <div style="display: grid; grid-template-columns: 84px 1fr; gap: 8px 10px; align-items: center; padding-left: 22px;">
-            <div style="color: #b4b4bb;">Pozycja</div>
-            <select onchange="post({action:'set_post', key:'logo_position', value:this.value})" style="${sel}">
-              ${post_.logoPositions.map(p => `<option ${p === post_.logoPosition ? "selected" : ""}>${p}</option>`).join("")}
-            </select>
-          </div>
-          <label style="${label}"><input type="checkbox" ${post_.zoom ? "checked" : ""} onchange="toggle('zoom', this.checked)" style="${chk}" />Przybliżanie (zoom do produktu)</label>
-          <label style="${label}"><input type="checkbox" ${post_.center ? "checked" : ""} onchange="toggle('center', this.checked)" style="${chk}" />Centrowanie</label>
-          <label style="${label}"><input type="checkbox" ${post_.cleanBg ? "checked" : ""} onchange="toggle('cleanbg', this.checked)" style="${chk}" />Wyrównanie tła do bieli</label>
+        <div style="display: flex; flex-direction: column;">
+          <div style="font-size: 14px; font-weight: 600; color: #eaeaee;">Postprocessing</div>
+          <div style="margin-top: 4px; font-size: 11.5px; line-height: 1.5; color: #85858e;">Co dzieje się ze zdjęciem po zejściu z aparatu. Surowa klatka i tak leży obok, w <span style="${mono}">raw/</span>.</div>
+          <div style="margin-top: 14px; border-top: 1px solid #2f2f35;"></div>
+          ${optionRow("logo", post_.logo, "Nakładanie logo",
+                      "Znak wodny TRIXBRIX.eu w rogu kadru.",
+                      `<div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
+                         <span style="font-size: 11.5px; color: #b4b4bb;">Pozycja</span>
+                         <select onchange="post({action:'set_post', key:'logo_position', value:this.value})" style="${sel}">
+                           ${post_.logoPositions.map(p => `<option ${p === post_.logoPosition ? "selected" : ""}>${p}</option>`).join("")}
+                         </select>
+                       </div>`)}
+          ${optionRow("zoom", post_.zoom, "Przybliżanie",
+                      "Kadr dociąga się do produktu — bez tego zostaje naturalna skala z klatki.")}
+          ${optionRow("center", post_.center, "Centrowanie",
+                      "Produkt ląduje na środku kadru zamiast tam, gdzie wypadł na stole.")}
+          ${optionRow("cleanbg", post_.cleanBg, "Wyrównanie tła do bieli",
+                      "Tło dociągane do czystej bieli, cienie pod produktem wygaszane.")}
         </div>
 
       </div>
@@ -677,11 +693,9 @@ function renderShell(force) {
     u.available, u.busy, u.canApply, S.updateDismissed]);
   if (force || key !== lastShellKey) {
     lastShellKey = key;
-    const focused = document.activeElement && document.activeElement.id;
     $("app").innerHTML = shell();
     lastSesja = lastUstawienia = "";
     renderScreens(true);
-    if (focused === "session-input") $("session-input").focus();
     return;
   }
   renderScreens(false);
@@ -747,11 +761,7 @@ function renderScreens(force) {
     if (force || key !== lastSesja) {
       lastSesja = key;
       S.lastLogLen = logSig(st);
-      const el = document.activeElement;
-      const editing = el && (el.id === "session-input") && el.value !== st.session.name;
-      const keep = editing ? el.value : null;
       $("screen-sesja").innerHTML = sesjaScreen();
-      if (keep !== null) { const i = $("session-input"); i.value = keep; i.focus(); }
       const strip = $("filmstrip");
       if (strip) strip.scrollLeft = strip.scrollWidth;
       const lp = $("log-panel");
@@ -775,9 +785,11 @@ function go(screen) {
 
 // ---------- akcje ----------
 
-function commitName() {
-  const v = $("session-input").value.trim();
-  if (v) post({ action: "set_session", name: v });
+// Wyjscie z sesji = powrot na ekran startowy z lista sesji. Zmiana nazwy idzie
+// wlasnie tamtedy (pole "Utworz i otworz"), wiec sidebar nie ma juz inputa.
+function leaveSession() {
+  S.pendingNew = null;
+  post({ action: "clear_session" });
 }
 
 function shoot() {
@@ -825,14 +837,8 @@ function applyUpdate() {
 document.addEventListener("keydown", e => {
   const tag = document.activeElement ? document.activeElement.tagName : "";
   if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") {
-    if (e.key === "Enter") {
-      const id = document.activeElement.id;
-      if (id === "session-input") {
-        commitName();
-        document.activeElement.blur();
-      } else if (id === "new-session-input") {
-        commitNewSession();
-      }
+    if (e.key === "Enter" && document.activeElement.id === "new-session-input") {
+      commitNewSession();
     }
     return;
   }

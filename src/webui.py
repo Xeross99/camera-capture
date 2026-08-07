@@ -449,9 +449,7 @@ class WebUI:
             started = time.monotonic()
             self._run_connected(quiet=flapping)
             self.session.close()
-            with self.lock:
-                self.connected = False
-                self.fps = 0.0
+            self._drop_preview()
             if time.monotonic() - started >= self._HEALTHY_AFTER:
                 backoff = self.RECONNECT_MIN
                 flapping = False
@@ -466,6 +464,20 @@ class WebUI:
                 backoff = min(self.RECONNECT_MAX, backoff * 2)
             if self._stop.wait(backoff):
                 return
+
+    def _drop_preview(self) -> None:
+        """Aparat odpadł — kasujemy WSZYSTKO, co pochodzi z live view.
+
+        Bez tego ostatnia klatka wisiała w buforze: `/stream` podawał ją
+        każdemu nowemu odbiorcy, a statystyki tła pokazywały nieaktualne
+        wartości. Efekt był mylący — status mówił „rozłączony", a obraz
+        wyglądał, jakby aparat dalej pracował."""
+        with self.lock:
+            self.connected = False
+            self.fps = 0.0
+            self.bg_range = None
+        with self._frame_lock:
+            self._frame = None
 
     def _run_connected(self, quiet: bool = False) -> None:
         """`quiet` = jesteśmy w pętli reconnectu z padającym live view: nie
@@ -504,8 +516,7 @@ class WebUI:
                 except CAMERA_ERRORS as e:
                     if not quiet:
                         self._log(f"✗ Podgląd przerwany: {e}", "err")
-                    with self.lock:
-                        self.connected = False
+                    self._drop_preview()
                     return
                 last_frame_t = time.monotonic()
                 if not announced and last_frame_t - started >= self._HEALTHY_AFTER:

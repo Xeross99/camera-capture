@@ -393,6 +393,7 @@ class WebUI:
         # (tryb bez niej, backend jej nie umie, aparat rozłączony)
         self.ev: dict | None = None
         self._ev_t0 = 0.0
+        self._ev_logged = False   # wpis diagnostyczny raz na połączenie
         self.processing_file: str | None = None
         self.syncing: list[str] = []  # nazwy zdjec pobieranych wlasnie z Automatu (skeletony w filmstripie)
         self.automat_sessions: list[dict] = []
@@ -503,6 +504,7 @@ class WebUI:
             self.fps = 0.0
             self.bg_range = None
             self.ev = None
+        self._ev_logged = False   # po ponownym połączeniu warto wypisać raz jeszcze
         with self._frame_lock:
             self._frame = None
 
@@ -587,6 +589,15 @@ class WebUI:
             ev = self.session.get_settings().get("exposurecompensation")
         except Exception:
             ev = None
+        # Raz na połączenie wypisujemy, co aparat NAPRAWDĘ oddaje. Backendy mówią
+        # różnymi zapisami ("+2 2/3", "+3.0", "0.3") i bez tego wpisu każdy błąd
+        # kroku trzeba było zgadywać ze zrzutu ekranu.
+        if ev and not self._ev_logged:
+            self._ev_logged = True
+            choices = ev.get("choices") or []
+            self._log(f"Kompensacja ekspozycji: teraz {ev.get('current')!r}, "
+                      f"{len(choices)} kroków ({', '.join(map(str, choices[:3]))}"
+                      f"{' … ' + str(choices[-1]) if len(choices) > 3 else ''}).")
         with self.lock:
             self.ev = ev
 

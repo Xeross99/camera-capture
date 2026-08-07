@@ -182,9 +182,11 @@ class DigiCamControlSession:
             return {}
         choices = self._ev_choices or []
         current = current.strip().strip('"')
-        if not current or current not in choices:
-            # aparat w trybie bez kompensacji (albo dCC oddal cos nieoczekiwanego)
-            return {}
+        if not current or not choices:
+            return {}   # aparat w trybie bez kompensacji
+        # NIE wymagamy, zeby `current` bylo w `choices`: dCC potrafi oddac
+        # biezaca wartosc innym zapisem niz elementy listy ("+3.0" vs "+2 2/3").
+        # Front i tak porownuje liczbowo, wiec niedopasowany zapis mu nie wadzi.
         return {"exposurecompensation": {"current": current, "choices": choices}}
 
     def set_setting(self, key: str, value: str) -> None:

@@ -419,9 +419,29 @@ const BG_LABEL = {
 };
 const BG_COLOR = { ok: "#9fe0a8", dark: "#e0b96a", unknown: "#6c6c74" };
 
-// Kompensacja ekspozycji. Backendy mówią różnymi słowami („+1/3" z EDSDK,
-// „0.3" z gphoto2), więc nic nie parsujemy — pokazujemy to, co przyszło,
-// a przesuwamy się po INDEKSIE w liście wyborów aparatu.
+// Kompensacja ekspozycji. Backendy mówią różnymi słowami: „+2 2/3" (EDSDK),
+// „+3.0" (digiCamControl), „0.3" (gphoto2) — a bywa, że odczyt bieżącej
+// wartości i lista kroków są w RÓŻNYCH zapisach w obrębie jednego aparatu.
+// Dlatego liczymy na liczbach, a nie na tekście: `+` idzie do najbliższej
+// wartości WIĘKSZEJ, `−` do najbliższej mniejszej. Poprzednia wersja szukała
+// bieżącej wartości w liście przez `indexOf` i przy niedopasowanym zapisie
+// dostawała -1, czyli „zacznij od początku listy" — stąd `+` z +3.0 lądujące
+// na +2 2/3, czyli przycisk plus zmniejszający ekspozycję.
+function evNumber(v) {
+  let s = String(v == null ? "" : v).trim().replace(/−/g, "-").replace(/^\+/, "");
+  if (!s) return null;
+  let sign = 1;
+  if (s[0] === "-") { sign = -1; s = s.slice(1).trim(); }
+  let total = 0, seen = false;
+  for (const part of s.split(/\s+/)) {
+    const frac = part.match(/^(\d+)\/(\d+)$/);
+    if (frac && +frac[2] !== 0) { total += (+frac[1]) / (+frac[2]); seen = true; continue; }
+    if (/^\d+(\.\d+)?$/.test(part)) { total += parseFloat(part); seen = true; continue; }
+    return null;   // nieznany zapis — lepiej nie zgadywać niż zgadnąć źle
+  }
+  return seen ? sign * total : null;
+}
+
 function evLabel(v) {
   const s = String(v == null ? "" : v).trim();
   if (!s) return "—";
@@ -442,8 +462,19 @@ function evHint(st) {
 function stepEv(dir) {
   const ev = S.state.camera && S.state.camera.ev;
   if (!ev || !ev.choices || !ev.choices.length) return;
-  const at = ev.choices.indexOf(ev.current);
-  const next = ev.choices[Math.max(0, Math.min(ev.choices.length - 1, (at < 0 ? 0 : at) + dir))];
+  // sortujemy po wartości, nie ufamy kolejności listy z aparatu — bywa malejąca
+  const opts = ev.choices
+    .map(c => ({ c, n: evNumber(c) }))
+    .filter(o => o.n !== null)
+    .sort((a, b) => a.n - b.n);
+  if (!opts.length) return;
+  const cur = evNumber(ev.current);
+  const eps = 1e-6;
+  let hit;
+  if (cur === null) hit = opts.find(o => Math.abs(o.n) < eps) || opts[0];
+  else if (dir > 0) hit = opts.find(o => o.n > cur + eps) || opts[opts.length - 1];
+  else hit = [...opts].reverse().find(o => o.n < cur - eps) || opts[0];
+  const next = hit && hit.c;
   if (!next || next === ev.current) return;
   // Pokazujemy nową wartość od razu, ale źródłem prawdy jest aparat: jeśli
   // odrzuci wartość, najbliższe odpytanie (2 s) wróci ze starą.

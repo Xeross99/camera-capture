@@ -954,6 +954,19 @@ class WebUI:
             self._log(f"Kosz: skasowano {n} wpis(ów) starszych niż "
                       f"{TRASH_RETENTION_DAYS} dni.")
 
+    def _job_cleanup_update(self) -> None:
+        """Po restarcie w nowa wersje: kasuje katalog roboczy aktualizatora i
+        wypisuje blad, jesli poprzednia proba nie doszla do skutku (inaczej
+        nieudana aktualizacja wygladalaby jak jej brak)."""
+        from . import updater
+
+        try:
+            err = updater.cleanup_after_update()
+        except Exception:
+            return
+        if err:
+            self._log(f"✗ Poprzednia aktualizacja nie doszła do skutku: {err}", "err")
+
     def _job_check_update(self, manual: bool = False) -> None:
         from . import updater
 
@@ -985,7 +998,7 @@ class WebUI:
 
     def _job_apply_update(self) -> None:
         """Pobiera paczke, po czym zamyka aplikacje — reszte (podmiana plikow
-        i restart) robi updater .bat, patrz src/updater.py."""
+        i restart) robi .exe z pobranej paczki, patrz src/updater.py."""
         from . import updater
 
         with self.lock:
@@ -1028,10 +1041,11 @@ class WebUI:
     def _restart_into(self, staging) -> None:
         """Odpala aktualizator i dopiero WTEDY zamyka aplikacje.
 
-        Kolejnosc jest istotna: gdy `.bat` nie wystartuje (zla sciezka, brak
-        uprawnien), aplikacja MUSI zostac otwarta z czytelnym bledem. Wczesniej
-        `os._exit(0)` siedzial w `finally` i kazda wtopa aktualizatora wygladala
-        identycznie — program znikal, nic sie nie zmienialo, nie bylo sladu."""
+        Kolejnosc jest istotna: gdy aktualizator nie wystartuje (nowy .exe nie
+        wstaje, brak uprawnien), aplikacja MUSI zostac otwarta z czytelnym
+        bledem. Wczesniej `os._exit(0)` siedzial w `finally` i kazda wtopa
+        aktualizatora wygladala identycznie — program znikal, nic sie nie
+        zmienialo, nie bylo sladu."""
         from . import updater
 
         time.sleep(0.6)  # niech front zdazy pokazac status przed zniknieciem okna
@@ -1073,6 +1087,7 @@ class WebUI:
         "test": _job_test,
         "check_update": _job_check_update,
         "apply_update": _job_apply_update,
+        "cleanup_update": _job_cleanup_update,
         "purge_trash": _job_purge_trash,
     }
 
@@ -1358,6 +1373,7 @@ class WebUI:
         self._worker_thread.start()
         if self.automat_token:
             self._jobs.put(("list_sessions",))
+        self._jobs.put(("cleanup_update",))
         self._jobs.put(("check_update",))
         self._jobs.put(("purge_trash",))
 

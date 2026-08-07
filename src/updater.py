@@ -6,24 +6,33 @@ spakowana z poziomu katalogu — w zipie na wierzchu leza `.exe` i `_internal/`)
 Publiczne repo = `releases/latest` bez tokena, wiec .exe u operatora pyta samo.
 
 Sama podmiana dziala TYLKO dla spakowanego .exe na Windowsie (`can_self_update`):
-dzialajacego procesu nie da sie nadpisac, wiec pobrana paczka ladu je w tempie,
-a robote konczy `.bat` odpalony tuz przed wyjsciem — czeka az proces zniknie,
-kopiuje pliki i uruchamia aplikacje z powrotem. Kopiujemy TYLKO to, co jest w
-zipie (`.exe` + `_internal/`), zeby `.env`, `photos/` i recznie dolozone
-`EDSDK.dll` przezyly aktualizacje (patrz PROJECT_DIR w config.py — one zyja
-obok .exe).
+dzialajacego procesu nie da sie nadpisac, wiec paczka jest rozpakowywana obok
+aplikacji (`PROJECT_DIR/.update/staging`), a robote konczy **.exe z tej wlasnie
+paczki** uruchomiony z flaga `--apply-update <katalog> <pid>`: czeka az stary
+proces zniknie, kopiuje pliki (czysty Python, `shutil`), startuje zainstalowana
+aplikacje i konczy sie.
+
+Dlaczego nie `.bat`, jak bylo wczesniej: skrypt cmd wymagal przepchania sciezek
+przez kodowanie OEM i cudzyslowy `cmd /c` (polskie znaki w profilu, spacje w
+nazwie .exe, wolumeny bez nazw 8.3), a gdy cokolwiek z tego zawiodlo, `robocopy`
+konczyl sie bledem w oknie, ktorego przy DETACHED_PROCESS nikt nie widzial —
+objaw byl zawsze ten sam: aplikacja znika i nic sie nie dzieje. Aktualizator w
+Pythonie dostaje sciezki jako liste argv (zero parsowania), pisze log obok .exe,
+a przy wtopie pokazuje MessageBox i podnosi z powrotem stara wersje.
 
 Uruchomienie ze zrodel (macOS/dev) tylko informuje o nowszym tagu — tam
 aktualizuje sie przez `git pull`.
 """
 
-import locale
+import ctypes
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import zipfile
+from datetime import datetime
 from pathlib import Path
 
 from .config import PROJECT_DIR
@@ -32,8 +41,14 @@ from .version import APP_VERSION, GITHUB_REPO, parse_version
 RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 ASSET_HINT = "windows"
 HTTP_TIMEOUT = 10
-UPDATER_BAT = "camera_capture_update.bat"
-UPDATE_LOG = "camera_capture_update.log"   # %TEMP%\camera_capture_update.log
+
+APPLY_FLAG = "--apply-update"      # gui.py rozpoznaje ja przed reszta importow
+STAGING_DIR = ".update"            # PROJECT_DIR/.update/staging
+UPDATE_LOG = "update.log"          # obok .exe — tam operator ma szukac
+ERROR_MARKER = "update_error.txt"  # czyta i kasuje `cleanup_after_update()`
+
+_DETACHED = (getattr(subprocess, "DETACHED_PROCESS", 0)
+             | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
 
 
 def can_self_update() -> bool:
@@ -76,17 +91,40 @@ def check_for_update() -> dict | None:
     }
 
 
+# ---------------------------------------------------------------- pobranie
+
+
+def _staging_root() -> Path:
+    """Katalog roboczy paczki — najpierw OBOK aplikacji.
+
+    Kopiowanie idzie wtedy w obrebie jednego wolumenu, a nieuprawniony katalog
+    (np. Program Files) wysypuje sie od razu przy pobieraniu, z czytelnym
+    bledem w UI — zamiast dopiero w aktualizatorze, gdzie nikt tego nie widzi.
+    %TEMP% zostaje jako awaryjny."""
+    last: Exception | None = None
+    for base in (PROJECT_DIR / STAGING_DIR,
+                 Path(tempfile.gettempdir()) / "cc_update"):
+        try:
+            shutil.rmtree(base, ignore_errors=True)
+            base.mkdir(parents=True, exist_ok=True)
+            probe = base / ".write-test"
+            probe.write_bytes(b"x")
+            probe.unlink()
+            return base
+        except OSError as e:
+            last = e
+    raise RuntimeError(f"nie ma gdzie rozpakowac paczki aktualizacji: {last}")
+
+
 def download_and_stage(url: str, progress=None) -> Path:
-    """Pobiera zip do katalogu tymczasowego i rozpakowuje go obok.
+    """Pobiera zip i rozpakowuje go do katalogu roboczego.
 
     Zwraca katalog `staging` z zawartoscia paczki (na wierzchu `.exe` +
     `_internal/`). `progress` dostaje procent (0–100) pobierania."""
     import requests
 
-    tmp = Path(tempfile.mkdtemp(prefix="cc_update_"))
-    payload = tmp / "payload"
-    payload.mkdir()
-    zip_path = payload / "update.zip"
+    root = _staging_root()
+    zip_path = root / "update.zip"
     try:
         with requests.get(url, stream=True, timeout=HTTP_TIMEOUT) as r:
             r.raise_for_status()
@@ -102,14 +140,14 @@ def download_and_stage(url: str, progress=None) -> Path:
                         if pct != last:
                             last = pct
                             progress(pct)
-        staging = payload / "staging"
+        staging = root / "staging"
         _extract(zip_path, staging)
         zip_path.unlink(missing_ok=True)
         if progress:
             progress(100)
         return _normalize_staging(staging)
     except Exception:
-        shutil.rmtree(tmp, ignore_errors=True)
+        shutil.rmtree(root, ignore_errors=True)
         raise
 
 
@@ -137,8 +175,8 @@ def _normalize_staging(staging: Path) -> Path:
 
 
 def _validate_staging(staging: Path) -> Path:
-    """Bez tego `robocopy /MIR` na pustym/dziwnym staging wyczyscilby
-    `_internal` dzialajacej instalacji."""
+    """Bez tego aktualizator kopiowalby pusty/dziwny katalog na dzialajaca
+    instalacje (a przy sprzataniu `_internal` wycialby jej biblioteki)."""
     exe = next((p for p in staging.glob("*.exe")), None)
     if exe is None:
         raise ValueError("paczka aktualizacji nie zawiera pliku .exe")
@@ -147,115 +185,239 @@ def _validate_staging(staging: Path) -> Path:
     return exe
 
 
-def apply_update_and_restart(staging: Path) -> None:
-    """Odpala updater .bat i wraca — wywolujacy MUSI zaraz zakonczyc proces
-    (bat czeka az proces zniknie, kopiuje pliki i startuje aplikacje)."""
+# ---------------------------------------------------------------- log
+
+
+def _log_path(target: Path) -> Path:
+    """Log obok .exe (operator ma go pod reka), z awaryjnym %TEMP%."""
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+        path = target / UPDATE_LOG
+        with open(path, "a", encoding="utf-8"):
+            pass
+        return path
+    except OSError:
+        return Path(tempfile.gettempdir()) / "camera_capture_update.log"
+
+
+def _logger(path: Path):
+    def say(msg: str) -> None:
+        try:
+            with open(path, "a", encoding="utf-8", errors="replace") as fh:
+                fh.write(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] {msg}\n")
+        except OSError:
+            pass
+    return say
+
+
+# ---------------------------------------------------------------- start aktualizatora
+
+
+def apply_update_and_restart(staging) -> Path:
+    """Odpala aktualizator (.exe z paczki) i wraca — wywolujacy MUSI zaraz
+    zakonczyc proces, bo aktualizator czeka wlasnie na jego zniknieciu.
+
+    Zwraca sciezke logu aktualizacji."""
     if not can_self_update():
         raise RuntimeError("samo-aktualizacja dziala tylko dla .exe na Windowsie")
     staging = Path(staging)
-    _validate_staging(staging)
+    helper = _validate_staging(staging)
     target = PROJECT_DIR
-    exe = Path(sys.executable)
-    tmpdir = Path(tempfile.gettempdir())
-    # .bat i log siedza POZA drzewem, ktore skrypt na koncu kasuje — inaczej
-    # `rd /s /q` probowalby usunac katalog z dzialajacym skryptem (i swoim cwd)
-    bat = tmpdir / UPDATER_BAT
-    log = tmpdir / UPDATE_LOG
-    root = next((p for p in (staging, *staging.parents)
-                 if p.name.startswith("cc_update_")), staging.parent)
+    log = _log_path(target)
+    say = _logger(log)
+    say(f"start: wersja {APP_VERSION}, pid {os.getpid()}")
+    say(f"  staging: {staging}")
+    say(f"  target : {target}")
+    say(f"  helper : {helper}")
 
-    # Slad po stronie Pythona ZANIM cokolwiek odpalimy — gdy .bat nie ruszy,
-    # to jedyne, co zostaje operatorowi (i mnie) do diagnozy.
-    with open(log, "w", encoding="utf-8", errors="replace") as fh:
-        fh.write(f"[updater] wersja {APP_VERSION}, pid {os.getpid()}\n"
-                 f"[updater] staging: {staging}\n"
-                 f"[updater] target : {target}\n"
-                 f"[updater] exe    : {exe}\n"
-                 f"[updater] bat    : {bat}\n")
-
-    script = _bat_script(_short(staging), _short(target), _short(exe),
-                         _short(log), _short(root))
     try:
-        bat.write_text(script, encoding="ascii")
-    except UnicodeEncodeError:
-        # Skrocone sciezki 8.3 sa ASCII, wiec tu trafiamy tylko gdy wolumen ma
-        # wylaczone nazwy 8.3. cmd czyta .bat w codepage OEM — najblizej tego
-        # jest domyslne kodowanie systemu.
-        bat.write_text(script, encoding=locale.getpreferredencoding(False),
-                       errors="replace")
-    # Jeden string, nie lista: `cmd /c` ma wlasne, nieoczywiste reguly zdejmowania
-    # cudzyslowow i lista z subprocess potrafila zrobic z tego komende, ktorej cmd
-    # nie umial znalezc (okno migalo i znikalo bez zadnego efektu).
-    subprocess.Popen(
-        f'cmd.exe /c "{_short(bat)}"',
-        cwd=str(bat.parent),
-        creationflags=getattr(subprocess, "DETACHED_PROCESS", 0)
-        | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
-        close_fds=True,
+        (target / ERROR_MARKER).unlink(missing_ok=True)
+    except OSError:
+        pass
+
+    proc = subprocess.Popen(
+        [str(helper), APPLY_FLAG, str(target), str(os.getpid())],
+        cwd=str(staging), creationflags=_DETACHED, close_fds=True,
     )
+    # Aktualizator ma teraz czekac na nas — jesli zdazyl umrzec, to znaczy, ze
+    # nowy .exe nie wstaje (brakujaca biblioteka, blokada antywirusa). Lepiej
+    # zostac w starej wersji z bledem w logu niz zamknac sie w nicosc.
+    time.sleep(2.0)
+    rc = proc.poll()
+    if rc is not None:
+        say(f"BLAD: aktualizator zakonczyl sie natychmiast (kod {rc})")
+        raise RuntimeError(f"aktualizator nie wystartowal (kod {rc}) — log: {log}")
+    say("aktualizator dziala, zamykam aplikacje")
     return log
 
 
-def _short(path: Path) -> str:
-    """Sciezka w formacie 8.3 (`C:\\Users\\MICHA~1\\...`), gdy system ja daje.
+# ---------------------------------------------------------------- tryb aktualizatora
 
-    Dwa powody: (1) `.bat` z polskimi znakami w sciezce nie da sie zapisac w
-    ASCII, a cmd i tak czyta plik w codepage OEM — kazde inne kodowanie to
-    loteria; (2) skrocone sciezki nie maja spacji, wiec znika cala zabawa w
-    cudzyslowy. Gdy wolumen nie ma nazw 8.3, zwracamy sciezke bez zmian."""
+
+def run_apply_update(argv: list[str]) -> int:
+    """Tryb `--apply-update <katalog instalacji> [pid starej aplikacji]`.
+
+    Uruchamiany z ROZPAKOWANEJ nowej paczki (patrz naglowek modulu). Nie wolno
+    tu uzywac `PROJECT_DIR` — dla tego procesu wskazuje katalog paczki, nie
+    instalacji."""
+    if not argv:
+        return 2
+    target = Path(argv[0]).resolve()
+    pid = int(argv[1]) if len(argv) > 1 and argv[1].isdigit() else 0
+    staging = Path(sys.executable).resolve().parent
+    log = _log_path(target)
+    say = _logger(log)
+    say(f"aktualizator: nowa wersja {APP_VERSION}, staging {staging}, pid {os.getpid()}")
+
+    try:
+        helper = _validate_staging(staging)
+        _wait_for_old_app(pid, target, say)
+        copied = _install(staging, target, say)
+        target_exe = target / helper.name
+        if not target_exe.is_file():
+            raise RuntimeError(f"po kopiowaniu brak {target_exe}")
+        say(f"skopiowano {copied} plikow, uruchamiam {target_exe}")
+        _spawn(target_exe, say)
+        say("gotowe")
+        return 0
+    except Exception as e:
+        say(f"BLAD: {e!r}")
+        try:
+            (target / ERROR_MARKER).write_text(
+                f"{e}\nLog: {log}\n", encoding="utf-8", errors="replace")
+        except OSError:
+            pass
+        _message_box(
+            "Aktualizacja Camera Capture nie powiodła się.\n\n"
+            f"{e}\n\nSzczegóły: {log}\n\n"
+            "Uruchamiam poprzednią wersję — aktualizację można pobrać ręcznie "
+            "z GitHub Releases.")
+        fallback = next((p for p in target.glob("*.exe")), None)
+        if fallback is not None:
+            _spawn(fallback, say)
+        return 1
+
+
+def _wait_for_old_app(pid: int, target: Path, say) -> None:
+    """Czekanie na zniknieciu starego procesu — najpierw uchwytem (pewne i bez
+    zalezosci od jezyka Windows, w przeciwienstwie do `tasklist`), potem proba
+    otwarcia .exe do zapisu, bo system potrafi trzymac plik jeszcze chwile."""
+    if pid and sys.platform == "win32":
+        SYNCHRONIZE = 0x00100000
+        handle = ctypes.windll.kernel32.OpenProcess(SYNCHRONIZE, False, pid)
+        if handle:
+            say(f"czekam na zamkniecie pid {pid}")
+            ctypes.windll.kernel32.WaitForSingleObject(handle, 60_000)
+            ctypes.windll.kernel32.CloseHandle(handle)
+        else:
+            say(f"pid {pid} juz nie zyje")
+    deadline = time.monotonic() + 30
+    for exe in target.glob("*.exe"):
+        while time.monotonic() < deadline:
+            try:
+                with open(exe, "r+b"):
+                    break
+            except PermissionError:
+                time.sleep(0.5)
+            except OSError:
+                break
+        else:
+            say(f"UWAGA: {exe.name} wciaz zablokowany po 30 s — probuje mimo to")
+
+
+def _install(staging: Path, target: Path, say) -> int:
+    """Kopiuje paczke na instalacje i usuwa z `_internal` to, czego nowa wersja
+    juz nie ma (stare biblioteki). Reszta katalogu zostaje nietknieta — `.env`,
+    `photos/` i recznie dolozony `EDSDK.dll` zyja obok .exe."""
+    copied = 0
+    for src in sorted(staging.rglob("*")):
+        rel = src.relative_to(staging)
+        dst = target / rel
+        if src.is_dir():
+            dst.mkdir(parents=True, exist_ok=True)
+            continue
+        if rel.name == ".env":
+            continue
+        _copy(src, dst)
+        copied += 1
+    _prune_internal(staging / "_internal", target / "_internal", say)
+    return copied
+
+
+def _copy(src: Path, dst: Path, attempts: int = 20) -> None:
+    """Retry na PermissionError — aplikacja mogla jeszcze nie puscic pliku."""
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    for i in range(attempts):
+        try:
+            shutil.copy2(src, dst)
+            return
+        except PermissionError:
+            if i == attempts - 1:
+                raise
+            time.sleep(1)
+
+
+def _prune_internal(new_internal: Path, old_internal: Path, say) -> None:
+    """Blad sprzatania nie przerywa aktualizacji — zostawiony smiec jest
+    nieszkodliwy, przerwana podmiana plikow juz nie."""
+    if not old_internal.is_dir() or not new_internal.is_dir():
+        return
+    removed = 0
+    for path in sorted(old_internal.rglob("*"), reverse=True):
+        rel = path.relative_to(old_internal)
+        if (new_internal / rel).exists():
+            continue
+        try:
+            if path.is_dir():
+                path.rmdir()
+            else:
+                path.unlink()
+            removed += 1
+        except OSError as e:
+            say(f"nie usunieto {rel}: {e}")
+    if removed:
+        say(f"usunieto {removed} plikow z poprzedniej wersji")
+
+
+def _spawn(exe: Path, say) -> None:
+    try:
+        subprocess.Popen([str(exe)], cwd=str(exe.parent),
+                         creationflags=_DETACHED, close_fds=True)
+    except OSError as e:
+        say(f"nie udalo sie uruchomic {exe}: {e}")
+
+
+def _message_box(text: str) -> None:
+    """Jedyny widoczny slad, gdy aktualizacja padnie — aktualizator jest
+    procesem okienkowym bez konsoli, wiec inaczej znika bez slowa."""
     if sys.platform != "win32":
-        return str(path)
-    import ctypes
+        return
+    try:
+        ctypes.windll.user32.MessageBoxW(
+            None, text, "Camera Capture — aktualizacja", 0x10)
+    except Exception:
+        pass
 
-    buf = ctypes.create_unicode_buffer(1024)
-    n = ctypes.windll.kernel32.GetShortPathNameW(str(path), buf, len(buf))
-    return buf.value if 0 < n < len(buf) and buf.value else str(path)
+
+# ---------------------------------------------------------------- sprzatanie
 
 
-def _bat_script(staging: str, target: str, exe: str, log: str, root: str) -> str:
-    """`_internal` idzie /MIR (stare DLL-e z poprzedniej wersji znikaja),
-    reszta /E bez kasowania — .env, photos/ i EDSDK.dll leza obok .exe.
-
-    Zamiast pilnowac PID-u przez `tasklist` (format wyjscia zalezy od jezyka
-    Windows) czekamy chwile i polegamy na retry robocopy: dopoki aplikacja
-    trzyma swoje pliki, kopiowanie sie ponawia, a nie wywala."""
-    opts = "/NFL /NDL /NJH /NJS /NP /R:20 /W:1"
-    # UWAGA: caly skrypt musi byc czystym ASCII (bez polskich znakow i myslnikow
-    # typograficznych) — cmd czyta .bat w codepage OEM, a zapis pliku leci w ASCII.
-    return f"""@echo off
-title Camera Capture - aktualizacja
-set "LOG={log}"
-echo [%DATE% %TIME%] start >> "%LOG%"
-
-echo.
-echo   Aktualizuje Camera Capture. Nie zamykaj tego okna.
-echo.
-echo   Czekam na zamkniecie aplikacji...
-ping -n 4 127.0.0.1 >nul
-
-echo   Podmieniam pliki...
-robocopy "{staging}\\_internal" "{target}\\_internal" /MIR {opts} >> "%LOG%" 2>&1
-set RC1=%ERRORLEVEL%
-robocopy "{staging}" "{target}" /E /XD "{staging}\\_internal" /XF ".env" {opts} >> "%LOG%" 2>&1
-set RC2=%ERRORLEVEL%
-echo [%TIME%] robocopy: _internal=%RC1% reszta=%RC2% >> "%LOG%"
-
-if %RC1% GEQ 8 goto failed
-if %RC2% GEQ 8 goto failed
-if not exist "{exe}" goto failed
-
-echo   Uruchamiam nowa wersje...
-echo [%TIME%] start "{exe}" >> "%LOG%"
-cd /d "{target}"
-start "" "{exe}"
-rd /s /q "{root}" 2>nul
-(goto) 2>nul & del "%~f0"
-
-:failed
-echo.
-echo   AKTUALIZACJA NIE POWIODLA SIE.
-echo   Log: %LOG%
-echo   Uruchom aplikacje recznie i zajrzyj do logu.
-echo.
-pause
-"""
+def cleanup_after_update() -> str | None:
+    """Wolane przy starcie aplikacji: kasuje katalogi robocze aktualizatora i
+    zwraca tresc markera bledu (albo None). Marker jest czyszczony."""
+    err = None
+    marker = PROJECT_DIR / ERROR_MARKER
+    try:
+        if marker.is_file():
+            err = marker.read_text(encoding="utf-8", errors="replace").strip()
+            marker.unlink()
+    except OSError:
+        pass
+    stale = [PROJECT_DIR / STAGING_DIR,
+             Path(tempfile.gettempdir()) / "cc_update"]
+    # katalogi po poprzedniej wersji aktualizatora (mechanizm z .bat)
+    stale += list(Path(tempfile.gettempdir()).glob("cc_update_*"))
+    for path in stale:
+        if path.exists():
+            shutil.rmtree(path, ignore_errors=True)
+    return err

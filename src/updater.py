@@ -17,6 +17,7 @@ Uruchomienie ze zrodel (macOS/dev) tylko informuje o nowszym tagu — tam
 aktualizuje sie przez `git pull`.
 """
 
+import locale
 import os
 import shutil
 import subprocess
@@ -32,6 +33,7 @@ RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 ASSET_HINT = "windows"
 HTTP_TIMEOUT = 10
 UPDATER_BAT = "camera_capture_update.bat"
+UPDATE_LOG = "camera_capture_update.log"   # %TEMP%\camera_capture_update.log
 
 
 def can_self_update() -> bool:
@@ -147,45 +149,113 @@ def _validate_staging(staging: Path) -> Path:
 
 def apply_update_and_restart(staging: Path) -> None:
     """Odpala updater .bat i wraca — wywolujacy MUSI zaraz zakonczyc proces
-    (bat czeka na jego zniknieciem, potem kopiuje pliki i startuje aplikacje)."""
+    (bat czeka az proces zniknie, kopiuje pliki i startuje aplikacje)."""
     if not can_self_update():
         raise RuntimeError("samo-aktualizacja dziala tylko dla .exe na Windowsie")
     staging = Path(staging)
     _validate_staging(staging)
     target = PROJECT_DIR
     exe = Path(sys.executable)
-    bat = staging.parent.parent / UPDATER_BAT
-    bat.write_text(_bat_script(staging, target, exe), encoding="ascii")
+    tmpdir = Path(tempfile.gettempdir())
+    # .bat i log siedza POZA drzewem, ktore skrypt na koncu kasuje — inaczej
+    # `rd /s /q` probowalby usunac katalog z dzialajacym skryptem (i swoim cwd)
+    bat = tmpdir / UPDATER_BAT
+    log = tmpdir / UPDATE_LOG
+    root = next((p for p in (staging, *staging.parents)
+                 if p.name.startswith("cc_update_")), staging.parent)
+
+    # Slad po stronie Pythona ZANIM cokolwiek odpalimy — gdy .bat nie ruszy,
+    # to jedyne, co zostaje operatorowi (i mnie) do diagnozy.
+    with open(log, "w", encoding="utf-8", errors="replace") as fh:
+        fh.write(f"[updater] wersja {APP_VERSION}, pid {os.getpid()}\n"
+                 f"[updater] staging: {staging}\n"
+                 f"[updater] target : {target}\n"
+                 f"[updater] exe    : {exe}\n"
+                 f"[updater] bat    : {bat}\n")
+
+    script = _bat_script(_short(staging), _short(target), _short(exe),
+                         _short(log), _short(root))
+    try:
+        bat.write_text(script, encoding="ascii")
+    except UnicodeEncodeError:
+        # Skrocone sciezki 8.3 sa ASCII, wiec tu trafiamy tylko gdy wolumen ma
+        # wylaczone nazwy 8.3. cmd czyta .bat w codepage OEM — najblizej tego
+        # jest domyslne kodowanie systemu.
+        bat.write_text(script, encoding=locale.getpreferredencoding(False),
+                       errors="replace")
+    # Jeden string, nie lista: `cmd /c` ma wlasne, nieoczywiste reguly zdejmowania
+    # cudzyslowow i lista z subprocess potrafila zrobic z tego komende, ktorej cmd
+    # nie umial znalezc (okno migalo i znikalo bez zadnego efektu).
     subprocess.Popen(
-        ["cmd.exe", "/c", str(bat), str(os.getpid())],
+        f'cmd.exe /c "{_short(bat)}"',
         cwd=str(bat.parent),
         creationflags=getattr(subprocess, "DETACHED_PROCESS", 0)
         | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
         close_fds=True,
     )
+    return log
 
 
-def _bat_script(staging: Path, target: Path, exe: Path) -> str:
+def _short(path: Path) -> str:
+    """Sciezka w formacie 8.3 (`C:\\Users\\MICHA~1\\...`), gdy system ja daje.
+
+    Dwa powody: (1) `.bat` z polskimi znakami w sciezce nie da sie zapisac w
+    ASCII, a cmd i tak czyta plik w codepage OEM — kazde inne kodowanie to
+    loteria; (2) skrocone sciezki nie maja spacji, wiec znika cala zabawa w
+    cudzyslowy. Gdy wolumen nie ma nazw 8.3, zwracamy sciezke bez zmian."""
+    if sys.platform != "win32":
+        return str(path)
+    import ctypes
+
+    buf = ctypes.create_unicode_buffer(1024)
+    n = ctypes.windll.kernel32.GetShortPathNameW(str(path), buf, len(buf))
+    return buf.value if 0 < n < len(buf) and buf.value else str(path)
+
+
+def _bat_script(staging: str, target: str, exe: str, log: str, root: str) -> str:
     """`_internal` idzie /MIR (stare DLL-e z poprzedniej wersji znikaja),
-    reszta /E bez kasowania — .env, photos/ i EDSDK.dll leza obok .exe."""
-    quiet = "/NFL /NDL /NJH /NJS /NP /R:2 /W:2"
+    reszta /E bez kasowania — .env, photos/ i EDSDK.dll leza obok .exe.
+
+    Zamiast pilnowac PID-u przez `tasklist` (format wyjscia zalezy od jezyka
+    Windows) czekamy chwile i polegamy na retry robocopy: dopoki aplikacja
+    trzyma swoje pliki, kopiowanie sie ponawia, a nie wywala."""
+    opts = "/NFL /NDL /NJH /NJS /NP /R:20 /W:1"
+    # UWAGA: caly skrypt musi byc czystym ASCII (bez polskich znakow i myslnikow
+    # typograficznych) — cmd czyta .bat w codepage OEM, a zapis pliku leci w ASCII.
     return f"""@echo off
-setlocal
-set "PID=%1"
+title Camera Capture - aktualizacja
+set "LOG={log}"
+echo [%DATE% %TIME%] start >> "%LOG%"
 
-:waitloop
-tasklist /FI "PID eq %PID%" 2>nul | find "%PID%" >nul
-if not errorlevel 1 (
-    ping -n 2 127.0.0.1 >nul
-    goto waitloop
-)
+echo.
+echo   Aktualizuje Camera Capture. Nie zamykaj tego okna.
+echo.
+echo   Czekam na zamkniecie aplikacji...
+ping -n 4 127.0.0.1 >nul
 
-robocopy "{staging}\\_internal" "{target}\\_internal" /MIR {quiet} >nul
-robocopy "{staging}" "{target}" /E /XD "{staging}\\_internal" /XF ".env" {quiet} >nul
+echo   Podmieniam pliki...
+robocopy "{staging}\\_internal" "{target}\\_internal" /MIR {opts} >> "%LOG%" 2>&1
+set RC1=%ERRORLEVEL%
+robocopy "{staging}" "{target}" /E /XD "{staging}\\_internal" /XF ".env" {opts} >> "%LOG%" 2>&1
+set RC2=%ERRORLEVEL%
+echo [%TIME%] robocopy: _internal=%RC1% reszta=%RC2% >> "%LOG%"
 
+if %RC1% GEQ 8 goto failed
+if %RC2% GEQ 8 goto failed
+if not exist "{exe}" goto failed
+
+echo   Uruchamiam nowa wersje...
+echo [%TIME%] start "{exe}" >> "%LOG%"
 cd /d "{target}"
 start "" "{exe}"
-
-rd /s /q "{staging.parent}" 2>nul
+rd /s /q "{root}" 2>nul
 (goto) 2>nul & del "%~f0"
+
+:failed
+echo.
+echo   AKTUALIZACJA NIE POWIODLA SIE.
+echo   Log: %LOG%
+echo   Uruchom aplikacje recznie i zajrzyj do logu.
+echo.
+pause
 """

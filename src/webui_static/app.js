@@ -456,7 +456,7 @@ function evHint(st) {
   if (!st.connected) return "Aparat rozłączony.";
   if (!(st.camera && st.camera.ev))
     return "Niedostępna w tym trybie aparatu — ustaw pokrętło na P, Av albo Tv.";
-  return "To samo pokrętło ± co na aparacie: plus rozjaśnia, minus przyciemnia.";
+  return "Plus rozjaśnia zdjęcia, minus przyciemnia.";
 }
 
 function stepEv(dir) {

@@ -9,7 +9,7 @@ Bez importow — spec PyInstallera czyta ten plik zanim cokolwiek innego
 zdazy sie zaimportowac.
 """
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 
 GITHUB_REPO = "Xeross99/camera-capture"
 

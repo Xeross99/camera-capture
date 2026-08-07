@@ -316,6 +316,9 @@ AUTOMAT_UPLOAD_ENABLED=true
 ## Konwencje
 
 - **Dwa frontendy, oba zawsze działają**: TUI (`main.py`, w tym ścieżka `--input`) i aplikacja okienkowa (`gui.py`) to równorzędne wersje — każda zmiana w pipeline, uploadzie czy flow sesji musi być wprowadzona w OBU (wspólną logikę wyciągaj do `src/`, np. `find_existing_session`/`attach_session` w `automat_uploader.py`).
+- **Każda zmiana podbija wersję**: przed commitem podnieś `APP_VERSION` w `src/version.py` (patch przy poprawkach i drobiazgach, minor przy nowej funkcji) i zawrzyj to w tym samym commicie. Bez tego operator nie dostanie banera aktualizacji — updater porównuje `APP_VERSION` z tagiem wydania. Po wypchnięciu na `main`: `git tag v<APP_VERSION> && git push --tags` publikuje release z paczką (szczegóły w sekcji „Aktualizacje").
+  - Wyjątek: gdy bieżące `APP_VERSION` **nie zostało jeszcze wydane** (nie ma takiego tagu — sprawdź `git tag -l` / `gh release list`), nie podbijaj — kolejna zmiana wchodzi do tego samego, jeszcze nieopublikowanego wydania. Podbicie przed tagiem rozjeżdża tag z `APP_VERSION`, a wtedy build z tagiem faila (krok „Verify tag matches APP_VERSION").
+  - Zmiany, które nie trafiają do `.exe` (sam `CLAUDE.md`, `README.md`, `WINDOWS.md`), wersji nie ruszają.
 - Komunikaty UI po polsku (rich panels, prompty, błędy).
 - Nazwy folderów sanityzowane przez `sanitize_name()` w `src/naming.py` (regex: tylko `[A-Za-z0-9_\-. ]`).
 - Kod komentowany minimalnie, nazwy funkcji opisowe.

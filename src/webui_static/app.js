@@ -25,7 +25,7 @@ const head = `font-size: 11px; font-weight: 600; color: #8f8f97; letter-spacing:
 // `extra` (np. wybor rogu logo) siedzi POZA <label>, inaczej klik w select
 // przelaczalby checkbox.
 const optionRow = (key, checked, title, desc, extra = "") => `
-  <div style="padding: 12px 0; border-bottom: 1px solid #2f2f35;">
+  <div class="opt-row">
     <label style="display: flex; align-items: flex-start; gap: 9px;">
       <input type="checkbox" ${checked ? "checked" : ""} onchange="toggle('${key}', this.checked)" style="${chk} margin-top: 1px; flex-shrink: 0;" />
       <span style="flex: 1; min-width: 0;">
@@ -308,7 +308,6 @@ function sesjaScreen() {
             <div style="width: 7px; height: 7px; border-radius: 50%; background: #ff4d4d; animation: livePulse 1.6s ease-in-out infinite;"></div>LIVE
           </div>` : ""}
           <div id="hist-badge" title="${histTitle(st)}" style="position: absolute; right: 12px; bottom: 12px; background: rgba(0,0,0,.55); border: 1px solid #3c3c44; padding: 3px 8px; ${mono} font-size: 10.5px; color: ${bgColor};">${histText}</div>
-          <div id="review-slot" style="position: absolute; inset: 0; z-index: 2; pointer-events: none;">${reviewOverlay()}</div>
           <div id="flash" style="position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 4;"></div>
         </div>
       </div>
@@ -357,10 +356,27 @@ function sesjaScreen() {
           <div style="margin-top: 6px; border-top: 1px solid #2f2f35;"></div>
         </div>
 
-        <div style="display: flex; flex-direction: column;">
-          <div style="font-size: 14px; font-weight: 600; color: #eaeaee;">Postprocessing</div>
-          <div style="margin-top: 4px; font-size: 11.5px; line-height: 1.5; color: #85858e;">Każde zdjęcie przechodzi przez zaznaczone kroki zaraz po zrobieniu.</div>
-          <div style="margin-top: 14px; border-top: 1px solid #2f2f35;"></div>
+        <div class="card">
+          <div class="card-title">Ekspozycja</div>
+          <div class="card-desc">Jasność zdjęcia, ustawiana zanim ono powstanie.</div>
+          <div class="card-rule"></div>
+          <div class="opt-row" style="display: flex; align-items: flex-start; gap: 12px;">
+            <div style="flex: 1; min-width: 0;">
+              <div style="font-size: 12.5px; color: #eaeaee;">Kompensacja ekspozycji</div>
+              <div id="ev-hint" style="margin-top: 3px; font-size: 11.5px; line-height: 1.5; color: #85858e;">${evHint(st)}</div>
+            </div>
+            <div style="flex-shrink: 0; display: flex; align-items: center; background: #17171a; border: 1px solid #3d3d44; border-radius: 5px; overflow: hidden; ${mono} font-size: 12px;">
+              <span id="ev-minus" onclick="stepEv(-1)" style="padding: 5px 11px; color: #d0d0d6; opacity: ${cam.ev ? 1 : .35};">−</span>
+              <span id="ev-value" style="min-width: 44px; padding: 5px 0; text-align: center; color: #eaeaee; border-left: 1px solid #3d3d44; border-right: 1px solid #3d3d44;">${cam.ev ? evLabel(cam.ev.current) : "—"}</span>
+              <span id="ev-plus" onclick="stepEv(1)" style="padding: 5px 11px; color: #d0d0d6; opacity: ${cam.ev ? 1 : .35};">+</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Postprocessing</div>
+          <div class="card-desc">Każde zdjęcie przechodzi przez zaznaczone kroki zaraz po zrobieniu.</div>
+          <div class="card-rule"></div>
           ${optionRow("logo", post_.logo, "Nakładanie logo",
                       "Znak wodny TRIXBRIX.eu w rogu kadru.",
                       `<div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
@@ -382,7 +398,9 @@ function sesjaScreen() {
       <div style="flex: 0 0 auto; border-top: 1px solid #17171a; background: #26262a; padding: 12px 16px 14px;">
         <button onclick="shoot()" style="width: 100%; height: 44px; ${btnBlue} border-radius: 6px; font-size: 14px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 10px;"><span id="shoot-label">${st.busy || "Zrób zdjęcie"}</span> <span style="${mono} font-size: 11px; opacity: .75;">ENTER</span></button>
       </div>
-    </div>`;
+    </div>
+
+    <div id="review-slot">${reviewOverlay()}</div>`;
 }
 
 // Badge jasności tła: percentyle 10/90 z pasków przy krawędziach klatki.
@@ -400,6 +418,40 @@ const BG_LABEL = {
   unknown: "TŁO —",
 };
 const BG_COLOR = { ok: "#9fe0a8", dark: "#e0b96a", unknown: "#6c6c74" };
+
+// Kompensacja ekspozycji. Backendy mówią różnymi słowami („+1/3" z EDSDK,
+// „0.3" z gphoto2), więc nic nie parsujemy — pokazujemy to, co przyszło,
+// a przesuwamy się po INDEKSIE w liście wyborów aparatu.
+function evLabel(v) {
+  const s = String(v == null ? "" : v).trim();
+  if (!s) return "—";
+  if (s === "0" || s === "0.0" || s === "±0") return "±0";
+  return /^[-+−]/.test(s) ? s : "+" + s;
+}
+
+// Kontrolka jest widoczna ZAWSZE, tylko wyszarzona gdy nie ma czego ustawiać, a
+// powód stoi wprost pod nią. Znikająca kontrolka nie mówi operatorowi, czego
+// szukać ani dlaczego jej nie ma — a tooltip trzeba najpierw znaleźć myszą.
+function evHint(st) {
+  if (!st.connected) return "Aparat rozłączony.";
+  if (!(st.camera && st.camera.ev))
+    return "Niedostępna w tym trybie aparatu — ustaw pokrętło na P, Av albo Tv.";
+  return "To samo pokrętło ± co na aparacie: plus rozjaśnia, minus przyciemnia.";
+}
+
+function stepEv(dir) {
+  const ev = S.state.camera && S.state.camera.ev;
+  if (!ev || !ev.choices || !ev.choices.length) return;
+  const at = ev.choices.indexOf(ev.current);
+  const next = ev.choices[Math.max(0, Math.min(ev.choices.length - 1, (at < 0 ? 0 : at) + dir))];
+  if (!next || next === ev.current) return;
+  // Pokazujemy nową wartość od razu, ale źródłem prawdy jest aparat: jeśli
+  // odrzuci wartość, najbliższe odpytanie (2 s) wróci ze starą.
+  ev.current = next;
+  const val = $("ev-value");
+  if (val) val.textContent = evLabel(next);
+  post({ action: "set_ev", value: next });
+}
 
 const bgStatus = st => (st.connected && BG_LABEL[st.camera.bgStatus]) ? st.camera.bgStatus : "unknown";
 const histLabel = st => BG_LABEL[bgStatus(st)];
@@ -419,24 +471,63 @@ function reviewLabelText(shot) {
   return `PODGLĄD ${shot.i + 1}/${S.state.shots.length} — ${shot.file} · ← → zmiana · BACKSPACE usuwa · ESC zamyka podgląd`;
 }
 
+// Podglad zdjecia zajmuje CALE okno (position: fixed nad zakladkami i sidebarem),
+// a pasek zdjec sesji siedzi u jego dolu. Wczesniej overlay mieszkal w ramce live
+// view, wiec zdjecie ogladalo sie w okienku wielkosci podgladu z aparatu.
 function reviewOverlay() {
   const shot = S.reviewMode ? reviewShot() : null;
   if (!shot) return "";
   const sess = encodeURIComponent(S.state.session.name);
   return `
-  <div id="review-wrap" style="position: absolute; inset: 0; background: #161618; pointer-events: auto; transition: opacity .2s ease, transform .2s ease;">
-    <img src="/img?s=${sess}&f=${encodeURIComponent(shot.file)}" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; animation: reviewIn .2s ease-out;" />
-    <div id="review-label" style="position: absolute; left: 12px; bottom: 12px; background: rgba(0,0,0,.55); border: 1px solid #3c3c44; padding: 3px 8px; ${mono} font-size: 10.5px; color: #d0d0d6;">${reviewLabelText(shot)}</div>
+  <div id="review-wrap" style="position: fixed; inset: 0; z-index: 60; background: #131315; display: flex; flex-direction: column; transition: opacity .2s ease, transform .2s ease;">
+    <div style="flex: 1; position: relative; min-height: 0;">
+      <img src="/img?s=${sess}&f=${encodeURIComponent(shot.file)}" style="position: absolute; inset: 14px; width: calc(100% - 28px); height: calc(100% - 28px); object-fit: contain; animation: reviewIn .26s cubic-bezier(0.8, -0.4, 0.5, 1);" />
+      <div id="review-label" style="position: absolute; left: 14px; bottom: 14px; background: rgba(0,0,0,.55); border: 1px solid #3c3c44; padding: 3px 8px; ${mono} font-size: 10.5px; color: #d0d0d6;">${reviewLabelText(shot)}</div>
+      <div onclick="closeReview()" style="position: absolute; right: 14px; top: 14px; background: rgba(0,0,0,.55); border: 1px solid #3c3c44; padding: 3px 10px; ${mono} font-size: 10.5px; color: #d0d0d6;">ZAMKNIJ ESC</div>
+    </div>
+    <div style="flex: 0 0 auto; border-top: 1px solid #2c2c31; background: #1d1d20; padding: 10px 14px 12px;">
+      <div id="review-strip" style="display: flex; gap: 8px; overflow-x: auto; overflow-y: hidden;">${filmstrip()}</div>
+    </div>
   </div>`;
+}
+
+// Pasek zdjec wisi w dwoch miejscach (ekran sesji i podglad), oba trzeba odswiezyc
+// po zmianie zaznaczenia. Aktywny kafelek jest przy okazji doprowadzany do widoku —
+// przy kilkunastu zdjeciach zaznaczenie potrafi wyjechac poza pasek.
+function refreshStrips() {
+  ["filmstrip", "review-strip"].forEach(id => {
+    const strip = $(id);
+    if (!strip) return;
+    strip.innerHTML = filmstrip();
+    const tile = strip.querySelector(`[data-shot="${S.selShot}"]`);
+    if (tile) tile.scrollIntoView({ block: "nearest", inline: "center" });
+  });
 }
 
 function navShot(dir) {
   const list = S.state.shots;
   if (!list.length) return;
   const cur = S.selShot < 0 ? list.length : S.selShot;
-  const next = Math.max(0, Math.min(list.length - 1, cur + dir));
-  if (next === S.selShot) return;
+  showShot(Math.max(0, Math.min(list.length - 1, cur + dir)), dir);
+}
+
+// Klik w kafelek paska: w podgladzie podmienia zdjecie W MIEJSCU (pelny rebuild
+// zabilby overlay i powtorzyl animacje wejscia), poza podgladem otwiera podglad.
+function openShot(i) {
+  if (!S.reviewMode) {
+    S.selShot = i;
+    S.reviewMode = true;
+    renderScreens();
+    return;
+  }
+  showShot(i, i > S.selShot ? 1 : -1);
+}
+
+function showShot(next, dir) {
+  const list = S.state.shots;
+  if (!list.length || next === S.selShot) return;
   S.selShot = next;
+  dir = dir < 0 ? -1 : 1;
   const wrap = $("review-wrap");
   if (S.reviewMode && wrap) {
     // Wrap zostaje w DOM (zawsze nieprzezroczysty — zadnych przebitek live
@@ -448,17 +539,20 @@ function navShot(dir) {
     img.src = `/img?s=${sess}&f=${encodeURIComponent(shot.file)}`;
     const label = $("review-label");
     if (label) label.textContent = reviewLabelText(shot);
+    // Skok musi byc WIDOCZNY, inaczej krzywa easingu nie ma czego pokazac —
+    // przy poprzednich 6 px kazdy easing wygladal identycznie.
     img.style.transition = "none";
-    img.style.transform = `translateX(${dir * 6}px)`;
+    img.style.transform = `translateX(${dir * 56}px)`;
+    img.style.opacity = "0.45";
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      img.style.transition = "transform .22s ease-out";
+      img.style.transition = "transform .5s cubic-bezier(0.16, 1, 0.3, 1), opacity .32s cubic-bezier(0.16, 1, 0.3, 1)";
       img.style.transform = "none";
+      img.style.opacity = "1";
     }));
     [next - 1, next + 1].forEach(i => {
       if (list[i]) new Image().src = `/img?s=${sess}&f=${encodeURIComponent(list[i].file)}`;
     });
-    const strip = $("filmstrip");
-    if (strip) strip.innerHTML = filmstrip();
+    refreshStrips();
     lastSesja = sesjaKey(S.state);
   } else {
     renderScreens();
@@ -517,8 +611,7 @@ function deleteReviewed() {
     img.onload = show;
     img.src = `/img?s=${enc}&f=${encodeURIComponent(nextShot.file)}`;
     setTimeout(show, 250);
-    const strip = $("filmstrip");
-    if (strip) strip.innerHTML = filmstrip();
+    refreshStrips();
     lastSesja = sesjaKey(S.state);
   }, 170);
 }
@@ -551,7 +644,7 @@ function filmstrip() {
   const items = st.shots.map((s, i) => {
     const m = i === S.selShot ? MARKS.cur : (s.status === "rejected" ? MARKS.bad : MARKS.ok);
     return `
-    <div onclick="S.selShot = ${i}; S.reviewMode = true; renderScreens()" style="width: 104px; flex: 0 0 104px;">
+    <div data-shot="${i}" onclick="openShot(${i})" style="width: 104px; flex: 0 0 104px;">
       <div style="height: 72px; ${tileBg(st.session.name, s.file)} border: 1px solid ${m.border}; display: flex; align-items: flex-end; justify-content: space-between; padding: 4px; box-sizing: border-box;">
         <span style="${mono} font-size: 10px; color: #fff; text-shadow: 0 1px 2px #000;">#${i + 1}</span>
         <span style="${mono} font-size: 10px; color: ${m.color}; text-shadow: 0 1px 2px #000;">${m.mark}</span>
@@ -722,6 +815,19 @@ function updateVolatile(st) {
     hist.style.color = histColor(st);
     hist.title = histTitle(st);
   }
+  // EV jest ŚWIADOMIE łatane, nie keyowane: rebuild ekranu niszczy <img>
+  // streamu MJPEG, a kompensacja zmienia się też z pokrętła na aparacie
+  const evVal = $("ev-value");
+  if (evVal) {
+    const ev = st.camera && st.camera.ev;
+    evVal.textContent = ev ? evLabel(ev.current) : "—";
+    const hint = $("ev-hint");
+    if (hint) hint.textContent = evHint(st);
+    ["ev-minus", "ev-plus"].forEach(id => {
+      const b = $(id);
+      if (b) b.style.opacity = ev ? 1 : .35;
+    });
+  }
   const sl = $("shoot-label");
   if (sl) sl.textContent = st.busy || "Zrób zdjęcie";
   const up = $("update-progress");
@@ -772,8 +878,15 @@ function renderScreens(force) {
       lastSesja = key;
       S.lastLogLen = logSig(st);
       $("screen-sesja").innerHTML = sesjaScreen();
-      const strip = $("filmstrip");
-      if (strip) strip.scrollLeft = strip.scrollWidth;
+      // najnowsze zdjecie na wierzchu; w podgladzie zamiast tego dojezdzamy do
+      // zaznaczonego kafelka, zeby bylo widac, ktore zdjecie sie oglada
+      ["filmstrip", "review-strip"].forEach(id => {
+        const strip = $(id);
+        if (!strip) return;
+        const tile = S.reviewMode && strip.querySelector(`[data-shot="${S.selShot}"]`);
+        if (tile) tile.scrollIntoView({ block: "nearest", inline: "center" });
+        else strip.scrollLeft = strip.scrollWidth;
+      });
       const lp = $("log-panel");
       if (lp) lp.scrollTop = lp.scrollHeight;
     }

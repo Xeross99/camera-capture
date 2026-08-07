@@ -22,6 +22,22 @@ from .config import DIGICAMCONTROL_EXE, DIGICAMCONTROL_URL
 _CAPTURE_TIMEOUT_S = 60
 _JPEG_MAGIC = b"\xff\xd8"
 
+# Nazwa property kompensacji ekspozycji w SLC digiCamControl.
+_EV_KEY = "exposurecompensation"
+
+
+def _parse_list(text: str) -> list[str]:
+    """Odpowiedz `slc list` bywa JSON-em, a bywa zwyklymi liniami — zaleznie od
+    wersji dCC. Bierzemy oba, bo nie ma po co przywiazywac sie do jednej."""
+    text = (text or "").strip()
+    if text.startswith("["):
+        import json
+        try:
+            return [str(v).strip() for v in json.loads(text) if str(v).strip()]
+        except ValueError:
+            pass
+    return [line.strip().strip('",') for line in text.splitlines() if line.strip()]
+
 # Typowe sciezki instalatora digiCamControl (uzywane gdy DIGICAMCONTROL_EXE
 # nie jest ustawione w .env).
 _DEFAULT_EXES = (
@@ -36,6 +52,7 @@ class DigiCamControlSession:
         self._http = requests.Session()
         self._launched = False       # auto-start dCC tylko raz na zycie sesji
         self._minimize_ok = True     # All_Minimize wylaczane gdy psuje live view
+        self._ev_choices: list[str] | None = None   # cache listy kompensacji
 
     def _get(self, path: str, timeout: float = 10, **params) -> requests.Response:
         r = self._http.get(f"{self.base}{path}", params=params or None, timeout=timeout)
@@ -153,16 +170,29 @@ class DigiCamControlSession:
         )
 
     def get_settings(self) -> dict:
-        # Webserver digiCamControl nie eksponuje list wyboru ISO/przyslony itd.
-        # — sekcja "Aparat" w UI zostaje pusta; ustawienia zmienia sie w oknie
-        # digiCamControl albo na aparacie.
-        return {}
+        """Tylko kompensacja ekspozycji (`slc get/list exposurecompensation`).
+        ISO, czas i przyslone ustawia sie na aparacie albo w oknie dCC."""
+        try:
+            current = self._slc("get", _EV_KEY, timeout=5)
+            if self._ev_choices is None:
+                # lista wyborow nie zmienia sie w trakcie sesji, a webui pyta
+                # co 2 s — nie ma po co bic po HTTP dwa razy za kazdym razem
+                self._ev_choices = _parse_list(self._slc("list", _EV_KEY, timeout=5))
+        except (requests.RequestException, RuntimeError):
+            return {}
+        choices = self._ev_choices or []
+        current = current.strip().strip('"')
+        if not current or current not in choices:
+            # aparat w trybie bez kompensacji (albo dCC oddal cos nieoczekiwanego)
+            return {}
+        return {"exposurecompensation": {"current": current, "choices": choices}}
 
     def set_setting(self, key: str, value: str) -> None:
-        raise RuntimeError(
-            "zmiana ustawień aparatu niedostępna przez digiCamControl — "
-            "ustaw w oknie digiCamControl lub na aparacie"
-        )
+        if key != "exposurecompensation":
+            raise RuntimeError(
+                f"zmiana '{key}' niedostępna przez digiCamControl — "
+                "ustaw w oknie digiCamControl lub na aparacie")
+        self._slc("set", _EV_KEY, str(value), timeout=10)
 
     def describe_contrast(self) -> dict | None:
         return None

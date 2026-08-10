@@ -975,26 +975,43 @@ class WebUI:
         bits.append(f"{OUTPUT_SIZE}×{OUTPUT_SIZE}")
         review["meta"][out.name] = " · ".join(bits)
         n = len([f for f in _finals(outdir) if f not in review["rejected"]])
-        uploaded_note = ""
         if announced_id:
-            # nawet gdy upload nizej padnie, placeholder w Automacie istnieje —
+            # nawet gdy upload pozniej padnie, placeholder w Automacie istnieje —
             # delete musi go umiec sprzatnac
             review["automat"][out.name] = announced_id
-        if job["upload"] and self.uploader is not None:
-            t0 = time.perf_counter()
-            try:
-                resp = self.uploader.upload_processed(out, photo_id=announced_id)
-                review["uploaded"].append(out.name)
-                pid = resp.get("id") or announced_id
-                if pid:
-                    review["automat"][out.name] = int(pid)
-                steps.append(f"upload {time.perf_counter() - t0:.1f} s")
-                uploaded_note = " · upload do Automatu OK"
-            except Exception as e:
-                self._log(f"✗ Upload do Automatu nie wyszedł: {e}", "err")
         _save_review(outdir, review)
-        self._log(f"Zapisano {out.name} (#{n}){uploaded_note} · "
-                  + " · ".join(steps), "ok")
+        self._log(f"Zapisano {out.name} (#{n}) · " + " · ".join(steps), "ok")
+        # Upload jako OSOBNY job na koncu kolejki: przy strzelaniu seriami
+        # obrobka kolejnego zdjecia nie czeka na siec (~2-3 s na strzale).
+        # Ten sam watek worker, wiec zero nowej wspolbieznosci; job niesie
+        # SWOJ uploader — zmiana sesji w miedzyczasie nie przekieruje
+        # zdjecia do cudzej sesji Automatu.
+        if job["upload"] and self.uploader is not None:
+            self._jobs.put(("upload_photo", {
+                "outdir": outdir, "out": out,
+                "photo_id": announced_id, "uploader": self.uploader,
+            }))
+
+    def _job_upload_photo(self, job: dict) -> None:
+        out: Path = job["out"]
+        if not out.exists():
+            # skasowane (BACKSPACE -> kosz) zanim doszlo do uploadu; PUT na
+            # martwy rekord konczylby sie retry POST-em, ktory wskrzeszalby
+            # zdjecie po stronie Automatu
+            return
+        t0 = time.perf_counter()
+        try:
+            resp = job["uploader"].upload_processed(out, photo_id=job["photo_id"])
+        except Exception as e:
+            self._log(f"✗ Upload do Automatu nie wyszedł: {e}", "err")
+            return
+        review = _load_review(job["outdir"])
+        review["uploaded"].append(out.name)
+        pid = resp.get("id") or job["photo_id"]
+        if pid:
+            review["automat"][out.name] = int(pid)
+        _save_review(job["outdir"], review)
+        self._log(f"↑ {out.name} w Automacie ({time.perf_counter() - t0:.1f} s).", "ok")
 
     def _job_delete(self, session: str, files: list[str]) -> None:
         """Świadome kasowanie (BACKSPACE / „Odrzuć"): lokalnie do kosza
@@ -1264,6 +1281,7 @@ class WebUI:
     _JOBS = {
         "warmup": _job_warmup,
         "photo": _job_photo,
+        "upload_photo": _job_upload_photo,
         "open_session": _job_open_session,
         "upload_off": _job_upload_off,
         "sync_session": _job_sync_session,

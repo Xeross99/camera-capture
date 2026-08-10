@@ -566,23 +566,40 @@ def make_camera_session():
     auto: gphoto2 jesli zaimportowalne; na Windows edsdk gdy lezy EDSDK.dll,
     w przeciwnym razie digiCamControl.
     Zwracany obiekt ma interfejs CameraSession (open/preview_frame/capture_to/
-    get_settings/set_setting/close)."""
+    get_settings/set_setting/close) oraz `backend_info` — TEKST z wyborem
+    i powodem, ktory webui wypisuje do logu przy starcie. Fallback auto na
+    digiCamControl byl wczesniej CICHY: na maszynie bez EDSDK.dll (DLL nie
+    jest w paczce — licencja Canona) aplikacja probowala dCC, ktorego tez
+    nikt nie instalowal, a operator widzial tylko myloncy blad o webserverze."""
     backend = CAMERA_BACKEND
+    reason = f"CAMERA_BACKEND={CAMERA_BACKEND} w .env"
     if backend == "auto":
         if gp is not None:
-            backend = "gphoto2"
+            backend, reason = "gphoto2", "auto: gphoto2 dostępne"
         elif sys.platform == "win32":
             from .camera_edsdk import find_edsdk_dll
-            backend = "edsdk" if find_edsdk_dll() else "digicamcontrol"
+            dll = find_edsdk_dll()
+            if dll:
+                backend, reason = "edsdk", f"auto: znaleziono {dll}"
+            else:
+                backend, reason = "digicamcontrol", (
+                    "auto: BRAK EDSDK.dll obok aplikacji — fallback na "
+                    "digiCamControl. Jeśli miał być EDSDK, połóż EDSDK.dll "
+                    "+ EdsImage.dll (x64) obok .exe")
         else:
-            backend = "gphoto2"
+            backend, reason = "gphoto2", "auto"
 
     if backend == "edsdk":
         from .camera_edsdk import EdsdkSession
-        return EdsdkSession()
-    if backend == "digicamcontrol":
+        session = EdsdkSession()
+    elif backend == "digicamcontrol":
         from .camera_digicam import DigiCamControlSession
-        return DigiCamControlSession()
-    if backend != "gphoto2":
-        print(f"Uwaga: nieznany CAMERA_BACKEND='{backend}', uzywam gphoto2.")
-    return CameraSession()
+        session = DigiCamControlSession()
+    else:
+        if backend != "gphoto2":
+            reason = f"nieznany CAMERA_BACKEND={backend!r} — używam gphoto2"
+            print(f"Uwaga: {reason}.")
+            backend = "gphoto2"
+        session = CameraSession()
+    session.backend_info = f"{backend} ({reason})"
+    return session

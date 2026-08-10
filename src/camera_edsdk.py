@@ -300,7 +300,9 @@ class EdsdkSession:
         cam_list = ctypes.c_void_p()
         self._check(self._sdk.EdsGetCameraList(ctypes.byref(cam_list)), "EdsGetCameraList")
         try:
-            count = ctypes.c_ulong()
+            # c_uint32, nie c_ulong: argtypes deklaruja POINTER(c_uint32), a ctypes
+            # odrzuca byref innej klasy, nawet o tym samym rozmiarze
+            count = ctypes.c_uint32()
             self._check(self._sdk.EdsGetChildCount(cam_list, ctypes.byref(count)),
                         "EdsGetChildCount")
             if count.value == 0:
@@ -406,6 +408,13 @@ class EdsdkSession:
                               f"z karty ({found.name}).", "warn")
                     return found
             if now >= deadline:
+                # ostatnia szansa: przy pierwszym skanie (8 s) plik mogl sie
+                # jeszcze zapisywac na wolnej karcie
+                found = self._download_newest_from_card(workdir)
+                if found is not None:
+                    self._log(f"Aparat nie zglosil pliku po USB — zdjęcie pobrane "
+                              f"z karty ({found.name}).", "warn")
+                    return found
                 seen = ", ".join(f"0x{e:04X}" for e in self._seen_events) or "ZADNYCH"
                 save_to = self._get_u32(_PROP_SAVE_TO)
                 raise RuntimeError(
@@ -521,7 +530,10 @@ class EdsdkSession:
                 self._sdk.EdsRelease(child)
                 continue
             name = info.szFileName.decode("ascii", "replace")
-            if name in self._downloaded or info.dateTime <= best[2]:
+            # `<`, nie `<=`: przy rownym stemplu (niektore aparaty oddaja
+            # dateTime=0 dla wszystkiego) wygrywa ostatni z enumeracji, a DCIM
+            # enumeruje rosnaco po numerze pliku — ostatni = najnowszy
+            if name in self._downloaded or info.dateTime < best[2]:
                 self._sdk.EdsRelease(child)
                 continue
             if best[0] is not None:

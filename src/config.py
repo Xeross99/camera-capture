@@ -49,6 +49,11 @@ DIGICAMCONTROL_EXE = os.environ.get("DIGICAMCONTROL_EXE", "").strip() or None
 
 CLEAN_BG_MODEL = "u2netp"
 CLEAN_BG_INFERENCE_SIZE = 768
+# Inferencja rembg na GPU, jesli onnxruntime ma odpowiedni provider
+# (na Windowsie DirectML z paczki onnxruntime-directml — dziala na kazdym
+# GPU przez DirectX 12, bez instalowania CUDA). `false` = wymus CPU,
+# kill-switch na wypadek smiesznych sterownikow.
+CLEAN_BG_GPU = os.environ.get("CLEAN_BG_GPU", "true").lower() in ("1", "true", "yes", "on")
 CLEAN_BG_COLOR = (255, 255, 255)
 CLEAN_BG_MASK_THRESHOLD = 80
 CLEAN_BG_EDGE_BLUR = 0.6

@@ -22,6 +22,7 @@ from .config import (
     CLEAN_BG_ALPHA_FLOOR,
     CLEAN_BG_COLOR,
     CLEAN_BG_EDGE_BLUR,
+    CLEAN_BG_GPU,
     CLEAN_BG_INFERENCE_SIZE,
     CLEAN_BG_MASK_THRESHOLD,
     CLEAN_BG_MODEL,
@@ -35,10 +36,38 @@ Bbox = tuple[int, int, int, int]  # (left, top, right, bottom)
 Window = tuple[int, int, int, int]  # okno cropu w pikselach source (sl, st, sr, sb)
 
 
+def _gpu_providers() -> list[str] | None:
+    """Lista providerow onnxruntime z GPU na czele, albo None (= sam CPU).
+
+    rembg sam z siebie wykrywa tylko CUDA/ROCm — DirectML (paczka
+    onnxruntime-directml, Windows: kazde GPU przez DirectX 12, bez CUDA)
+    trzeba wskazac jawnie."""
+    if not CLEAN_BG_GPU:
+        return None
+    try:
+        import onnxruntime as ort
+        available = ort.get_available_providers()
+    except Exception:
+        return None
+    for gpu in ("DmlExecutionProvider", "CUDAExecutionProvider"):
+        if gpu in available:
+            return [gpu, "CPUExecutionProvider"]
+    return None
+
+
 @lru_cache(maxsize=1)
 def _session(model_name: str):
     from rembg import new_session
 
+    providers = _gpu_providers()
+    if providers:
+        try:
+            session = new_session(model_name, providers=providers)
+            print(f"rembg: inferencja na GPU ({providers[0]})")
+            return session
+        except Exception as e:
+            # DirectML potrafi polec na starych sterownikach — CPU zawsze dziala
+            print(f"rembg: GPU nie wstało ({e}) — liczę na CPU")
     return new_session(model_name)
 
 

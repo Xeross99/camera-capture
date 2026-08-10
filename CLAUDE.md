@@ -264,6 +264,7 @@ Uwaga: anchory bleed-fit w auto-center (sekcja wyżej) zakładają logo w prawym
 | `CAMERA_IMAGE_FORMAT` | `"L"` | Format aparatu (L = Large Fine JPEG, ~24 MP, 6000×4000). Inne na M50 II: `L`/`cL`/`M`/`cM`/`S1`/`cS1`/`S2`. RAW nie obsługiwane. |
 | `CLEAN_BG_MODEL` | `"u2netp"` | Model rembg. Wybrany po benchmarku — najczystsze cienie + ~15× szybszy od BiRefNet na klockach. |
 | `CLEAN_BG_INFERENCE_SIZE` | `768` | rembg inference resolution. Mniejszy = szybszy. |
+| `CLEAN_BG_GPU` | env `CLEAN_BG_GPU`, default `true` | Inferencja rembg na GPU, gdy onnxruntime ma provider (Windows: DirectML z `onnxruntime-directml` w `requirements-windows.txt` — każda karta przez DirectX 12, bez CUDA; rembg sam wykrywa tylko CUDA/ROCm, więc `_gpu_providers()` w `background.py` wskazuje DML jawnie). Użyty provider ląduje w logu przy pierwszym zdjęciu (`rembg: inferencja na GPU (…)`); błąd inicjalizacji GPU = cichy fallback na CPU z wpisem. `false` = kill-switch (wymuś CPU). Przyspiesza TYLKO etap `rembg` z linii pomiaru — maska/kompozyt to numpy na CPU. |
 | `CLEAN_BG_MASK_THRESHOLD` | `80` | Próg binaryzacji maski (dla `filtered` + bbox). 160 (wcześniej) odcinało low-confidence części produktu typu cieńszy rail przy bleedującej krawędzi gdzie rembg dawał alpha 80–150 — bbox nie obejmował ich, alpha 0 w composite, biała dziura w canvy gdzie produkt powinien bleedować. 80 łapie te masy a `_filter_small_blobs` wciąż odsiewa szum tła. |
 | `CLEAN_BG_EDGE_BLUR` | `0.6` | Gaussian blur radius na alpha mask (anty-aliasing). |
 | `CLEAN_BG_ALPHA_FLOOR` | `40` | Dolny próg alfy (tylko dark-bg path): wszystko < 40 → 0. Wyższe wartości (próbowano 80) zabijały też mid-confidence piksele wewnątrz produktu (np. rail, gdzie u2netp dawał 50–120) i robiły białe dziury w composite. 40 zostawia te piksele a wciąż usuwa halo z bg. Light-bg path liczy alfę z luminancji obrazu (cubic falloff), nie używa floor/ceiling. |
@@ -323,6 +324,7 @@ AUTOMAT_UPLOAD_ENABLED=true
 ## Wydajność
 
 - u2netp: ~4,5 MB model, ~0.5s inference @ 768×768 na CPU (Apple Silicon, onnxruntime CPU).
+- Windows: inferencja idzie na GPU przez DirectML, gdy jest dostępny (patrz `CLEAN_BG_GPU`).
 - Pierwsze uruchomienie pobiera model do `~/.u2net/u2netp.onnx`.
 
 ## Zależności

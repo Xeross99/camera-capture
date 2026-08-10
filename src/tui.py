@@ -9,6 +9,7 @@ import sys
 import tempfile
 import termios
 import threading
+import time
 import tty
 from collections import deque
 from datetime import datetime
@@ -176,12 +177,14 @@ class CaptureTUI:
     def _upload(self, out: Path, photo_id: int | None) -> None:
         if self.uploader is None:
             return
+        t0 = time.perf_counter()
         try:
             self.uploader.upload_processed(out, photo_id=photo_id)
         except Exception as e:
             self.log(Text(f"Upload do Automatu nie wyszedl: {e}", style="red"))
             return
-        self.log(Text("↑ Wgrano przetworzone do Automatu", style="bold cyan"))
+        self.log(Text(f"↑ Wgrano przetworzone do Automatu ({time.perf_counter() - t0:.1f} s)",
+                      style="bold cyan"))
 
     # ---------- render ----------
 
@@ -324,16 +327,20 @@ class CaptureTUI:
         try:
             with contextlib.redirect_stdout(_LogWriter(self)):
                 with tempfile.TemporaryDirectory() as td:
+                    t0 = time.perf_counter()
                     captured = capture_from_camera(Path(td))
+                    cap_s = time.perf_counter() - t0
                     filename = f"photo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
                     announced_id = self._announce(filename)
                     self.status = Spinner("dots", text=Text("Czyszcze tlo / centruje…", style="cyan"))
                     self.live.update(self._render())
+                    t0 = time.perf_counter()
                     out = process(
                         captured, self.logo, self.base_output / self.name, clean_bg=True,
                         add_logo=self.add_logo, logo_position=self.logo_position,
                         auto_center=self.auto_center, auto_zoom=self.auto_zoom,
                     )
+                    proc_s = time.perf_counter() - t0
         except SystemExit as e:
             self.log(Text(f"Blad aparatu: {e}", style="bold red"))
             return
@@ -343,6 +350,7 @@ class CaptureTUI:
         self.count += 1
         self.log(Text.assemble(
             ("✓ Zapisano ", "bold green"), (str(out), "yellow"), (f"  (#{self.count})", "dim"),
+            (f"  aparat {cap_s:.1f} s · obrobka {proc_s:.1f} s", "dim"),
         ))
         self._upload(out, announced_id)
 

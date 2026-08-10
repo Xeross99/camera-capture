@@ -704,6 +704,7 @@ class WebUI:
     def _do_capture(self, opts: dict) -> None:
         self._set_busy("Wyzwalam migawkę…")
         tmpdir = Path(tempfile.mkdtemp(prefix="capture_"))
+        t0 = time.perf_counter()
         try:
             captured = self.session.capture_to(tmpdir)
         except (SystemExit, *CAMERA_ERRORS) as e:
@@ -712,7 +713,8 @@ class WebUI:
             self._set_busy("")
             return
         self._set_busy("")
-        self._jobs.put(("photo", {**opts, "tmpdir": tmpdir, "captured": captured}))
+        self._jobs.put(("photo", {**opts, "tmpdir": tmpdir, "captured": captured,
+                                  "cap_s": time.perf_counter() - t0}))
 
     # ---------- watek worker ----------
 
@@ -910,12 +912,23 @@ class WebUI:
         with self.lock:
             self.processing_file = filename
             self.busy = "Czyszczę tło / centruję…"
+        # Rozbicie czasu od migawki do kafelka w filmstripie. Sama linia
+        # z `clean_background` mierzy tylko siebie — a operatorowi "obróbka"
+        # to wszystko: USB z aparatu, announce, dekodowanie+zapis JPEG
+        # (poza tamtym pomiarem) i upload. Bez pełnego rachunku każda
+        # brakująca sekunda wygląda na zamrożoną aplikację.
+        steps: list[str] = []
+        if "cap_s" in job:
+            steps.append(f"aparat {job['cap_s']:.1f} s")
         announced_id = None
         if job["upload"] and self.uploader is not None:
+            t0 = time.perf_counter()
             try:
                 announced_id = self.uploader.announce_photo(filename)
+                steps.append(f"announce {time.perf_counter() - t0:.1f} s")
             except Exception as e:
                 self._log(f"✗ Announce do Automatu nie wyszedł: {e}", "err")
+        t0 = time.perf_counter()
         try:
             with contextlib.redirect_stdout(_LogPipe(self)):
                 out = process(
@@ -933,6 +946,7 @@ class WebUI:
             with self.lock:
                 self.busy = ""
                 self.processing_file = None
+        steps.append(f"obróbka {time.perf_counter() - t0:.1f} s")
 
         raw = outdir / f"{Path(filename).stem}_raw.jpg"
         if raw.exists():
@@ -957,17 +971,20 @@ class WebUI:
             # delete musi go umiec sprzatnac
             review["automat"][out.name] = announced_id
         if job["upload"] and self.uploader is not None:
+            t0 = time.perf_counter()
             try:
                 resp = self.uploader.upload_processed(out, photo_id=announced_id)
                 review["uploaded"].append(out.name)
                 pid = resp.get("id") or announced_id
                 if pid:
                     review["automat"][out.name] = int(pid)
+                steps.append(f"upload {time.perf_counter() - t0:.1f} s")
                 uploaded_note = " · upload do Automatu OK"
             except Exception as e:
                 self._log(f"✗ Upload do Automatu nie wyszedł: {e}", "err")
         _save_review(outdir, review)
-        self._log(f"Zapisano {out.name} (#{n}){uploaded_note}", "ok")
+        self._log(f"Zapisano {out.name} (#{n}){uploaded_note} · "
+                  + " · ".join(steps), "ok")
 
     def _job_delete(self, session: str, files: list[str]) -> None:
         """Świadome kasowanie (BACKSPACE / „Odrzuć"): lokalnie do kosza

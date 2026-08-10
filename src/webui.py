@@ -11,6 +11,7 @@ Stan recenzji per sesja w photos/<sesja>/.review.json:
 {rejected: [...], uploaded: [...], meta: {plik: "logo · zoom · 3000×3000"}}.
 """
 
+import contextlib
 import io
 import json
 import os
@@ -250,6 +251,27 @@ def _bg_status(bg: tuple[int, int] | None) -> str:
     if bg is None:
         return "unknown"
     return "dark" if bg[0] < BG_MIN else "ok"
+
+
+class _LogPipe(io.TextIOBase):
+    """Przekierowanie stdout do logu UI na czas obrobki zdjecia.
+
+    TUI przechwytuje print()y z pipeline'u od zawsze; webui je gubil — a w
+    spakowanym .exe bez konsoli print leci w nicosc. Przez to ani pomiar
+    czasu z `clean_background`, ani ostrzezenia (np. brak pliku logo) nie
+    docieraly do operatora."""
+
+    def __init__(self, ui: "WebUI") -> None:
+        self.ui = ui
+        self._buf = ""
+
+    def write(self, s: str) -> int:
+        self._buf += s
+        while "\n" in self._buf:
+            line, self._buf = self._buf.split("\n", 1)
+            if line.strip():
+                self.ui._log(line.strip())
+        return len(s)
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -895,13 +917,14 @@ class WebUI:
             except Exception as e:
                 self._log(f"✗ Announce do Automatu nie wyszedł: {e}", "err")
         try:
-            out = process(
-                job["captured"], self.logo_path, outdir,
-                clean_bg=job["clean_bg"], add_logo=job["add_logo"],
-                logo_position=job["logo_position"],
-                auto_center=job["auto_center"], auto_zoom=job["auto_zoom"],
-                out_name=filename,
-            )
+            with contextlib.redirect_stdout(_LogPipe(self)):
+                out = process(
+                    job["captured"], self.logo_path, outdir,
+                    clean_bg=job["clean_bg"], add_logo=job["add_logo"],
+                    logo_position=job["logo_position"],
+                    auto_center=job["auto_center"], auto_zoom=job["auto_zoom"],
+                    out_name=filename,
+                )
         except Exception as e:
             self._log(f"✗ Obróbka nie wyszła: {e}", "err")
             return

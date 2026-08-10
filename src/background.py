@@ -7,6 +7,7 @@ Przeplyw `clean_background`:
     (`_compose_on_canvas`).
 """
 
+import time
 from functools import lru_cache
 
 import numpy as np
@@ -75,15 +76,20 @@ def _background_luminance(lum: np.ndarray, bg_mask: np.ndarray) -> float:
     return max(value, 1.0)
 
 
-def _image_bleed_edges(image: Image.Image, alpha: Image.Image) -> dict:
+def _image_bleed_edges(
+    image: Image.Image, alpha: Image.Image, img_lum: np.ndarray | None = None
+) -> dict:
     """Detect which raw-image edges have product bleeding off-frame.
 
     Looks at a 0.5%-thick strip from each edge of the source image (not the
     mask — u2netp @ 768 inference often clips thin extensions, so the mask
     underreports). Counts pixels darker than 70% of background luminance; if
     a strip has at least 50 such pixels we call that edge bleeding.
+
+    `img_lum` to opcjonalna gotowa luminancja source'a — konwersja L pelnej
+    klatki jest liczona w `_product_alpha` i szkoda robic jej drugi raz.
     """
-    img_arr = np.array(image.convert("L"))
+    img_arr = np.array(image.convert("L")) if img_lum is None else img_lum
     h, w = img_arr.shape
     bg_lum = _background_luminance(img_arr, np.array(alpha) < 32)
 
@@ -105,6 +111,11 @@ def _lift_internal_shadows(
 ) -> Image.Image:
     """Podciaga do bieli cienie widoczne przez przeswity produktu (piksele
     "jasne ale przyciemnione"); szare cialo produktu nie jest ruszane."""
+    if strength <= 0:
+        # lift = darkness * shadow_on_bg * 0 — wynik identyczny z wejsciem,
+        # a po drodze kilka macierzy float32 na pelnych 24 MP (>1 GB szczytu
+        # pamieci). Na maszynach z malym RAM-em to wpychalo obrobke w swap.
+        return img
     img_arr = np.array(img.convert("RGB")).astype(np.float32)
     lum = img_arr.mean(axis=2)
     bg_lum = _background_luminance(lum, np.array(alpha) < 32)
@@ -159,7 +170,7 @@ def _build_shadow_layer(
 
 def _product_alpha(
     image: Image.Image, rembg_alpha: Image.Image
-) -> tuple[Image.Image, Image.Image]:
+) -> tuple[Image.Image, Image.Image, np.ndarray]:
     """Finalna alpha + binarna maska produktu z maski rembg.
 
     Dual-path w zaleznosci od jasnosci tla (bg_lum > 200 = light_bg,
@@ -172,7 +183,8 @@ def _product_alpha(
       bez gate'u i hole-fill (naiwny gate luminancji odwracalby polaryzacje
       produkt/tlo, np. bialy klocek na ciemnym stole).
 
-    Zwraca (alpha, binary) jako obrazy L w rozdzielczosci source.
+    Zwraca (alpha, binary, img_lum) — obrazy L w rozdzielczosci source oraz
+    luminancje source'a (do reuse'u w `_image_bleed_edges`).
     """
     filtered = _filter_small_blobs(np.array(_binarize(rembg_alpha)) > 0)
     img_lum = np.array(image.convert("L"))
@@ -205,7 +217,7 @@ def _product_alpha(
         alpha_arr = np.clip((alpha_arr - floor) * (255.0 / (ceiling - floor)), 0.0, 255.0)
         binary = Image.fromarray((filled.astype(np.uint8) * 255))
 
-    return Image.fromarray(alpha_arr.astype(np.uint8)), binary
+    return Image.fromarray(alpha_arr.astype(np.uint8)), binary, img_lum
 
 
 # ---------- wybor okna cropu ----------
@@ -495,6 +507,7 @@ def _select_crop_window(
     canvas_aspect: float,
     auto_center: bool,
     auto_zoom: bool,
+    img_lum: np.ndarray | None = None,
 ) -> Window:
     """Wybiera okno cropu wg toggli zoom/center, a przy obu ON — wg sygnalow
     z kadru (bleed na krawedziach, ksztalt i rozmiar bboxa)."""
@@ -508,7 +521,7 @@ def _select_crop_window(
 
     l, t, r, b = bbox
     bw, bh = r - l, b - t
-    edges = _image_bleed_edges(image, alpha)
+    edges = _image_bleed_edges(image, alpha, img_lum)
     any_x_bleed = edges["left"] or edges["right"]
     any_y_bleed = edges["top"] or edges["bottom"]
     bbox_aspect = bw / max(bh, 1)
@@ -596,6 +609,18 @@ def clean_background(
     canvas_w, canvas_h = canvas_size
     src_w, src_h = image.size
 
+    # Pomiar per etap idzie do logu — "czemu obrobka trwa" ma byc do
+    # odczytania z jednej linii, a nie do zgadywania (na maszynie operatora
+    # rozklad potrafi wygladac zupelnie inaczej niz na maszynie dev).
+    times: list[tuple[str, float]] = []
+    t0 = time.perf_counter()
+
+    def _mark(label: str) -> None:
+        nonlocal t0
+        now = time.perf_counter()
+        times.append((label, now - t0))
+        t0 = now
+
     if max(src_w, src_h) > CLEAN_BG_INFERENCE_SIZE:
         infer_img = image.resize(
             (CLEAN_BG_INFERENCE_SIZE, CLEAN_BG_INFERENCE_SIZE), Image.LANCZOS
@@ -604,8 +629,10 @@ def clean_background(
         infer_img = image
     rgba = remove(infer_img.convert("RGBA"), session=_session(CLEAN_BG_MODEL))
     rembg_alpha = rgba.split()[3].resize((src_w, src_h), Image.LANCZOS)
+    _mark("rembg")
 
-    alpha, binary = _product_alpha(image, rembg_alpha)
+    alpha, binary, img_lum = _product_alpha(image, rembg_alpha)
+    _mark("maska")
     img = _lift_internal_shadows(image.convert("RGB"), alpha, SHADOW_STRENGTH)
 
     bbox = _mask_bbox(binary)
@@ -613,6 +640,12 @@ def clean_background(
         return Image.new("RGB", canvas_size, CLEAN_BG_COLOR)
 
     window = _select_crop_window(
-        image, alpha, bbox, canvas_w / canvas_h, auto_center, auto_zoom
+        image, alpha, bbox, canvas_w / canvas_h, auto_center, auto_zoom, img_lum
     )
-    return _compose_on_canvas(img, alpha, window, canvas_size)
+    _mark("kadr")
+    result = _compose_on_canvas(img, alpha, window, canvas_size)
+    _mark("kompozyt")
+    total = sum(dt for _, dt in times)
+    detail = ", ".join(f"{label} {dt:.1f} s" for label, dt in times)
+    print(f"Czyszczenie tła: {total:.1f} s ({detail})")
+    return result

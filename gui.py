@@ -77,9 +77,19 @@ def main() -> None:
             os._exit(0)
 
     url = ui.start()
+    # Okno startuje ZMAKSYMALIZOWANE (windowed fullscreen) — sztywne 1440×900
+    # na malym laptopie wystawalo poza ekran, a na duzym monitorze wygladalo
+    # jak znaczek pocztowy. width/height to rozmiar po odmaksymalizowaniu:
+    # ~85% ekranu, z fallbackiem gdy pywebview nie umie go podac.
+    try:
+        screen = webview.screens[0]
+        restore_w, restore_h = int(screen.width * 0.85), int(screen.height * 0.85)
+    except Exception:
+        restore_w, restore_h = 1440, 900
     webview.create_window(
         APP_NAME, url,
-        width=1440, height=900, min_size=(1080, 700),
+        width=restore_w, height=restore_h, min_size=(1080, 700),
+        maximized=True,
         background_color="#1a1a1c",
     )
     webview.start()

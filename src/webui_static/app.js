@@ -37,6 +37,15 @@ const optionRow = (key, checked, title, desc, extra = "") => `
   </div>`;
 // Siatka kadrowania jak w aparacie (M50 II: 3×3 / 6×4). Domyślnie 6×4 — to
 // samo, co operator widzi na ekranie aparatu. Klik w badge cykluje.
+// Etykiety pozycji logo po polsku; value w <option> zostaje angielskie —
+// to identyfikatory backendu (LOGO_POSITIONS w image_processing.py).
+const LOGO_POS_PL = {
+  "bottom-right": "prawy dolny róg",
+  "bottom-left": "lewy dolny róg",
+  "top-right": "prawy górny róg",
+  "top-left": "lewy górny róg",
+};
+
 const GRIDS = [
   { cols: 6, rows: 4, label: "SIATKA 6×4" },
   { cols: 3, rows: 3, label: "SIATKA 3×3" },
@@ -386,7 +395,7 @@ function sesjaScreen() {
                       `<div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
                          <span style="font-size: 11.5px; color: #b4b4bb;">Pozycja</span>
                          <select onchange="post({action:'set_post', key:'logo_position', value:this.value})" style="${sel}">
-                           ${post_.logoPositions.map(p => `<option ${p === post_.logoPosition ? "selected" : ""}>${p}</option>`).join("")}
+                           ${post_.logoPositions.map(p => `<option value="${p}" ${p === post_.logoPosition ? "selected" : ""}>${LOGO_POS_PL[p] || p}</option>`).join("")}
                          </select>
                        </div>`)}
           ${optionRow("zoom", post_.zoom, "Przybliżanie",

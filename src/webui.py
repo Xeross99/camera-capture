@@ -716,7 +716,14 @@ class WebUI:
             shutil.rmtree(tmpdir, ignore_errors=True)
             self._set_busy("")
             return
-        self._set_busy("")
+        # Stan obrobki ustawiany JUZ TERAZ, przy kolejkowaniu — nie dopiero
+        # gdy _job_photo wystartuje. Job potrafi czekac w kolejce (najdluzej:
+        # za rozgrzewka DirectML przy pierwszym uruchomieniu) i bez tego UI
+        # przez caly ten czas wygladal, jakby zdjecie przepadlo: przycisk
+        # wracal do "Zrob zdjecie", filmstrip bez skeletona.
+        with self.lock:
+            self.busy = "Czyszczę tło / centruję…"
+            self.processing_file = opts["filename"]
         self._jobs.put(("photo", {**opts, "tmpdir": tmpdir, "captured": captured,
                                   "cap_s": time.perf_counter() - t0}))
 
@@ -1247,6 +1254,9 @@ class WebUI:
         tyle samo, ile czekałby bez niej."""
         from .background import warmup_clean_bg  # import lazy jak w process()
 
+        self._log("Przygotowuję silnik czyszczenia tła — przy pierwszym "
+                  "uruchomieniu na GPU może potrwać do ~2 min; zdjęcia zrobione "
+                  "w tym czasie poczekają w kolejce.")
         t0 = time.perf_counter()
         with contextlib.redirect_stdout(_LogPipe(self)):
             warmup_clean_bg()

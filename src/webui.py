@@ -436,6 +436,14 @@ class WebUI:
         self.uploader: AutomatUploader | None = None  # tylko watek worker
 
         self.session = make_camera_session()
+        # Backend, ktory potrafi opowiadac o dlugim strzale (EDSDK czeka, az
+        # aparat odda plik), dostaje kanal do paska stanu. Bez tego przycisk
+        # stoi na „Wyzwalam migawkę…" i wyglada na zawieszony, choc trwa
+        # normalne czekanie na aparat.
+        if hasattr(self.session, "on_status"):
+            self.session.on_status = self._set_busy
+        if hasattr(self.session, "on_log"):
+            self.session.on_log = self._log
         self._stop = threading.Event()
         self._frame_lock = threading.Lock()
         self._frame: bytes | None = None
@@ -667,20 +675,21 @@ class WebUI:
         except Exception:
             pass
 
-    def _do_capture(self, opts: dict) -> None:
+    def _set_busy(self, text: str) -> None:
         with self.lock:
-            self.busy = "Wyzwalam migawkę…"
+            self.busy = text
+
+    def _do_capture(self, opts: dict) -> None:
+        self._set_busy("Wyzwalam migawkę…")
         tmpdir = Path(tempfile.mkdtemp(prefix="capture_"))
         try:
             captured = self.session.capture_to(tmpdir)
         except (SystemExit, *CAMERA_ERRORS) as e:
             self._log(f"✗ Błąd aparatu: {e}", "err")
             shutil.rmtree(tmpdir, ignore_errors=True)
-            with self.lock:
-                self.busy = ""
+            self._set_busy("")
             return
-        with self.lock:
-            self.busy = ""
+        self._set_busy("")
         self._jobs.put(("photo", {**opts, "tmpdir": tmpdir, "captured": captured}))
 
     # ---------- watek worker ----------

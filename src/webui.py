@@ -1238,7 +1238,22 @@ class WebUI:
             self.test_result = f"✗ {e.__class__.__name__}"
             self._log(f"Test Automatu nie wyszedł: {e}", "err")
 
+    def _job_warmup(self) -> None:
+        """Rozgrzewka rembg przy starcie: pierwsza inferencja płaci jednorazowe
+        koszty (model, a na DirectML kompilację shaderów pod GPU — zmierzone
+        ~110 s u operatora). Bez tego joba cały ten rachunek obrywało PIERWSZE
+        zdjęcie sesji i wyglądało to na zawieszoną obróbkę. Worker robi joby
+        po kolei, więc strzał oddany w trakcie rozgrzewki po prostu poczeka —
+        tyle samo, ile czekałby bez niej."""
+        from .background import warmup_clean_bg  # import lazy jak w process()
+
+        t0 = time.perf_counter()
+        with contextlib.redirect_stdout(_LogPipe(self)):
+            warmup_clean_bg()
+        self._log(f"Silnik czyszczenia tła gotowy ({time.perf_counter() - t0:.0f} s).", "ok")
+
     _JOBS = {
+        "warmup": _job_warmup,
         "photo": _job_photo,
         "open_session": _job_open_session,
         "upload_off": _job_upload_off,
@@ -1551,6 +1566,9 @@ class WebUI:
         self._jobs.put(("cleanup_update",))
         self._jobs.put(("check_update",))
         self._jobs.put(("purge_trash",))
+        # ostatnia w kolejce startowej — szybkie joby wyżej nie mogą czekać
+        # dziesiątek sekund za kompilacją shaderów DirectML
+        self._jobs.put(("warmup",))
 
         handler = type("Handler", (_Handler,), {"ui": self})
         self._server = ThreadingHTTPServer(("127.0.0.1", self.port), handler)

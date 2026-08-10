@@ -71,6 +71,22 @@ def _session(model_name: str):
     return new_session(model_name)
 
 
+def warmup_clean_bg() -> None:
+    """Rozgrzewka silnika czyszczenia tla: sesja rembg + jedna miniaturowa
+    inferencja.
+
+    Pierwsza inferencja placi jednorazowe koszty procesu: pobranie/zaladowanie
+    modelu, a na DirectML takze kompilacje shaderow pod konkretne GPU —
+    u operatora zmierzone ~110 s, ktore bez rozgrzewki obrywalo PIERWSZE
+    zdjecie sesji. Wolane z workera przy starcie aplikacji, gdy operator
+    dopiero wybiera sesje. Rozmiar wejscia bez znaczenia: rembg i tak skaluje
+    kazda klatke do stalego wejscia modelu, wiec mala kompiluje to samo."""
+    from rembg import remove
+
+    img = Image.new("RGBA", (64, 64), (255, 255, 255, 255))
+    remove(img, session=_session(CLEAN_BG_MODEL))
+
+
 def _binarize(mask: Image.Image, threshold: int = CLEAN_BG_MASK_THRESHOLD) -> Image.Image:
     return mask.point(lambda v: 255 if v >= threshold else 0)
 

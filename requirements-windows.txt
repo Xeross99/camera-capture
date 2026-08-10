@@ -1,5 +1,5 @@
 # Zaleznosci dla Windows — bez gphoto2 i pyusb (libgphoto2/libusb nie
-# istnieja na tej platformie; aparat obsluguje digiCamControl przez HTTP,
+# istnieja na tej platformie; aparatem steruje Canon EDSDK przez ctypes,
 # patrz WINDOWS.md).
 pillow>=11
 rich>=14

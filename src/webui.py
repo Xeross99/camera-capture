@@ -458,9 +458,8 @@ class WebUI:
         self.uploader: AutomatUploader | None = None  # tylko watek worker
 
         self.session = make_camera_session()
-        # Pierwszy wpis w logu: ktory backend i CZEMU. Bez tego maszyna bez
-        # EDSDK.dll po cichu schodzila na digiCamControl i operator dostawal
-        # tylko myloncy blad o webserverze dCC.
+        # Pierwszy wpis w logu: ktory backend i CZEMU (np. skad wzieta
+        # EDSDK.dll albo ze jej brak) — diagnoza z pierwszej linii logu.
         self._log(f"Backend aparatu: {getattr(self.session, 'backend_info', '?')}")
         # Backend, ktory potrafi opowiadac o dlugim strzale (EDSDK czeka, az
         # aparat odda plik), dostaje kanal do paska stanu. Bez tego przycisk

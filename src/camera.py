@@ -8,7 +8,7 @@ try:
     import gphoto2 as gp
 except ImportError:
     # libgphoto2 nie istnieje na Windows — tam aparat obsluguje backend
-    # digiCamControl (src/camera_digicam.py), wybierany przez make_camera_session().
+    # Canon EDSDK (src/camera_edsdk.py), wybierany przez make_camera_session().
     gp = None
 
 from .config import CAMERA_BACKEND, CAMERA_IMAGE_FORMAT
@@ -19,16 +19,14 @@ else:
     class GPhoto2Error(Exception):
         pass
 
-# Wspolna tupla bledow aparatu dla wszystkich backendow: gphoto2 + EDSDK +
-# digiCamControl (EdsdkError dziedziczy po RuntimeError,
-# requests.RequestException po OSError).
+# Wspolna tupla bledow aparatu dla obu backendow: gphoto2 + EDSDK
+# (EdsdkError dziedziczy po RuntimeError).
 CAMERA_ERRORS: tuple = (GPhoto2Error, RuntimeError, OSError)
 
 GPHOTO2_MISSING_HINT = (
     "python-gphoto2 nie jest zainstalowane (na Windowsie niedostepne). "
-    "Na Windowsie uzyj backendu edsdk (poloz EDSDK.dll x64 obok aplikacji, "
-    "patrz WINDOWS.md) albo digiCamControl: zainstaluj dCC, wlacz webserver "
-    "(port 5513) i ustaw CAMERA_BACKEND=digicamcontrol w .env."
+    "Na Windowsie uzyj backendu edsdk: poloz EDSDK.dll + EdsImage.dll x64 "
+    "obok aplikacji, patrz WINDOWS.md."
 )
 
 GP_ERROR_UNSPECIFIED = -1
@@ -561,40 +559,38 @@ class CameraSession:
 
 
 def make_camera_session():
-    """Wybiera backend aparatu wg CAMERA_BACKEND (auto/gphoto2/edsdk/digicamcontrol).
+    """Wybiera backend aparatu wg CAMERA_BACKEND (auto/gphoto2/edsdk).
 
-    auto: gphoto2 jesli zaimportowalne; na Windows edsdk gdy lezy EDSDK.dll,
-    w przeciwnym razie digiCamControl.
+    auto: gphoto2 jesli zaimportowalne, na Windows edsdk. Backend
+    digiCamControl zostal USUNIETY (1.1.0) — na Windows dziala wylacznie
+    EDSDK; brak EDSDK.dll konczy sie czytelnym bledem z EdsdkSession.open(),
+    a nie cichym przejsciem na posrednika.
     Zwracany obiekt ma interfejs CameraSession (open/preview_frame/capture_to/
     get_settings/set_setting/close) oraz `backend_info` — TEKST z wyborem
-    i powodem, ktory webui wypisuje do logu przy starcie. Fallback auto na
-    digiCamControl byl wczesniej CICHY: na maszynie bez EDSDK.dll (DLL nie
-    jest w paczce — licencja Canona) aplikacja probowala dCC, ktorego tez
-    nikt nie instalowal, a operator widzial tylko myloncy blad o webserverze."""
+    i powodem, ktory webui wypisuje do logu przy starcie."""
     backend = CAMERA_BACKEND
     reason = f"CAMERA_BACKEND={CAMERA_BACKEND} w .env"
+    if backend == "digicamcontrol":
+        # stary wpis w .env nie moze wywracac startu — przechodzimy na edsdk
+        backend = "edsdk" if sys.platform == "win32" else "auto"
+        reason = "backend digiCamControl został usunięty — używam EDSDK"
+        print(f"Uwaga: {reason}.")
     if backend == "auto":
         if gp is not None:
             backend, reason = "gphoto2", "auto: gphoto2 dostępne"
         elif sys.platform == "win32":
             from .camera_edsdk import find_edsdk_dll
             dll = find_edsdk_dll()
-            if dll:
-                backend, reason = "edsdk", f"auto: znaleziono {dll}"
-            else:
-                backend, reason = "digicamcontrol", (
-                    "auto: BRAK EDSDK.dll obok aplikacji — fallback na "
-                    "digiCamControl. Jeśli miał być EDSDK, połóż EDSDK.dll "
-                    "+ EdsImage.dll (x64) obok .exe")
+            backend = "edsdk"
+            reason = (f"auto: znaleziono {dll}" if dll else
+                      "auto: BRAK EDSDK.dll obok aplikacji — połóż EDSDK.dll "
+                      "+ EdsImage.dll (x64) obok .exe, patrz WINDOWS.md")
         else:
             backend, reason = "gphoto2", "auto"
 
     if backend == "edsdk":
         from .camera_edsdk import EdsdkSession
         session = EdsdkSession()
-    elif backend == "digicamcontrol":
-        from .camera_digicam import DigiCamControlSession
-        session = DigiCamControlSession()
     else:
         if backend != "gphoto2":
             reason = f"nieznany CAMERA_BACKEND={backend!r} — używam gphoto2"

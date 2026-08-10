@@ -2,19 +2,14 @@
 
 Aplikacja okienkowa (`gui.py`) działa na Windowsie. Jedyna realna różnica
 względem macOS: **libgphoto2 nie istnieje na Windowsie**, więc aparatem steruje
-jeden z dwóch backendów Windows:
-
-1. **Canon EDSDK** (`src/camera_edsdk.py`) — **zalecany**: aplikacja rozmawia
-   z aparatem bezpośrednio po USB przez oficjalne SDK Canona (ctypes),
-   bez żadnego procesu obok. Wybierany automatycznie, gdy obok aplikacji
-   leży `EDSDK.dll` (patrz niżej).
-2. **digiCamControl** (`src/camera_digicam.py`) — fallback przez webserver
-   HTTP dCC, gdy EDSDK.dll nie ma.
+**Canon EDSDK** (`src/camera_edsdk.py`) — aplikacja rozmawia z aparatem
+bezpośrednio po USB przez oficjalne SDK Canona (ctypes), bez żadnego procesu
+obok. (Backend digiCamControl został usunięty w 1.1.0.)
 
 Cała reszta — live view, strzały, czyszczenie tła, upload do Automatu —
-działa identycznie na obu.
+działa identycznie jak na macOS.
 
-## Canon EDSDK (zalecany backend)
+## Canon EDSDK
 
 1. Zarejestruj się (za darmo) w programie deweloperskim Canona i pobierz
    **EDSDK dla Windows**: [developers.canon-europe.com](https://developers.canon-europe.com/)
@@ -23,28 +18,20 @@ działa identycznie na obu.
    **`EdsImage.dll`** i połóż je obok aplikacji (katalog projektu lub katalog
    z `.exe`; można też w podkatalogu `edsdk\` albo wskazać ścieżkę przez
    `EDSDK_DLL` w `.env`). DLL-ki nie są w repo — licencja Canona nie pozwala
-   ich redystrybuować. Wersja 32-bit (np. z instalacji digiCamControl) **nie
-   zadziała** z 64-bitowym Pythonem — aplikacja powie to wprost przy starcie.
+   ich redystrybuować. Wersja 32-bit **nie zadziała** z 64-bitowym Pythonem —
+   aplikacja powie to wprost przy starcie.
 3. Podepnij aparat po USB (tryb M/Av/Tv/P, nie odtwarzanie) i uruchom
-   aplikację — backend wybierze się sam.
+   aplikację. Pierwsza linia logu mówi, skąd wzięła się DLL — albo że jej
+   brakuje.
+
+**Nowy komputer = te same dwa kroki ręczne**: skopiuj obok `.exe` parę
+`EDSDK.dll` + `EdsImage.dll` oraz `.env` (token Automatu).
 
 ## Wymagania
 
 1. **Windows 10/11** z [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
    (Windows 11 ma go domyślnie; potrzebny dla okna pywebview).
 2. **Python 3.11+** (przy uruchamianiu z kodu lub budowaniu .exe).
-3. **[digiCamControl](https://digicamcontrol.com)** (darmowy) — **tylko gdy
-   nie używasz backendu EDSDK**:
-   - zainstaluj i uruchom, podepnij Canona po USB (aparat w trybie M/Av/Tv/P),
-   - włącz webserver: **Settings → Webserver → Enable** (port `5513`),
-   - zrestartuj digiCamControl po włączeniu webservera,
-   - sprawdź w przeglądarce: `http://127.0.0.1:5513` powinno odpowiadać.
-
-   Po tej jednorazowej konfiguracji **nie musisz go już uruchamiać ręcznie** —
-   nasza aplikacja sama startuje CameraControl.exe (typowe ścieżki instalatora;
-   inne miejsce wskaż przez `DIGICAMCONTROL_EXE` w `.env`), otwiera live view
-   i minimalizuje jego okna. dCC działa w tle jako "sterownik" USB aparatu
-   przez cały czas pracy aplikacji.
 
 ## Uruchomienie z kodu
 
@@ -56,7 +43,8 @@ python gui.py
 ```
 
 `requirements-windows.txt` = `requirements.txt` bez `gphoto2` i `pyusb`
-(niedostępne na tej platformie). Flagi te same co na macOS
+(niedostępne na tej platformie), z `onnxruntime-directml` zamiast
+`onnxruntime` (inferencja rembg na GPU). Flagi te same co na macOS
 (`--name`, `--no-upload`, `--port`, `--browser`, …).
 
 ## Konfiguracja (`.env`)
@@ -64,9 +52,9 @@ python gui.py
 Jak na macOS (`.env.example`), plus opcjonalnie:
 
 ```
-CAMERA_BACKEND=auto            # auto = edsdk gdy jest EDSDK.dll, inaczej digicamcontrol; można wymusić: edsdk / digicamcontrol / gphoto2
+CAMERA_BACKEND=auto            # auto = edsdk na Windowsie; można wymusić: edsdk / gphoto2
 EDSDK_DLL=                     # ścieżka do EDSDK.dll lub jej katalogu (domyślnie szukana obok aplikacji)
-DIGICAMCONTROL_URL=http://127.0.0.1:5513
+CLEAN_BG_GPU=true              # false = rembg na CPU (bez kompilacji shaderów DirectML przy starcie)
 ```
 
 ## Budowa .exe
@@ -104,26 +92,16 @@ Nowa wersja jest niepodpisana, więc Windows SmartScreen może przy pierwszym
 uruchomieniu pokazać ostrzeżenie („Więcej informacji" → „Uruchom mimo to").
 
 Wydanie nowej wersji (dla dewelopera): podbij `APP_VERSION` w
-`src/version.py`, commit, `git tag vX.Y.Z`, `git push --tags` — CI zbuduje
-`.exe` i opublikuje release z paczką.
+`src/version.py`, commit, push na `main` — CI zbuduje `.exe` i opublikuje
+release z paczką.
 
 ## Ograniczenia backendu EDSDK
 
-- Ekspozycję (ISO/przysłona/czas/WB/AF) ustawia się na aparacie —
-  `get_settings()` zwraca pustą listę jak w backendzie digiCamControl.
+- Ekspozycję (ISO/przysłona/czas/WB/AF) ustawia się na aparacie; z aplikacji
+  zmienisz tylko kompensację ekspozycji.
 - Strzał używa AF (`PressShutterButton Completely`) — gdy AF nie złapie
   ostrości, dostaniesz czytelny błąd; przełącz obiektyw na MF albo popraw kadr.
-- Zdjęcia lecą prosto do aplikacji (`SaveTo=Host`) — nic nie zapisuje się na
-  karcie SD aparatu.
-
-## Ograniczenia backendu digiCamControl
-
-- Sekcja **Aparat** (ISO/przysłona/czas/WB/AF) w sidebarze jest pusta —
-  webserver digiCamControl nie eksponuje list wyboru; ustawienia zmieniaj
-  w oknie digiCamControl albo na aparacie.
-- Live view wymaga otwartego okna live view w digiCamControl — aplikacja
-  otwiera je sama (`CMD=LiveViewWnd_Show`) przy łączeniu.
-- Strzał: aplikacja ustawia `session.folder` digiCamControl na swój katalog
-  roboczy i czeka aż zdjęcie się tam pojawi (timeout 60 s).
+- Zdjęcia lecą prosto do aplikacji (`SaveTo=Host`); gdy aparat mimo to nie
+  zgłosi pliku, aplikacja po 8 s sama szuka najnowszego zdjęcia na karcie.
 - TUI (`main.py` bez `--input`) pozostaje macOS/Linux-only (termios);
   na Windowsie działa `gui.py` oraz `main.py --input plik.jpg`.

@@ -17,6 +17,7 @@ import os
 import struct
 import sys
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 from .config import EDSDK_DLL, PROJECT_DIR
@@ -70,8 +71,22 @@ _OBJECT_EVENTS_WITH_ITEM = (
 )
 
 _CAPTURE_TIMEOUT_S = 30
+_CARD_FALLBACK_S = 8          # po tylu sekundach ciszy szukamy pliku na karcie
+_CARD_SCAN_DEPTH = 3          # wolumen -> DCIM -> 100CANON -> pliki
 _FIRST_FRAME_TIMEOUT_S = 10
 _JPEG_MAGIC = b"\xff\xd8"
+
+_PM_REMOVE = 0x0001
+
+
+class _Msg(ctypes.Structure):
+    _fields_ = [("hwnd", ctypes.c_void_p),
+                ("message", ctypes.c_uint32),
+                ("wParam", ctypes.c_uint64),
+                ("lParam", ctypes.c_int64),
+                ("time", ctypes.c_uint32),
+                ("pt_x", ctypes.c_int32),
+                ("pt_y", ctypes.c_int32)]
 
 _ERROR_HINTS = {
     _EDS_ERR_DEVICE_BUSY: "aparat zajety (BUSY) — odczekaj chwile lub power-cycle",
@@ -126,12 +141,17 @@ class EdsdkError(RuntimeError):
 class EdsdkSession:
     def __init__(self) -> None:
         self._sdk = None
+        self._user32 = None
         self._camera = None
         self._initialized = False
-        self._handler_ref = None      # WINFUNCTYPE — musi zyc tak dlugo jak sesja
+        self._handler_type = None     # WINFUNCTYPE — tworzony dopiero na Windowsie
+        self._handler_ref = None      # instancja callbacka — musi zyc tak dlugo jak sesja
         self._pending_item = None     # DirItem czekajacy na download (z callbacka)
         self._com_ready = False       # czy to MY zainicjowalismy COM w tym watku
         self._seen_events = []        # kody zdarzen obiektowych — diagnostyka
+        self._downloaded = set()      # nazwy juz sciagnietych plikow (anty-duplikat)
+        self.on_status = None         # opcjonalny kanal do paska stanu w UI
+        self.on_log = None            # opcjonalny kanal do logu w UI
 
     # --- niskopoziomowe ---
 
@@ -156,15 +176,41 @@ class EdsdkSession:
                 f"Nie udalo sie zaladowac {dll}: {exc}. Sprawdz, czy obok lezy "
                 "EdsImage.dll z tej samej paczki SDK."
             ) from exc
-        u64 = ctypes.c_uint64
+        # argtypes MUSZA byc kompletne: bez nich ctypes przepycha Pythonowy int
+        # jako 32-bitowy `int`, a uchwyty EDSDK (EdsBaseRef) na x64 to wskazniki
+        # powyzej 4 GB. Ucinaly sie po drodze, wiec kazde wywolanie z uchwytem
+        # zlapanym w callbacku (EdsGetDirectoryItemInfo, EdsDownload, EdsRelease)
+        # dostawalo smiec zamiast referencji na zdjecie.
+        u32, i32, u64 = ctypes.c_uint32, ctypes.c_int32, ctypes.c_uint64
         void_p = ctypes.c_void_p
-        sdk.EdsCreateMemoryStream.argtypes = [u64, ctypes.POINTER(void_p)]
+        p_void_p = ctypes.POINTER(void_p)
+        self._handler_type = ctypes.WINFUNCTYPE(u32, u32, void_p, void_p)
+        sdk.EdsGetCameraList.argtypes = [p_void_p]
+        sdk.EdsGetChildCount.argtypes = [void_p, ctypes.POINTER(u32)]
+        sdk.EdsGetChildAtIndex.argtypes = [void_p, i32, p_void_p]
+        sdk.EdsGetDirectoryItemInfo.argtypes = [void_p,
+                                                ctypes.POINTER(_EdsDirectoryItemInfo)]
+        sdk.EdsOpenSession.argtypes = [void_p]
+        sdk.EdsCloseSession.argtypes = [void_p]
+        sdk.EdsRelease.argtypes = [void_p]
+        sdk.EdsSetCapacity.argtypes = [void_p, _EdsCapacity]
+        sdk.EdsSendCommand.argtypes = [void_p, u32, i32]
+        sdk.EdsSetObjectEventHandler.argtypes = [void_p, u32, self._handler_type, void_p]
+        sdk.EdsCreateMemoryStream.argtypes = [u64, p_void_p]
+        sdk.EdsCreateEvfImageRef.argtypes = [void_p, p_void_p]
+        sdk.EdsDownloadEvfImage.argtypes = [void_p, void_p]
         sdk.EdsDownload.argtypes = [void_p, u64, void_p]
+        sdk.EdsDownloadComplete.argtypes = [void_p]
+        sdk.EdsGetPointer.argtypes = [void_p, p_void_p]
         sdk.EdsGetLength.argtypes = [void_p, ctypes.POINTER(u64)]
-        sdk.EdsSetPropertyData.argtypes = [void_p, ctypes.c_uint32, ctypes.c_int32,
-                                           ctypes.c_uint32, void_p]
-        sdk.EdsGetPropertyData.argtypes = [void_p, ctypes.c_uint32, ctypes.c_int32,
-                                           ctypes.c_uint32, void_p]
+        sdk.EdsSetPropertyData.argtypes = [void_p, u32, i32, u32, void_p]
+        sdk.EdsGetPropertyData.argtypes = [void_p, u32, i32, u32, void_p]
+
+        self._user32 = ctypes.WinDLL("user32")
+        self._user32.PeekMessageW.argtypes = [ctypes.POINTER(_Msg), void_p, u32, u32, u32]
+        self._user32.PeekMessageW.restype = ctypes.c_int
+        self._user32.TranslateMessage.argtypes = [ctypes.POINTER(_Msg)]
+        self._user32.DispatchMessageW.argtypes = [ctypes.POINTER(_Msg)]
         return sdk
 
     def _check(self, code: int, where: str) -> None:
@@ -204,7 +250,42 @@ class EdsdkSession:
             self._com_ready = False
 
     def _pump(self) -> None:
+        """`EdsGetEvent()` + przepompowanie kolejki komunikatow Windows.
+
+        COM w apartamencie jednowatkowym dostarcza wywolania przez ukryte okno
+        i jego kolejke komunikatow. Watek, ktory jej nie obsluguje, nigdy nie
+        zobaczy zdarzenia z aparatu — samo `EdsGetEvent()` wystarcza w aplikacji
+        konsolowej, ktora i tak stoi w petli komunikatow, ale nasz watek camera
+        zadnej nie ma. Dokladnie tak wyglada objaw: migawka strzela, plik nigdy
+        nie przychodzi. Limit 32 komunikatow na obrot, zeby pompa nie zjadla
+        petli czekania."""
         self._sdk.EdsGetEvent()
+        if self._user32 is None:
+            return
+        msg = _Msg()
+        for _ in range(32):
+            if not self._user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, _PM_REMOVE):
+                return
+            self._user32.TranslateMessage(ctypes.byref(msg))
+            self._user32.DispatchMessageW(ctypes.byref(msg))
+
+    def _status(self, text: str) -> None:
+        if self.on_status is not None:
+            try:
+                self.on_status(text)
+            except Exception:
+                pass
+
+    def _log(self, text: str, kind: str = "info") -> None:
+        """Do logu w UI, jesli backend dostal kanal; inaczej na stdout (TUI/CLI
+        i tak go przechwytuje)."""
+        if self.on_log is not None:
+            try:
+                self.on_log(text, kind)
+                return
+            except Exception:
+                pass
+        print(text)
 
     # --- interfejs CameraSession ---
 
@@ -241,9 +322,6 @@ class EdsdkSession:
         cap = _EdsCapacity(0x7FFFFFFF, 0x1000, 1)
         self._check(self._sdk.EdsSetCapacity(self._camera, cap), "EdsSetCapacity")
 
-        handler_t = ctypes.WINFUNCTYPE(ctypes.c_uint32, ctypes.c_uint32,
-                                       ctypes.c_void_p, ctypes.c_void_p)
-
         def _on_object(event, obj, _ctx):
             # Kazde zdarzenie zapamietujemy: gdy zdjecie nie dojdzie, to jedyny
             # slad, czy aparat w ogole cos przyslal, czy nic do nas nie dociera.
@@ -255,7 +333,7 @@ class EdsdkSession:
                 self._sdk.EdsRelease(obj)
             return _EDS_ERR_OK
 
-        self._handler_ref = handler_t(_on_object)
+        self._handler_ref = self._handler_type(_on_object)
         self._check(self._sdk.EdsSetObjectEventHandler(
             self._camera, _OBJECT_EVENT_ALL, self._handler_ref, None),
             "EdsSetObjectEventHandler")
@@ -296,6 +374,8 @@ class EdsdkSession:
         return data
 
     def capture_to(self, workdir: Path) -> Path:
+        if self._pending_item is not None:
+            self._sdk.EdsRelease(self._pending_item)   # spozniony uchwyt z poprzedniego strzalu
         self._pending_item = None
         self._seen_events = []
         # Pojemnosc hosta odswiezana PRZED kazdym strzalem: aparat odejmuje sobie
@@ -307,26 +387,45 @@ class EdsdkSession:
         self._sdk.EdsSendCommand(self._camera, _CMD_PRESS_SHUTTER, _SHUTTER_OFF)
         self._check(code, "PressShutterButton")
 
-        deadline = time.monotonic() + _CAPTURE_TIMEOUT_S
+        started = time.monotonic()
+        deadline = started + _CAPTURE_TIMEOUT_S
+        card_at = started + _CARD_FALLBACK_S
         last_evf = 0.0
+        last_status = 0.0
         while self._pending_item is None:
-            if time.monotonic() >= deadline:
+            now = time.monotonic()
+            # Aparat mial swoja szanse zglosic plik sam. Skoro milczy, szukamy
+            # zdjecia tam, gdzie i tak wyladowalo — na karcie. To ratuje ujecie
+            # zamiast konczyc bledem po 30 s ciszy.
+            if now >= card_at:
+                card_at = float("inf")
+                self._status("Aparat nie zglosil pliku — szukam na karcie…")
+                found = self._download_newest_from_card(workdir)
+                if found is not None:
+                    self._log(f"Aparat nie zglosil pliku po USB — zdjęcie pobrane "
+                              f"z karty ({found.name}).", "warn")
+                    return found
+            if now >= deadline:
                 seen = ", ".join(f"0x{e:04X}" for e in self._seen_events) or "ZADNYCH"
                 save_to = self._get_u32(_PROP_SAVE_TO)
                 raise RuntimeError(
                     f"EDSDK: migawka zadzialala, ale aparat nie oddal pliku w "
-                    f"{_CAPTURE_TIMEOUT_S} s. Zdarzenia od aparatu: {seen}; "
+                    f"{_CAPTURE_TIMEOUT_S} s (na karcie tez nic nowego nie "
+                    f"znalazlem). Zdarzenia od aparatu: {seen}; "
                     f"SaveTo={save_to} (2 = do komputera). "
                     "Sprobuj wypiac i wpiac kabel USB."
                 )
+            if now - last_status >= 1.0:
+                last_status = now
+                self._status(f"Czekam na plik z aparatu… {int(now - started)} s")
             self._pump()
             # Podglad jest ciagniety dalej, mimo ze klatki lecą do kosza. W GUI
             # Canona petla EVF chodzi przez caly czas robienia zdjecia i to ona
             # jest wzorcem; przy bezlusterkowcu przerwanie odbioru EVF potrafi
             # zatrzymac aparat w polowie transakcji. Bledy sa tu bez znaczenia —
             # w trakcie zapisu EVF ma prawo nie odpowiadac.
-            if time.monotonic() - last_evf >= 0.2:
-                last_evf = time.monotonic()
+            if now - last_evf >= 0.2:
+                last_evf = now
                 try:
                     self.preview_frame()
                 except Exception:
@@ -335,26 +434,100 @@ class EdsdkSession:
 
         item = self._pending_item
         self._pending_item = None
+        self._status("Pobieram zdjecie z aparatu…")
         try:
-            info = _EdsDirectoryItemInfo()
-            self._check(self._sdk.EdsGetDirectoryItemInfo(item, ctypes.byref(info)),
-                        "EdsGetDirectoryItemInfo")
-            stream = ctypes.c_void_p()
-            self._check(self._sdk.EdsCreateMemoryStream(0, ctypes.byref(stream)),
-                        "EdsCreateMemoryStream")
-            try:
-                self._check(self._sdk.EdsDownload(item, info.size, stream), "EdsDownload")
-                self._check(self._sdk.EdsDownloadComplete(item), "EdsDownloadComplete")
-                data = self._stream_bytes(stream)
-            finally:
-                self._sdk.EdsRelease(stream)
+            return self._download_item(item, workdir)
         finally:
             self._sdk.EdsRelease(item)
 
+    def _download_item(self, item, workdir: Path) -> Path:
+        info = _EdsDirectoryItemInfo()
+        self._check(self._sdk.EdsGetDirectoryItemInfo(item, ctypes.byref(info)),
+                    "EdsGetDirectoryItemInfo")
+        stream = ctypes.c_void_p()
+        self._check(self._sdk.EdsCreateMemoryStream(0, ctypes.byref(stream)),
+                    "EdsCreateMemoryStream")
+        try:
+            self._check(self._sdk.EdsDownload(item, info.size, stream), "EdsDownload")
+            self._check(self._sdk.EdsDownloadComplete(item), "EdsDownloadComplete")
+            data = self._stream_bytes(stream)
+        finally:
+            self._sdk.EdsRelease(stream)
         name = info.szFileName.decode("ascii", "replace") or "capture.jpg"
+        self._downloaded.add(name)
         target = workdir / name
         target.write_bytes(data)
         return target
+
+    # --- awaryjne pobranie z karty ---
+
+    @contextmanager
+    def _evf_paused(self):
+        """Listowanie karty przy wlaczonym live view aparat potrafi zignorowac —
+        gasimy podglad na czas skanowania. Jesli nie uda sie go wskrzesic, watek
+        camera w webui i tak sam wykryje martwy podglad i przelaczy sesje."""
+        self._set_u32(_PROP_EVF_OUTPUT_DEVICE, 0, "Evf off", required=False)
+        try:
+            yield
+        finally:
+            self._set_u32(_PROP_EVF_OUTPUT_DEVICE, _EVF_OUTPUT_PC,
+                          "Evf on", required=False)
+
+    def _download_newest_from_card(self, workdir: Path) -> Path | None:
+        """Najnowszy plik z karty, ktorego jeszcze nie sciagnelismy w tej sesji.
+
+        Anty-duplikat opiera sie na nazwach juz pobranych plikow: gdy zdjecie
+        mimo wszystko nie powstalo, jedyny kandydat to poprzednie ujecie, ktore
+        jest wtedy na liscie i zostaje odrzucone. Zdjecia sprzed uruchomienia
+        aplikacji sa nieznane, wiec pierwszy strzal jest tu ryzykiem — dlatego
+        pobranie z karty ZAWSZE zostawia slad w logu."""
+        item = None
+        try:
+            with self._evf_paused():
+                item, _name, _stamp = self._scan_children(self._camera,
+                                                          (None, None, -1), 0)
+                if item is None:
+                    return None
+                return self._download_item(item, workdir)
+        except (EdsdkError, OSError) as exc:
+            self._log(f"✗ Nie udało się pobrać zdjęcia z karty: {exc}", "err")
+            return None
+        finally:
+            if item is not None:
+                self._sdk.EdsRelease(item)
+
+    def _scan_children(self, parent, best: tuple, depth: int) -> tuple:
+        """Rekurencyjnie: wolumen -> DCIM -> 100CANON -> pliki. Zwraca krotke
+        (uchwyt, nazwa, dateTime) najnowszego pliku; uchwyt zwalnia wolajacy."""
+        count = ctypes.c_uint32()
+        if self._sdk.EdsGetChildCount(parent, ctypes.byref(count)) != _EDS_ERR_OK:
+            return best
+        for i in range(count.value):
+            child = ctypes.c_void_p()
+            if self._sdk.EdsGetChildAtIndex(parent, i, ctypes.byref(child)) != _EDS_ERR_OK:
+                continue
+            info = _EdsDirectoryItemInfo()
+            # Dzieci aparatu to WOLUMENY, nie pliki — nie ma po co pytac ich
+            # o DirItemInfo (odpowiedz bywa smieciem), od razu schodzimy nizej.
+            if depth == 0 or self._sdk.EdsGetDirectoryItemInfo(
+                    child, ctypes.byref(info)) != _EDS_ERR_OK:
+                if depth < _CARD_SCAN_DEPTH:
+                    best = self._scan_children(child, best, depth + 1)
+                self._sdk.EdsRelease(child)
+                continue
+            if info.isFolder:
+                if depth < _CARD_SCAN_DEPTH:
+                    best = self._scan_children(child, best, depth + 1)
+                self._sdk.EdsRelease(child)
+                continue
+            name = info.szFileName.decode("ascii", "replace")
+            if name in self._downloaded or info.dateTime <= best[2]:
+                self._sdk.EdsRelease(child)
+                continue
+            if best[0] is not None:
+                self._sdk.EdsRelease(best[0])
+            best = (child, name, info.dateTime)
+        return best
 
     def _stream_bytes(self, stream) -> bytes:
         length = ctypes.c_uint64()

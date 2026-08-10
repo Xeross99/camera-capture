@@ -469,10 +469,22 @@ class CaptureTUI:
                 f"Dostepna nowa wersja {info['version']} (masz {APP_VERSION}) — git pull",
                 style="yellow"))
 
+    def _warmup_bg(self) -> None:
+        """Rozgrzewka rembg w tle — pierwsza inferencja placi jednorazowe
+        koszty (model; na GPU kompilacje pod karte), ktore inaczej obrywaloby
+        pierwsze zdjecie."""
+        try:
+            from .background import warmup_clean_bg
+
+            warmup_clean_bg()
+        except Exception:
+            pass
+
     def run(self) -> None:
         from rich.live import Live
 
         threading.Thread(target=self._check_update_bg, daemon=True).start()
+        threading.Thread(target=self._warmup_bg, daemon=True).start()
         with _KeyReader() as keys, Live(
             console=self.console, screen=True, auto_refresh=True,
             refresh_per_second=12, transient=True,

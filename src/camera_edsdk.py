@@ -33,7 +33,8 @@ _PROP_EVF_MODE = 0x0501
 _PROP_EVF_OUTPUT_DEVICE = 0x0500
 _PROP_EXPOSURE_COMP = 0x0407      # kEdsPropID_ExposureCompensation
 _SAVE_TO_HOST = 2
-_EVF_OUTPUT_PC = 2
+_EVF_OUTPUT_TFT = 1               # ekran aparatu
+_EVF_OUTPUT_PC = 2                # strumien EVF do komputera; maska bitowa — 3 = oba
 
 # Kompensacja ekspozycji: kody Canona (bajt ze znakiem w uzupelnieniu do dwoch,
 # krok 1/3 EV to 0x03/0x05/0x08 na kolejna 1/3) -> etykieta dla UI. Tabela ma
@@ -150,6 +151,7 @@ class EdsdkSession:
         self._com_ready = False       # czy to MY zainicjowalismy COM w tym watku
         self._seen_events = []        # kody zdarzen obiektowych — diagnostyka
         self._downloaded = set()      # nazwy juz sciagnietych plikow (anty-duplikat)
+        self._evf_out = _EVF_OUTPUT_PC  # przyjete przez aparat wyjscie live view
         self.on_status = None         # opcjonalny kanal do paska stanu w UI
         self.on_log = None            # opcjonalny kanal do logu w UI
 
@@ -340,9 +342,24 @@ class EdsdkSession:
             self._camera, _OBJECT_EVENT_ALL, self._handler_ref, None),
             "EdsSetObjectEventHandler")
 
-        # live view na PC; Evf_Mode nie istnieje na czesci modeli — nie wymagamy
+        # live view na PC ORAZ na ekranie aparatu (TFT|PC) — operator kadruje
+        # takze patrzac na aparat. Wyjscie to maska bitowa; czesc modeli
+        # kombinacje odrzuca albo po cichu przycina, wiec czytamy wartosc
+        # z powrotem i w razie czego wracamy do samego PC (bez tego live view
+        # w ogole by nie ruszyl). Evf_Mode nie istnieje na czesci modeli.
         self._set_u32(_PROP_EVF_MODE, 1, "Evf_Mode", required=False)
-        self._set_u32(_PROP_EVF_OUTPUT_DEVICE, _EVF_OUTPUT_PC, "Evf_OutputDevice=PC")
+        both = _EVF_OUTPUT_TFT | _EVF_OUTPUT_PC
+        self._set_u32(_PROP_EVF_OUTPUT_DEVICE, both,
+                      "Evf_OutputDevice=TFT+PC", required=False)
+        got = self._get_u32(_PROP_EVF_OUTPUT_DEVICE)
+        if got is not None and (got & _EVF_OUTPUT_PC) and (got & _EVF_OUTPUT_TFT):
+            self._evf_out = got
+        else:
+            self._set_u32(_PROP_EVF_OUTPUT_DEVICE, _EVF_OUTPUT_PC,
+                          "Evf_OutputDevice=PC")
+            self._evf_out = _EVF_OUTPUT_PC
+            self._log("Aparat nie przyjął podglądu równolegle na PC i LCD — "
+                      "ekran aparatu zostaje wygaszony.", "warn")
 
         # pierwsza klatka potwierdza, ze aparat naprawde streamuje
         deadline = time.monotonic() + _FIRST_FRAME_TIMEOUT_S
@@ -479,7 +496,7 @@ class EdsdkSession:
         try:
             yield
         finally:
-            self._set_u32(_PROP_EVF_OUTPUT_DEVICE, _EVF_OUTPUT_PC,
+            self._set_u32(_PROP_EVF_OUTPUT_DEVICE, self._evf_out,
                           "Evf on", required=False)
 
     def _download_newest_from_card(self, workdir: Path) -> Path | None:

@@ -444,6 +444,31 @@ class CameraSession:
             )
         self.camera = camera
         _configure_camera(camera)
+        self._enable_dual_liveview()
+
+    def _enable_dual_liveview(self) -> None:
+        """Live view na PC i na ekranie aparatu JEDNOCZESNIE.
+
+        Canon trzyma wyjscie EVF jako maske bitowa (TFT=LCD aparatu, PC);
+        libgphoto2 eksponuje ja jako widget `output` z wyborami typu
+        "TFT + PC". Bez tego capture_preview przelacza wyjscie na samo PC
+        i ekran aparatu gasnie na czas polaczenia. Brak widgetu albo wyboru
+        z oboma = zostaje default (sam PC) — to tylko wygoda, nie warunek."""
+        try:
+            config = self.camera.get_config()
+            _name, w = _find_widget(config, ("output",))
+            if w is None:
+                return
+            choices = [w.get_choice(i) for i in range(w.count_choices())]
+            pick = next((c for c in choices
+                         if "tft" in c.lower() and "pc" in c.lower()), None)
+            if pick is None:
+                return
+            w.set_value(pick)
+            self.camera.set_config(config)
+        except gp.GPhoto2Error as e:
+            _warn_once("dual-liveview",
+                       f"Uwaga: nie udalo sie wlaczyc podgladu na LCD aparatu ({e}).")
 
     def preview_frame(self) -> bytes:
         """Jedna klatka live view (JPEG ~960x640) — to co aparat rysuje na LCD."""

@@ -24,6 +24,7 @@ from .config import EDSDK_DLL, PROJECT_DIR
 
 # --- stale EDSDK (EDSDK.h, SDK 13.x) ---
 _EDS_ERR_OK = 0
+_EDS_ERR_INTERNAL_ERROR = 0x0002
 _EDS_ERR_DEVICE_BUSY = 0x0081
 _EDS_ERR_OBJECT_NOTREADY = 0xA102
 _EDS_ERR_TAKE_PICTURE_AF_NG = 0x8D01
@@ -90,10 +91,22 @@ class _Msg(ctypes.Structure):
                 ("pt_y", ctypes.c_int32)]
 
 _ERROR_HINTS = {
+    _EDS_ERR_INTERNAL_ERROR: "blad wewnetrzny SDK — zwykle chwilowy",
     _EDS_ERR_DEVICE_BUSY: "aparat zajety (BUSY) — odczekaj chwile lub power-cycle",
     _EDS_ERR_TAKE_PICTURE_AF_NG: "AF nie zlapal ostrosci — popraw kadr lub przelacz na MF",
     _EDS_ERR_OBJECT_NOTREADY: "obiekt jeszcze nie gotowy",
 }
+
+# SDK jest ladowane i inicjalizowane RAZ NA PROCES i NIGDY nie dostaje
+# EdsTerminateSDK. Cykl Terminate -> Initialize w tym samym procesie konczy
+# sie w EDSDK access violation przy drugim podejsciu (zaobserwowane w polu:
+# chwilowy blad EVF ubijal sesje, a kazda proba ponownego polaczenia padala
+# na "access violation reading 0x...50" az do restartu aplikacji). System
+# posprzata przy wyjsciu procesu — gui.py i tak konczy przez os._exit().
+_SDK = None
+_SDK_INITIALIZED = False
+_HANDLER_TYPE = None
+_USER32 = None
 
 
 class _EdsCapacity(ctypes.Structure):
@@ -142,13 +155,9 @@ class EdsdkError(RuntimeError):
 class EdsdkSession:
     def __init__(self) -> None:
         self._sdk = None
-        self._user32 = None
         self._camera = None
-        self._initialized = False
-        self._handler_type = None     # WINFUNCTYPE — tworzony dopiero na Windowsie
         self._handler_ref = None      # instancja callbacka — musi zyc tak dlugo jak sesja
         self._pending_item = None     # DirItem czekajacy na download (z callbacka)
-        self._com_ready = False       # czy to MY zainicjowalismy COM w tym watku
         self._seen_events = []        # kody zdarzen obiektowych — diagnostyka
         self._downloaded = set()      # nazwy juz sciagnietych plikow (anty-duplikat)
         self._evf_out = _EVF_OUTPUT_PC  # przyjete przez aparat wyjscie live view
@@ -158,6 +167,9 @@ class EdsdkSession:
     # --- niskopoziomowe ---
 
     def _load(self):
+        global _SDK, _HANDLER_TYPE, _USER32
+        if _SDK is not None:
+            return _SDK
         dll = find_edsdk_dll()
         if dll is None:
             raise RuntimeError(
@@ -186,7 +198,7 @@ class EdsdkSession:
         u32, i32, u64 = ctypes.c_uint32, ctypes.c_int32, ctypes.c_uint64
         void_p = ctypes.c_void_p
         p_void_p = ctypes.POINTER(void_p)
-        self._handler_type = ctypes.WINFUNCTYPE(u32, u32, void_p, void_p)
+        _HANDLER_TYPE = ctypes.WINFUNCTYPE(u32, u32, void_p, void_p)
         sdk.EdsGetCameraList.argtypes = [p_void_p]
         sdk.EdsGetChildCount.argtypes = [void_p, ctypes.POINTER(u32)]
         sdk.EdsGetChildAtIndex.argtypes = [void_p, i32, p_void_p]
@@ -197,7 +209,7 @@ class EdsdkSession:
         sdk.EdsRelease.argtypes = [void_p]
         sdk.EdsSetCapacity.argtypes = [void_p, _EdsCapacity]
         sdk.EdsSendCommand.argtypes = [void_p, u32, i32]
-        sdk.EdsSetObjectEventHandler.argtypes = [void_p, u32, self._handler_type, void_p]
+        sdk.EdsSetObjectEventHandler.argtypes = [void_p, u32, _HANDLER_TYPE, void_p]
         sdk.EdsCreateMemoryStream.argtypes = [u64, p_void_p]
         sdk.EdsCreateEvfImageRef.argtypes = [void_p, p_void_p]
         sdk.EdsDownloadEvfImage.argtypes = [void_p, void_p]
@@ -208,11 +220,12 @@ class EdsdkSession:
         sdk.EdsSetPropertyData.argtypes = [void_p, u32, i32, u32, void_p]
         sdk.EdsGetPropertyData.argtypes = [void_p, u32, i32, u32, void_p]
 
-        self._user32 = ctypes.WinDLL("user32")
-        self._user32.PeekMessageW.argtypes = [ctypes.POINTER(_Msg), void_p, u32, u32, u32]
-        self._user32.PeekMessageW.restype = ctypes.c_int
-        self._user32.TranslateMessage.argtypes = [ctypes.POINTER(_Msg)]
-        self._user32.DispatchMessageW.argtypes = [ctypes.POINTER(_Msg)]
+        _USER32 = ctypes.WinDLL("user32")
+        _USER32.PeekMessageW.argtypes = [ctypes.POINTER(_Msg), void_p, u32, u32, u32]
+        _USER32.PeekMessageW.restype = ctypes.c_int
+        _USER32.TranslateMessage.argtypes = [ctypes.POINTER(_Msg)]
+        _USER32.DispatchMessageW.argtypes = [ctypes.POINTER(_Msg)]
+        _SDK = sdk
         return sdk
 
     def _check(self, code: int, where: str) -> None:
@@ -244,12 +257,14 @@ class EdsdkSession:
         slychac, wiec wyglada na zaciecie aplikacji, a nie na brak zdarzenia.
 
         RPC_E_CHANGED_MODE (0x80010106) = ktos juz zainicjowal ten watek w innym
-        modelu; S_FALSE = juz zainicjowany. Oba sa nieszkodliwe."""
+        modelu; S_FALSE = juz zainicjowany. Oba sa nieszkodliwe. CoUninitialize
+        NIE jest wolane przy zamykaniu sesji — watek camera zyje przez caly
+        proces i przy reconnekcie wraca tu ten sam watek (S_FALSE), a zrywanie
+        apartamentu pod zainicjalizowanym SDK to proszenie sie o klopoty."""
         try:
-            hr = ctypes.windll.ole32.CoInitializeEx(None, 0x2)  # APARTMENTTHREADED
-            self._com_ready = hr in (0, 1)   # S_OK / S_FALSE — nasze CoUninitialize
+            ctypes.windll.ole32.CoInitializeEx(None, 0x2)  # APARTMENTTHREADED
         except OSError:
-            self._com_ready = False
+            pass
 
     def _pump(self) -> None:
         """`EdsGetEvent()` + przepompowanie kolejki komunikatow Windows.
@@ -262,14 +277,14 @@ class EdsdkSession:
         nie przychodzi. Limit 32 komunikatow na obrot, zeby pompa nie zjadla
         petli czekania."""
         self._sdk.EdsGetEvent()
-        if self._user32 is None:
+        if _USER32 is None:
             return
         msg = _Msg()
         for _ in range(32):
-            if not self._user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, _PM_REMOVE):
+            if not _USER32.PeekMessageW(ctypes.byref(msg), None, 0, 0, _PM_REMOVE):
                 return
-            self._user32.TranslateMessage(ctypes.byref(msg))
-            self._user32.DispatchMessageW(ctypes.byref(msg))
+            _USER32.TranslateMessage(ctypes.byref(msg))
+            _USER32.DispatchMessageW(ctypes.byref(msg))
 
     def _status(self, text: str) -> None:
         if self.on_status is not None:
@@ -292,12 +307,14 @@ class EdsdkSession:
     # --- interfejs CameraSession ---
 
     def open(self) -> None:
+        global _SDK_INITIALIZED
         if sys.platform != "win32":
             raise RuntimeError("backend edsdk dziala tylko na Windows")
         self._init_com()
         self._sdk = self._load()
-        self._check(self._sdk.EdsInitializeSDK(), "EdsInitializeSDK")
-        self._initialized = True
+        if not _SDK_INITIALIZED:
+            self._check(self._sdk.EdsInitializeSDK(), "EdsInitializeSDK")
+            _SDK_INITIALIZED = True
 
         cam_list = ctypes.c_void_p()
         self._check(self._sdk.EdsGetCameraList(ctypes.byref(cam_list)), "EdsGetCameraList")
@@ -337,7 +354,7 @@ class EdsdkSession:
                 self._sdk.EdsRelease(obj)
             return _EDS_ERR_OK
 
-        self._handler_ref = self._handler_type(_on_object)
+        self._handler_ref = _HANDLER_TYPE(_on_object)
         self._check(self._sdk.EdsSetObjectEventHandler(
             self._camera, _OBJECT_EVENT_ALL, self._handler_ref, None),
             "EdsSetObjectEventHandler")
@@ -373,6 +390,25 @@ class EdsdkSession:
                 time.sleep(0.2)
 
     def preview_frame(self) -> bytes:
+        # Chwilowy blad EVF (INTERNAL_ERROR przy zapisie/AF, NOTREADY) nie
+        # moze ubijac polaczenia: webui na kazdy wyjatek podgladu odpowiada
+        # pelnym close/open sesji, a to gruba operacja. Dwie dodatkowe proby
+        # w miejscu zalatwiaja czkawke; blad trwaly i tak wyleci trzecim razem.
+        last: EdsdkError | None = None
+        for attempt in range(3):
+            if attempt:
+                time.sleep(0.15)
+            try:
+                return self._preview_frame_once()
+            except EdsdkError as exc:
+                if exc.code not in (_EDS_ERR_INTERNAL_ERROR,
+                                    _EDS_ERR_OBJECT_NOTREADY,
+                                    _EDS_ERR_DEVICE_BUSY):
+                    raise
+                last = exc
+        raise last
+
+    def _preview_frame_once(self) -> bytes:
         stream = ctypes.c_void_p()
         self._check(self._sdk.EdsCreateMemoryStream(0, ctypes.byref(stream)),
                     "EdsCreateMemoryStream")
@@ -602,6 +638,12 @@ class EdsdkSession:
         raise RuntimeError("kontrast niedostepny przez backend edsdk")
 
     def close(self) -> None:
+        """Zamyka SESJE aparatu — SDK i COM zostaja zainicjalizowane na stale.
+
+        EdsTerminateSDK tu NIE pada swiadomie: cykl Terminate -> Initialize
+        w tym samym procesie konczy sie access violation przy kolejnym
+        otwarciu (patrz komentarz przy _SDK) — a close/open to normalna
+        droga petli reconnectu w webui po kazdym potknieciu podgladu."""
         if self._sdk is None:
             return
         if self._camera is not None:
@@ -612,16 +654,6 @@ class EdsdkSession:
             except OSError:
                 pass
             self._camera = None
-        if self._initialized:
-            try:
-                self._sdk.EdsTerminateSDK()
-            except OSError:
-                pass
-            self._initialized = False
+        self._handler_ref = None
+        self._pending_item = None
         self._sdk = None
-        if self._com_ready:
-            try:
-                ctypes.windll.ole32.CoUninitialize()
-            except OSError:
-                pass
-            self._com_ready = False

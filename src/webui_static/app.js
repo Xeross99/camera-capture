@@ -3,7 +3,7 @@ const ACCENT = "#4a8cff";
 const S = {           // stan klienta
   screen: "sesja", logOpen: false, state: null,
   selShot: -1,
-  grid: 0, kadrOn: true, reviewMode: false, lastLogLen: -1,
+  grid: 0, reviewMode: false, lastLogLen: -1,
   pendingNew: null,   // {name, match} — wpisana nazwa koliduje z istniejącą sesją Automatu
   updateDismissed: "",// wersja, dla której operator kliknął „Później"
   checkStartedAt: 0,  // klik w „Sprawdź aktualizacje" — minimalny czas spinnera
@@ -44,17 +44,23 @@ const GRIDS = [
 ];
 
 /** Linie siatki jako gradienty CSS — ciemne, bo produktówka jest na bieli
- *  (poprzednia biała siatka na białym tle była po prostu niewidoczna). */
+ *  (poprzednia biała siatka na białym tle była po prostu niewidoczna).
+ *
+ *  Twarde stopy ±1px (linia 2px), nie rampa przez ułamek piksela: rampa
+ *  transparent→kolor→transparent na szerokości 1px przy pozycjach
+ *  ułamkowych (33.333% w 3×3) miała szczyt między fizycznymi pikselami
+ *  i przeglądarka interpolowała ją do niewidzialności — poziome linie
+ *  3×3 po prostu znikały. Twarda 2px linia zawsze pokrywa piksel. */
 function gridBackground(cols, rows) {
   const line = "rgba(0, 0, 0, .3)";
   const parts = [];
   for (let i = 1; i < cols; i++) {
     const p = (100 * i / cols).toFixed(3);
-    parts.push(`linear-gradient(to right, transparent calc(${p}% - .5px), ${line} ${p}%, transparent calc(${p}% + .5px))`);
+    parts.push(`linear-gradient(to right, transparent calc(${p}% - 1px), ${line} calc(${p}% - 1px), ${line} calc(${p}% + 1px), transparent calc(${p}% + 1px))`);
   }
   for (let i = 1; i < rows; i++) {
     const p = (100 * i / rows).toFixed(3);
-    parts.push(`linear-gradient(to bottom, transparent calc(${p}% - .5px), ${line} ${p}%, transparent calc(${p}% + .5px))`);
+    parts.push(`linear-gradient(to bottom, transparent calc(${p}% - 1px), ${line} calc(${p}% - 1px), ${line} calc(${p}% + 1px), transparent calc(${p}% + 1px))`);
   }
   return parts.join(", ");
 }
@@ -298,10 +304,8 @@ function sesjaScreen() {
           <div style="${mono} font-size: 12px; color: ${st.connected ? "#8b8b93" : "#e07a7a"}; letter-spacing: .04em;">${st.connected ? "live view — 1024 × 683" : "aparat rozłączony"}</div>
           <div style="${mono} font-size: 11px; color: #63636b;">${!st.connected ? "sprawdź kabel i tryb aparatu — łączę ponownie…" : st.previewOn ? "czekam na klatki z aparatu…" : "podgląd wyłączony (P)"}</div>
           <div id="grid-overlay" style="position: absolute; inset: 0; display: ${grid.cols && liveOn ? "block" : "none"}; background: ${gridBackground(grid.cols, grid.rows)};"></div>
-          <div id="kadr-overlay" style="position: absolute; top: 0; bottom: 0; left: 16.67%; right: 16.67%; border: 1px dashed rgba(255,255,255,.14); display: ${S.kadrOn && liveOn ? "block" : "none"};"></div>
           <div style="position: absolute; left: 12px; top: 12px; display: flex; gap: 6px;">
             <div onclick="cycleGrid()" style="${badge} ${grid.cols ? "" : "opacity: .45;"}">${grid.label}</div>
-            <div onclick="S.kadrOn = !S.kadrOn; renderScreens()" style="${badge} ${S.kadrOn ? "" : "opacity: .45;"}">KADR 1:1</div>
           </div>
           ${st.previewOn && st.connected ? `
           <div style="position: absolute; right: 12px; top: 12px; display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,.55); border: 1px solid #3c3c44; padding: 3px 8px; ${mono} font-size: 10.5px; color: #d0d0d6;">
@@ -815,7 +819,7 @@ let lastShellKey = "", lastSesja = "", lastUstawienia = "";
 
 const sesjaKey = st => JSON.stringify([st.session.name, st.session.dir, st.shots,
   st.processing, st.downloading, st.post, st.previewOn, S.selShot, S.logOpen,
-  S.grid, S.kadrOn, S.reviewMode]);
+  S.grid, S.reviewMode]);
 
 function renderShell(force) {
   const st = S.state;

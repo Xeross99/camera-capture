@@ -220,47 +220,38 @@ def _product_alpha(
 
     Dual-path w zaleznosci od jasnosci tla (bg_lum > 200 = light_bg,
     typowy bialy stol):
-    - light bg: luminance gate odsiewa piksele tla z maski, selektywny
-      hole-fill (tylko ciemny material pominiety przez rembg), a alpha
-      liczona z luminancji obrazu (cubic falloff) — rembg sluzy tylko do
-      wykrycia regionu produktu, nie do alfy,
-    - dark bg: alpha z rembg z kontrastem [FLOOR, CEILING] -> [0, 255],
-      bez gate'u i hole-fill (naiwny gate luminancji odwracalby polaryzacje
-      produkt/tlo, np. bialy klocek na ciemnym stole).
+    - light bg: alpha liczona WYLACZNIE z luminancji obrazu (cubic falloff
+      w [bg_lum*0.75, bg_lum*0.98]), binary to prog luminancji — rembg
+      sluzy tu tylko do pomiaru bg_lum. Blob-filter i fill-holes byly na
+      tej sciezce liczone i WYRZUCANE (nic z nich nie trafialo ani do alfy,
+      ani do binary) — a to one, na pelnych 24 MP, zjadaly wiekszosc etapu
+      "maska" z linii pomiaru. Wyciete bez zmiany wyniku (potwierdzone
+      bit w bit na obu sciezkach).
+    - dark bg: alpha z rembg (region po _filter_small_blobs — ten dziala
+      i zostaje) z kontrastem [FLOOR, CEILING] -> [0, 255]; fill-holes
+      takze tu byl martwy (maska dziur zerowana przed uzyciem).
 
     Zwraca (alpha, binary, img_lum) — obrazy L w rozdzielczosci source oraz
     luminancje source'a (do reuse'u w `_image_bleed_edges`).
     """
-    filtered = _filter_small_blobs(np.array(_binarize(rembg_alpha)) > 0)
     img_lum = np.array(image.convert("L"))
     bg_lum = _background_luminance(img_lum, np.array(rembg_alpha) < 32)
     light_bg = bg_lum > 200.0
-
-    if light_bg:
-        bg_like = img_lum > bg_lum * 0.95
-        filtered = filtered & ~bg_like
-    fully_filled = ndimage.binary_fill_holes(filtered)
-    candidate_holes = fully_filled & ~filtered
-    if light_bg:
-        fill_holes_mask = candidate_holes & (img_lum < bg_lum * 0.6)
-    else:
-        fill_holes_mask = np.zeros_like(candidate_holes)
-    filled = filtered | fill_holes_mask
 
     if light_bg:
         lo = bg_lum * 0.75
         hi = bg_lum * 0.98
         span = max(hi - lo, 1.0)
         t = np.clip((hi - img_lum.astype(np.float32)) / span, 0.0, 1.0)
-        alpha_arr = (t * t * t * 255.0).astype(np.float32)
+        alpha_arr = t * t * t * 255.0
         binary = Image.fromarray(((img_lum < bg_lum * 0.90).astype(np.uint8) * 255))
     else:
+        filtered = _filter_small_blobs(np.array(_binarize(rembg_alpha)) > 0)
         alpha_arr = np.where(filtered, np.array(rembg_alpha), 0).astype(np.float32)
-        alpha_arr = np.where(fill_holes_mask, 255.0, alpha_arr)
         floor = float(CLEAN_BG_ALPHA_FLOOR)
         ceiling = float(max(CLEAN_BG_ALPHA_CEILING, floor + 1.0))
         alpha_arr = np.clip((alpha_arr - floor) * (255.0 / (ceiling - floor)), 0.0, 255.0)
-        binary = Image.fromarray((filled.astype(np.uint8) * 255))
+        binary = Image.fromarray((filtered.astype(np.uint8) * 255))
 
     return Image.fromarray(alpha_arr.astype(np.uint8)), binary, img_lum
 

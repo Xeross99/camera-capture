@@ -113,6 +113,8 @@ function sesjaScreen() {
                       "Tło dociągane do czystej bieli, cienie pod produktem wygaszane.")}
         </div>
 
+        ${robotCard()}
+
       </div>
 
       <div style="flex: 0 0 auto; border-top: 1px solid #17171a; background: #26262a; padding: 12px 16px 14px;">

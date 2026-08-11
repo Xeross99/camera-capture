@@ -58,6 +58,10 @@ button { cursor: default; }
 .opt-row:last-child { border-bottom: none; }
 @keyframes reviewIn { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
 @keyframes livePulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+/* Suwak wysokości robota (app-robot.js). Tor maluje JS gradientem (robotTrack)
+   — WebKit nie wypełnia przebytej części sam, accent-color barwi tylko kciuk. */
+.rslider { -webkit-appearance: none; appearance: none; flex: 1; min-width: 0; height: 4px; border-radius: 2px; background: #3a3a41; margin: 0; }
+.rslider::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #e8e8ea; box-shadow: 0 1px 3px rgba(0, 0, 0, .5); }
 /* Kręciołek przy operacjach sieciowych (sprawdzanie/pobieranie aktualizacji). */
 .spinner { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .2); border-top-color: #4a8cff; animation: spin .7s linear infinite; vertical-align: -1px; }
 @keyframes spin { to { transform: rotate(360deg); } }

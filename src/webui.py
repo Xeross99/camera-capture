@@ -7,13 +7,16 @@ Serwer HTTP (stdlib) + trzy watki jak w poprzednim GUI:
 - HTTP (ThreadingHTTPServer): index.html, MJPEG stream, /api/state,
   /api/action (dispatcher), /img (pliki sesji + cache miniatur).
 
+Handler HTTP mieszka w webui_http.py (klasa Handler, `ui` wstrzykiwane
+subklasa w start()), a helpery plikowe sesji (review store, kosz, okladki)
+w session_store.py.
+
 Stan recenzji per sesja w photos/<sesja>/.review.json:
 {rejected: [...], uploaded: [...], meta: {plik: "logo · zoom · 3000×3000"}}.
 """
 
 import contextlib
 import io
-import json
 import os
 import queue
 import secrets
@@ -22,10 +25,9 @@ import tempfile
 import threading
 import time
 from collections import deque
-from datetime import datetime, timedelta
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from datetime import datetime
+from http.server import ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
 
 import numpy as np
 from PIL import Image
@@ -37,128 +39,34 @@ from .config import (
     AUTOMAT_API_TOKEN,
     AUTOMAT_BASE_URL,
     OUTPUT_SIZE,
-    PROJECT_DIR,
     TRASH_RETENTION_DAYS,
+    persist_env,
 )
 from .image_processing import LOGO_POSITIONS, process
 from .naming import sanitize_name
+from .session_store import (
+    cover_path,
+    finals,
+    find_raw,
+    load_review,
+    make_cover,
+    move_into,
+    purge_trash,
+    remote_filename,
+    review_path,
+    save_review,
+    shot_entries,
+    trash_batch,
+)
 from .version import APP_VERSION
+from .webui_http import Handler
 
-STATIC_DIR = Path(__file__).parent / "webui_static"
-STATIC_TYPES = {
-    ".css": "text/css; charset=utf-8",
-    ".js": "application/javascript; charset=utf-8",
-    ".woff2": "font/woff2",
-}
 THUMB_SIZE = 360
 DEFAULT_NAME_PATTERN = "photo_{data}_{godzina}.jpg"
-TRASH_DIR = ".trash"        # photos/.trash/<data>-<godzina>_<sesja>/
-TRASH_STAMP = "%Y%m%d-%H%M%S"
-COVERS_DIR = ".covers"      # photos/.covers/<id sesji>.jpg — okladki ekranu startowego
-COVER_SIZE = 420
 
 
 def _now() -> str:
     return datetime.now().strftime("%H:%M:%S")
-
-
-def _persist_env(key: str, value: str) -> None:
-    """Zapisuje/nadpisuje klucz w PROJECT_DIR/.env (tworzy plik gdy brak) —
-    token/URL Automatu wpisane w Ustawieniach przezywaja restart aplikacji."""
-    path = PROJECT_DIR / ".env"
-    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
-    entry = f"{key}={value}"
-    for i, ln in enumerate(lines):
-        if ln.split("=", 1)[0].strip() == key:
-            lines[i] = entry
-            break
-    else:
-        lines.append(entry)
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-
-def _review_path(session_dir: Path) -> Path:
-    return session_dir / ".review.json"
-
-
-def _load_review(session_dir: Path) -> dict:
-    try:
-        data = json.loads(_review_path(session_dir).read_text())
-    except (OSError, ValueError):
-        data = {}
-    data.setdefault("rejected", [])
-    data.setdefault("uploaded", [])
-    data.setdefault("meta", {})
-    data.setdefault("automat", {})  # plik -> id zdjecia w Automacie (do DELETE)
-    return data
-
-
-def _save_review(session_dir: Path, data: dict) -> None:
-    session_dir.mkdir(parents=True, exist_ok=True)
-    _review_path(session_dir).write_text(json.dumps(data, indent=1))
-
-
-def _finals(session_dir: Path) -> list[str]:
-    if not session_dir.is_dir():
-        return []
-    return sorted(
-        p.name for p in session_dir.glob("*.jpg") if not p.stem.endswith("_raw")
-    )
-
-
-def _trash_batch(base_output: Path, session: str) -> Path:
-    """Nowy katalog w koszu: `photos/.trash/<data>-<godzina>_<sesja>`.
-
-    Data siedzi w NAZWIE, nie w mtime — mtime katalogu potrafi się zmienić
-    (kopiowanie/synchronizacja `photos/`) i kosz czyściłby się losowo."""
-    root = base_output / TRASH_DIR
-    stamp = datetime.now().strftime(TRASH_STAMP)
-    for n in range(1000):
-        cand = root / (f"{stamp}_{session}" + (f"-{n}" if n else ""))
-        if not cand.exists():
-            cand.mkdir(parents=True)
-            return cand
-    raise RuntimeError("kosz: nie mogę założyć katalogu na usunięte pliki")
-
-
-def _move_into(batch: Path, path: Path) -> None:
-    target = batch / path.name
-    n = 1
-    while target.exists():
-        target = batch / f"{path.stem}-{n}{path.suffix}"
-        n += 1
-    shutil.move(str(path), str(target))
-
-
-def _purge_trash(base_output: Path, days: int = TRASH_RETENTION_DAYS) -> int:
-    """Kasuje NAPRAWDĘ wpisy kosza starsze niż `days` dni. Zwraca ile poszło."""
-    root = base_output / TRASH_DIR
-    if days <= 0 or not root.is_dir():
-        return 0
-    cutoff = datetime.now() - timedelta(days=days)
-    removed = 0
-    for entry in sorted(root.iterdir()):
-        if not entry.is_dir():
-            continue
-        try:
-            when = datetime.strptime(entry.name.split("_", 1)[0], TRASH_STAMP)
-        except ValueError:
-            when = datetime.fromtimestamp(entry.stat().st_mtime)
-        if when < cutoff:
-            shutil.rmtree(entry, ignore_errors=True)
-            removed += 1
-    return removed
-
-
-def _cover_path(base_output: Path, session_id: int) -> Path:
-    return base_output / COVERS_DIR / f"{int(session_id)}.jpg"
-
-
-def _make_cover(src: Path, dest: Path) -> None:
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    img = Image.open(src)
-    img.thumbnail((COVER_SIZE, COVER_SIZE))
-    img.convert("RGB").save(dest, "JPEG", quality=82)
 
 
 def _trash_note() -> str:
@@ -173,36 +81,6 @@ def _photos_word(n: int) -> str:
     if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
         return "zdjęcia"
     return "zdjęć"
-
-
-def _remote_filename(photo: dict) -> str:
-    """Nazwa pliku dla zdjecia z Automatu — sam basename (zdalna nazwa nie moze
-    uciec z katalogu sesji), a przy jej braku `photo_<id>.jpg`."""
-    fname = Path(str(photo.get("filename") or "").strip()).name
-    if not fname.lower().endswith(".jpg") or fname.startswith("."):
-        fname = f"photo_{photo['id']}.jpg"
-    return fname
-
-
-def _find_raw(session_dir: Path, final_name: str) -> Path | None:
-    stem = Path(final_name).stem
-    for cand in (session_dir / "raw" / f"{stem}_raw.jpg",
-                 session_dir / f"{stem}_raw.jpg"):
-        if cand.exists():
-            return cand
-    return None
-
-
-def _shot_entries(session_dir: Path | None, review: dict) -> list[dict]:
-    """Wpisy zdjec dla frontu (filmstrip sesji)."""
-    return [
-        {
-            "file": f,
-            "status": "rejected" if f in review["rejected"] else "ok",
-            "uploaded": f in review["uploaded"],
-        }
-        for f in (_finals(session_dir) if session_dir else [])
-    ]
 
 
 def _ev_number(value) -> float | None:
@@ -274,124 +152,6 @@ class _LogPipe(io.TextIOBase):
         return len(s)
 
 
-class _Handler(BaseHTTPRequestHandler):
-    """Handler HTTP (instancja per request). Atrybut klasowy `ui` wstrzykiwany
-    w WebUI.start() przez subklase — jeden serwer = jedno WebUI."""
-
-    ui: "WebUI"
-
-    def log_message(self, *_a):
-        pass
-
-    def _json(self, payload, code=200):
-        body = json.dumps(payload).encode()
-        self.send_response(code)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def _authed(self) -> bool:
-        q = parse_qs(urlparse(self.path).query)
-        if q.get("t", [""])[0] == self.ui.token:
-            return True
-        return f"t={self.ui.token}" in self.headers.get("Cookie", "")
-
-    def do_GET(self):
-        if not self._authed():
-            self.send_error(403)
-            return
-        url = urlparse(self.path)
-        if url.path == "/":
-            self._serve_index()
-        elif url.path.startswith("/static/"):
-            self._serve_static(url.path)
-        elif url.path == "/api/state":
-            self._json(self.ui.state())
-        elif url.path == "/stream":
-            self._serve_stream()
-        elif url.path == "/img":
-            self._serve_img(parse_qs(url.query))
-        else:
-            self.send_error(404)
-
-    def _serve_index(self):
-        body = (STATIC_DIR / "index.html").read_bytes()
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header(
-            "Set-Cookie", f"t={self.ui.token}; HttpOnly; SameSite=Strict")
-        self.end_headers()
-        self.wfile.write(body)
-
-    def _serve_static(self, path: str):
-        """Statyki frontendu (style.css / app.js) z webui_static — tylko
-        rozszerzenia z STATIC_TYPES, sama nazwa pliku (bez podkatalogow)."""
-        name = Path(path).name
-        ctype = STATIC_TYPES.get(Path(name).suffix)
-        target = STATIC_DIR / name
-        if ctype is None or not target.is_file():
-            self.send_error(404)
-            return
-        body = target.read_bytes()
-        self.send_response(200)
-        self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def _serve_stream(self):
-        """MJPEG live view: ostatnia klatka z watku camera, w tempie preview_fps."""
-        self.send_response(200)
-        self.send_header(
-            "Content-Type", "multipart/x-mixed-replace; boundary=frame")
-        self.end_headers()
-        try:
-            while not self.ui._stop.is_set():
-                frame = self.ui.latest_frame()
-                if frame is not None:
-                    self.wfile.write(b"--frame\r\nContent-Type: image/jpeg\r\n")
-                    self.wfile.write(f"Content-Length: {len(frame)}\r\n\r\n".encode())
-                    self.wfile.write(frame)
-                    self.wfile.write(b"\r\n")
-                time.sleep(1.0 / max(1, self.ui.preview_fps))
-        except (BrokenPipeError, ConnectionResetError, OSError):
-            pass
-
-    def _serve_img(self, q: dict):
-        cover = q.get("cover", [""])[0]
-        if cover:
-            data = self.ui.cover_bytes(cover)
-        else:
-            data = self.ui.image_bytes(
-                q.get("s", [""])[0], q.get("f", [""])[0],
-                thumb=q.get("thumb", ["0"])[0] == "1",
-            )
-        if data is None:
-            self.send_error(404)
-            return
-        self.send_response(200)
-        self.send_header("Content-Type", "image/jpeg")
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
-
-    def do_POST(self):
-        if not self._authed():
-            self.send_error(403)
-            return
-        if urlparse(self.path).path != "/api/action":
-            self.send_error(404)
-            return
-        length = int(self.headers.get("Content-Length", "0"))
-        try:
-            data = json.loads(self.rfile.read(length) or b"{}")
-            self._json(self.ui.action(data))
-        except Exception as e:
-            self._json({"ok": False, "error": str(e)}, 500)
-
-
 class WebUI:
     def __init__(
         self,
@@ -455,6 +215,12 @@ class WebUI:
         self.update_busy = False
         self.update_progress = 0
         self.log: deque[dict] = deque(maxlen=500)
+        # kursor logu dla /api/state?since=N: rosnie przy kazdym nowym wpisie
+        # ORAZ przy podbiciu licznika ×N — front dostaje tylko ogon, nie 500
+        # wpisow przy kazdym pollu (patrz _log / state / mergeLog w app.js)
+        self._log_seq = 0
+        # cache filmstripa dla /api/state: (klucz mtime, wpisy) — patrz _session_shots
+        self._shots_cache: tuple | None = None
         self.uploader: AutomatUploader | None = None  # tylko watek worker
 
         self.session = make_camera_session()
@@ -471,6 +237,10 @@ class WebUI:
             self.session.on_log = self._log
         self._stop = threading.Event()
         self._frame_lock = threading.Lock()
+        # /stream czeka na NOWA klatke (id rosnie przy kazdej), zamiast
+        # wysylac w kolko ostatnia w tempie preview_fps
+        self._frame_cond = threading.Condition(self._frame_lock)
+        self._frame_id = 0
         self._frame: bytes | None = None
         self._cam_q: queue.Queue[tuple] = queue.Queue()
         self._jobs: queue.Queue = queue.Queue()
@@ -479,14 +249,20 @@ class WebUI:
 
     def _log(self, text: str, kind: str = "info") -> None:
         with self.lock:
+            self._log_seq += 1
             last = self.log[-1] if self.log else None
             # powtorka pod rzad (petla reconnectu aparatu!) nie zalewa logu —
-            # rosnie licznik przy istniejacym wpisie, front dokleja "×N"
+            # rosnie licznik przy istniejacym wpisie, front dokleja "×N".
+            # `seq` idzie w gore takze tutaj (wpis ma trafic w ogon since),
+            # ale `id` zostaje — po nim front poznaje, ze to update, nie nowa
+            # linia.
             if last is not None and last["text"] == text and last["kind"] == kind:
                 last["n"] += 1
                 last["t"] = _now()
+                last["seq"] = self._log_seq
                 return
-            self.log.append({"t": _now(), "kind": kind, "text": text, "n": 1})
+            self.log.append({"id": self._log_seq, "seq": self._log_seq,
+                             "t": _now(), "kind": kind, "text": text, "n": 1})
 
     # ---------- sciezki / sesja ----------
 
@@ -565,8 +341,9 @@ class WebUI:
             self.bg_range = None
             self.ev = None
         self._ev_logged = False   # po ponownym połączeniu warto wypisać raz jeszcze
-        with self._frame_lock:
+        with self._frame_cond:
             self._frame = None
+            self._frame_cond.notify_all()
 
     def _run_connected(self, quiet: bool = False) -> None:
         """`quiet` = jesteśmy w pętli reconnectu z padającym live view: nie
@@ -616,8 +393,10 @@ class WebUI:
                 if not announced and last_frame_t - started >= self._HEALTHY_AFTER:
                     announced = True
                     self._log("Aparat połączony — live view aktywny.", "ok")
-                with self._frame_lock:
+                with self._frame_cond:
                     self._frame = data
+                    self._frame_id += 1
+                    self._frame_cond.notify_all()
                 frames += 1
                 fps_frames += 1
                 now = time.monotonic()
@@ -646,7 +425,9 @@ class WebUI:
         na aparacie, więc UI musi za tym nadążać, a nie tylko pamiętać, co samo
         ustawiło."""
         try:
-            ev = self.session.get_settings().get("exposurecompensation")
+            # get_setting = jeden widget, nie cale drzewo konfiguracji —
+            # pelny get_config() co 2 s zjadal klatki live view na gphoto2
+            ev = self.session.get_setting("exposurecompensation")
         except Exception:
             ev = None
         # Raz na połączenie wypisujemy, co aparat NAPRAWDĘ oddaje. Backendy mówią
@@ -770,24 +551,24 @@ class WebUI:
     def _discard_files(self, session: str, files: list[str], review: dict) -> dict:
         """Lokalne usunięcie zdjęć — finalny JPEG i jego raw lądują w koszu
         (`photos/.trash/<data>_<sesja>/`), nie na śmietniku od razu: dopiero
-        `_purge_trash()` po `TRASH_RETENTION_DAYS` kasuje je naprawdę.
+        `purge_trash()` po `TRASH_RETENTION_DAYS` kasuje je naprawdę.
         Miniatura leci od razu (to cache, odtworzy się sama). Wpisy z
         `.review.json` są czyszczone, a zdjęte mapowania na Automat wracają
         do wołającego (`_job_delete` musi jeszcze skasować rekordy zdalne).
 
         `TRASH_RETENTION_DAYS = 0` = stare zachowanie, kasowanie natychmiast."""
         outdir = self.base_output / session
-        batch = _trash_batch(self.base_output, session) if TRASH_RETENTION_DAYS > 0 else None
+        batch = trash_batch(self.base_output, session) if TRASH_RETENTION_DAYS > 0 else None
         automat_ids = {}
         for f in files:
             (outdir / ".thumbs" / f).unlink(missing_ok=True)
-            for p in ((outdir / f), _find_raw(outdir, f)):
+            for p in ((outdir / f), find_raw(outdir, f)):
                 if p is None or not p.exists():
                     continue
                 if batch is None:
                     p.unlink(missing_ok=True)
                 else:
-                    _move_into(batch, p)
+                    move_into(batch, p)
             for key in ("rejected", "uploaded"):
                 if f in review[key]:
                     review[key].remove(f)
@@ -804,7 +585,7 @@ class WebUI:
         outdir = self.base_output / name
         if outdir.is_dir():
             if TRASH_RETENTION_DAYS > 0:
-                batch = _trash_batch(self.base_output, name)
+                batch = trash_batch(self.base_output, name)
                 for item in list(outdir.iterdir()):
                     shutil.move(str(item), str(batch / item.name))
                 outdir.rmdir()
@@ -834,12 +615,12 @@ class WebUI:
         if not remote:
             return 0
         outdir = self.base_output / session
-        stale = [f for f in _finals(outdir) if f not in remote]
+        stale = [f for f in finals(outdir) if f not in remote]
         if not stale:
             return 0
-        review = _load_review(outdir)
+        review = load_review(outdir)
         self._discard_files(session, stale, review)
-        _save_review(outdir, review)
+        save_review(outdir, review)
         self._log(f"Zdjęcia nieobecne w Automacie: {len(stale)} {_trash_note()}.",
                   "warn")
         return len(stale)
@@ -864,11 +645,11 @@ class WebUI:
             self._log(f"✗ Lista zdjęć sesji z Automatu: {e}", "err")
             return
         outdir = self.base_output / name
-        have = set(_finals(outdir))
+        have = set(finals(outdir))
         remote: dict[str, int] = {}
         missing = []
         for p in photos:
-            fname = _remote_filename(p)
+            fname = remote_filename(p)
             if fname.endswith("_raw.jpg"):
                 continue
             # do prune licza sie WSZYSTKIE statusy — placeholder po announce
@@ -888,7 +669,7 @@ class WebUI:
         self._log(f"↓ Pobieram {len(missing)} {_photos_word(len(missing))} "
                   "sesji z Automatu…")
         outdir.mkdir(parents=True, exist_ok=True)
-        review = _load_review(outdir)
+        review = load_review(outdir)
         ok = 0
         with self.lock:
             self.syncing = [f for _, f in missing]
@@ -912,7 +693,7 @@ class WebUI:
         finally:
             with self.lock:
                 self.syncing = []
-        _save_review(outdir, review)
+        save_review(outdir, review)
         if ok:
             self._log(f"↓ Pobrano {ok} {_photos_word(ok)} z Automatu do {name}.", "ok")
 
@@ -966,7 +747,7 @@ class WebUI:
             else:
                 raw.unlink()
 
-        review = _load_review(outdir)
+        review = load_review(outdir)
         bits = []
         if job["add_logo"]:
             bits.append("logo")
@@ -974,12 +755,12 @@ class WebUI:
             bits.append("zoom")
         bits.append(f"{OUTPUT_SIZE}×{OUTPUT_SIZE}")
         review["meta"][out.name] = " · ".join(bits)
-        n = len([f for f in _finals(outdir) if f not in review["rejected"]])
+        n = len([f for f in finals(outdir) if f not in review["rejected"]])
         if announced_id:
             # nawet gdy upload pozniej padnie, placeholder w Automacie istnieje —
             # delete musi go umiec sprzatnac
             review["automat"][out.name] = announced_id
-        _save_review(outdir, review)
+        save_review(outdir, review)
         self._log(f"Zapisano {out.name} (#{n}) · " + " · ".join(steps), "ok")
         # Upload jako OSOBNY job na koncu kolejki: przy strzelaniu seriami
         # obrobka kolejnego zdjecia nie czeka na siec (~2-3 s na strzale).
@@ -1005,12 +786,12 @@ class WebUI:
         except Exception as e:
             self._log(f"✗ Upload do Automatu nie wyszedł: {e}", "err")
             return
-        review = _load_review(job["outdir"])
+        review = load_review(job["outdir"])
         review["uploaded"].append(out.name)
         pid = resp.get("id") or job["photo_id"]
         if pid:
             review["automat"][out.name] = int(pid)
-        _save_review(job["outdir"], review)
+        save_review(job["outdir"], review)
         self._log(f"↑ {out.name} w Automacie ({time.perf_counter() - t0:.1f} s).", "ok")
 
     def _job_delete(self, session: str, files: list[str]) -> None:
@@ -1018,9 +799,9 @@ class WebUI:
         (odwracalne przez TRASH_RETENTION_DAYS dni), w Automacie od razu —
         rekordu po drugiej stronie i tak nie umiemy przywrócić."""
         outdir = self.base_output / session
-        review = _load_review(outdir)
+        review = load_review(outdir)
         automat_ids = list(self._discard_files(session, files, review).items())
-        _save_review(outdir, review)
+        save_review(outdir, review)
         self._log(f"{len(files)} {_photos_word(len(files))} z {session} "
                   f"{_trash_note()}.", "warn")
         if not automat_ids:
@@ -1046,7 +827,7 @@ class WebUI:
             self._log(f"✗ Lista sesji z Automatu: {e}", "err")
             return
         for s in sessions:
-            s["cover"] = _cover_path(self.base_output, s.get("id") or 0).exists()
+            s["cover"] = cover_path(self.base_output, s.get("id") or 0).exists()
         with self.lock:
             self.automat_sessions = sessions
             self.automat_sessions_error = ""
@@ -1055,8 +836,8 @@ class WebUI:
     def _local_cover_source(self, name: str) -> Path | None:
         """Najnowsze zdjecie sesji lezace juz na dysku — okladka bez sieci."""
         outdir = self.base_output / sanitize_name(name or "")
-        finals = _finals(outdir)
-        return (outdir / finals[-1]) if finals else None
+        files = finals(outdir)
+        return (outdir / files[-1]) if files else None
 
     @staticmethod
     def _remote_cover_photo(uploader: AutomatUploader, session_id: int) -> int | None:
@@ -1091,14 +872,14 @@ class WebUI:
             sid = int(s.get("id") or 0)
             if not sid or not int(s.get("photos_count") or 0):
                 continue
-            dest = _cover_path(self.base_output, sid)
+            dest = cover_path(self.base_output, sid)
             if dest.exists():
                 continue
             tmp = dest.with_suffix(".src")
             try:
                 local = self._local_cover_source(str(s.get("name") or ""))
                 if local is not None:
-                    _make_cover(local, dest)
+                    make_cover(local, dest)
                 else:
                     if uploader is None:
                         uploader = self._make_uploader()
@@ -1108,7 +889,7 @@ class WebUI:
                     dest.parent.mkdir(parents=True, exist_ok=True)
                     # session_id jawnie — uploader okladek nie ma otwartej sesji
                     uploader.download_photo(pid, tmp, session_id=sid)
-                    _make_cover(tmp, dest)
+                    make_cover(tmp, dest)
                     made += 1
             except Exception as e:
                 # brak okladki to kosmetyka, wiec nie przerywamy listy — ale
@@ -1131,7 +912,7 @@ class WebUI:
         """Dopiero TU pliki znikaja naprawde — wpisy kosza starsze niz
         TRASH_RETENTION_DAYS. Odpalane raz przy starcie aplikacji."""
         try:
-            n = _purge_trash(self.base_output)
+            n = purge_trash(self.base_output)
         except Exception as e:
             self._log(f"✗ Czyszczenie kosza: {e}", "err")
             return
@@ -1388,8 +1169,8 @@ class WebUI:
 
     def _act_reject_last(self, data: dict) -> None:
         if self.session_dir:
-            review = _load_review(self.session_dir)
-            fresh = [f for f in _finals(self.session_dir) if f not in review["rejected"]]
+            review = load_review(self.session_dir)
+            fresh = [f for f in finals(self.session_dir) if f not in review["rejected"]]
             if fresh:
                 self._review_mark(self.name, fresh[-1], "rejected")
 
@@ -1436,7 +1217,7 @@ class WebUI:
 
     def _review_mark(self, session: str, filename: str, verdict: str) -> None:
         outdir = self.base_output / session
-        review = _load_review(outdir)
+        review = load_review(outdir)
         was_rejected = filename in review["rejected"]
         if verdict == "rejected":
             if not was_rejected:
@@ -1446,7 +1227,7 @@ class WebUI:
             if was_rejected:
                 review["rejected"].remove(filename)
                 self._log(f"Zdjęcie {filename} zaakceptowane.", "ok")
-        _save_review(outdir, review)
+        save_review(outdir, review)
 
     def _set_app_setting(self, key: str, value) -> None:
         with self.lock:
@@ -1459,14 +1240,14 @@ class WebUI:
             elif key == "automat_url":
                 self.automat_url = str(value).rstrip("/")
                 self.uploader = None
-                _persist_env("AUTOMAT_URL", self.automat_url)
+                persist_env("AUTOMAT_URL", self.automat_url)
                 self._log("Adres Automatu zapisany w .env", "ok")
             elif key == "automat_token":
                 if not str(value).startswith("•"):
                     self.automat_token = str(value)
                     self.uploader = None
                     self.upload_enabled = bool(self.automat_token)
-                    _persist_env("AUTOMAT_TOKEN", self.automat_token)
+                    persist_env("AUTOMAT_TOKEN", self.automat_token)
                     self._log("Token Automatu zapisany w .env", "ok")
                     if self.upload_enabled and self.name:
                         self._jobs.put(("open_session", self.name))
@@ -1493,12 +1274,46 @@ class WebUI:
             "status": self.update_status,
         }
 
-    def state(self) -> dict:
+    def _session_shots(self, sdir: Path | None) -> list[dict]:
+        """Filmstrip bez dyskowego I/O przy kazdym pollu /api/state (500 ms):
+        glob katalogu i parsowanie .review.json leca tylko, gdy zmienil sie
+        mtime katalogu sesji albo pliku recenzji. Wczesniej oba szly przy
+        KAZDYM pollu, w dodatku pod globalnym RLockiem — wolniejszy dysk
+        przyduszal watek camera czekajacy na ten sam lock."""
+        if sdir is None:
+            return []
+
+        def _mtime(p: Path) -> int:
+            try:
+                return p.stat().st_mtime_ns
+            except OSError:
+                return -1
+
+        key = (str(sdir), _mtime(sdir), _mtime(review_path(sdir)))
+        cached = self._shots_cache
+        if cached is not None and cached[0] == key:
+            return cached[1]
+        shots = shot_entries(sdir, load_review(sdir))
+        self._shots_cache = (key, shots)
+        return shots
+
+    def _log_tail(self, since: int) -> list[dict]:
+        """Wpisy logu z seq > since. Tylko OSTATNI wpis moze zmienic seq
+        (licznik ×N), wiec seq w deque jest niemalejace — skan od konca
+        i przerwanie na pierwszym starym wpisie."""
+        tail: list[dict] = []
+        for entry in reversed(self.log):
+            if entry["seq"] <= since:
+                break
+            tail.append(entry)
+        tail.reverse()
+        return tail
+
+    def state(self, log_since: int = 0) -> dict:
         with self.lock:
             sdir = self.session_dir
-            review = _load_review(sdir) if sdir else {
-                "rejected": [], "uploaded": [], "meta": {}, "automat": {}}
-            shots = _shot_entries(sdir, review)
+        shots = self._session_shots(sdir)   # dyskowe I/O POZA lockiem
+        with self.lock:
             bg = self.bg_range
             return {
                 "connected": self.connected,
@@ -1543,20 +1358,29 @@ class WebUI:
                     "testResult": self.test_result,
                 },
                 "update": self._update_state(),
-                "log": list(self.log),
+                "log": self._log_tail(log_since),
+                "logSeq": self._log_seq,
             }
 
     # ---------- pliki ----------
 
-    def latest_frame(self) -> bytes | None:
-        with self._frame_lock:
-            return self._frame
+    def next_frame(self, last_id: int, timeout: float = 1.0) -> tuple[bytes | None, int]:
+        """Klatka NOWSZA niz last_id dla /stream, albo (None, last_id) po
+        timeoucie. Watek camera budzi czekajacych przy kazdej nowej klatce —
+        MJPEG nie wysyla juz tej samej klatki w kolko, gdy aparat oddaje ich
+        mniej niz preview_fps."""
+        with self._frame_cond:
+            if self._frame_id == last_id:
+                self._frame_cond.wait(timeout)
+            if self._frame is None or self._frame_id == last_id:
+                return None, last_id
+            return self._frame, self._frame_id
 
     def cover_bytes(self, session_id: str) -> bytes | None:
         """Okladka sesji z photos/.covers — id jest liczba, wiec sciezka nie
         moze uciec z katalogu (zadnego skladania nazw z wejscia)."""
         try:
-            path = _cover_path(self.base_output, int(session_id))
+            path = cover_path(self.base_output, int(session_id))
         except (TypeError, ValueError):
             return None
         return path.read_bytes() if path.is_file() else None
@@ -1597,7 +1421,7 @@ class WebUI:
         # dziesiątek sekund za kompilacją shaderów DirectML
         self._jobs.put(("warmup",))
 
-        handler = type("Handler", (_Handler,), {"ui": self})
+        handler = type("BoundHandler", (Handler,), {"ui": self})
         self._server = ThreadingHTTPServer(("127.0.0.1", self.port), handler)
         self.port = self._server.server_address[1]
         threading.Thread(target=self._server.serve_forever, daemon=True).start()

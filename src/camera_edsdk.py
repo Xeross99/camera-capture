@@ -619,6 +619,11 @@ class EdsdkSession:
             "choices": [_EV_CODES[c] for c in _EV_THIRDS],
         }}
 
+    def get_setting(self, key: str) -> dict | None:
+        """Odpowiednik CameraSession.get_setting — tu get_settings() i tak
+        czyta jedna wlasciwosc, wiec bez osobnej szybkiej sciezki."""
+        return self.get_settings().get(key)
+
     def set_setting(self, key: str, value: str) -> None:
         if key != "exposurecompensation":
             raise RuntimeError(

@@ -9,6 +9,12 @@
 <body>
 <div id="stage"><div id="app"></div></div>
 
-<script src="/static/app.js"></script>
+<!-- klasyczne skrypty ze wspolnym globalnym scope; app-main.js MUSI byc
+     ostatni (odpala tick() i listener klawiatury) -->
+<script src="/static/app-core.js"></script>
+<script src="/static/app-start.js"></script>
+<script src="/static/app-session.js"></script>
+<script src="/static/app-settings.js"></script>
+<script src="/static/app-main.js"></script>
 </body>
 </html>

@@ -518,6 +518,36 @@ class CameraSession:
         "exposurecompensation": ("exposurecompensation",),
     }
 
+    def get_setting(self, key: str) -> dict | None:
+        """Jeden widget BEZ pobierania calego drzewa konfiguracji.
+
+        `camera.get_config()` na Canonie potrafi trwac 100–300 ms, a webui
+        odpytuje kompensacje ekspozycji co 2 s z watku camera — pelne drzewo
+        zjadaloby klatki live view przy kazdym odczycie. `get_single_config`
+        pobiera pojedynczy widget (libgphoto2 sam robi fallback na pelne
+        drzewo, gdy sterownik nie ma szybkiej sciezki); przy starym
+        python-gphoto2 bez tej metody schodzimy na get_settings()."""
+        names = self.SETTING_WIDGETS.get(key)
+        if not names:
+            return None
+        getter = getattr(self.camera, "get_single_config", None)
+        if getter is None:
+            return self.get_settings().get(key)
+        for name in names:
+            try:
+                w = getter(name)
+            except gp.GPhoto2Error:
+                continue
+            try:
+                choices = [w.get_choice(i) for i in range(w.count_choices())]
+            except gp.GPhoto2Error:
+                choices = []
+            try:
+                return {"current": str(w.get_value()), "choices": choices}
+            except gp.GPhoto2Error:
+                return None
+        return None
+
     def get_settings(self) -> dict:
         """{klucz: {current, choices}} dla widgetow ktore aparat eksponuje."""
         config = self.camera.get_config()

@@ -72,3 +72,18 @@ TRASH_RETENTION_DAYS = int(os.environ.get("TRASH_RETENTION_DAYS", "30"))
 AUTOMAT_BASE_URL = os.environ.get("AUTOMAT_URL", "http://localhost:3000")
 AUTOMAT_API_TOKEN = os.environ.get("AUTOMAT_TOKEN")
 AUTOMAT_UPLOAD_ENABLED = os.environ.get("AUTOMAT_UPLOAD_ENABLED", "true").lower() in ("1", "true", "yes", "on")
+
+
+def persist_env(key: str, value: str) -> None:
+    """Zapisuje/nadpisuje klucz w PROJECT_DIR/.env (tworzy plik gdy brak) —
+    wartosci wpisane w Ustawieniach GUI przezywaja restart aplikacji."""
+    path = PROJECT_DIR / ".env"
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    entry = f"{key}={value}"
+    for i, ln in enumerate(lines):
+        if ln.split("=", 1)[0].strip() == key:
+            lines[i] = entry
+            break
+    else:
+        lines.append(entry)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")

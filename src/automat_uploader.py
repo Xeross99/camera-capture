@@ -62,6 +62,11 @@ class AutomatUploader:
             )
         self.base = (base_url or AUTOMAT_BASE_URL).rstrip("/")
         self.headers = {"Authorization": f"Bearer {token}"}
+        # keep-alive: przy strzelaniu seriami i sync-u kilkudziesieciu zdjec
+        # kazdy announce/upload/download placil wczesniej pelny handshake TCP.
+        # Uzywane z jednego watku naraz (worker; okladki maja wlasny uploader).
+        self.http = requests.Session()
+        self.http.headers.update(self.headers)
         self.timeout_open = timeout_open
         self.timeout_upload = timeout_upload
         self.session_id: int | None = None
@@ -88,9 +93,8 @@ class AutomatUploader:
     def list_sessions(self) -> list[dict]:
         """GET wszystkich sesji photo_studio: [{id, name, product, created_at,
         photos_count}, ...] — dla ekranu startowego aplikacji."""
-        r = requests.get(
+        r = self.http.get(
             f"{self.base}/api/photo_studio/sessions",
-            headers=self.headers,
             timeout=self.timeout_open,
         )
         if not r.ok:
@@ -103,9 +107,8 @@ class AutomatUploader:
         sid = session_id if session_id is not None else self.session_id
         if sid is None:
             raise RuntimeError("open_session()/attach_session() musi byc zawolane wczesniej.")
-        r = requests.get(
+        r = self.http.get(
             f"{self.base}/api/photo_studio/sessions/{sid}",
-            headers=self.headers,
             timeout=self.timeout_open,
         )
         if not r.ok:
@@ -119,9 +122,8 @@ class AutomatUploader:
         sid = session_id if session_id is not None else self.session_id
         if sid is None:
             raise RuntimeError("open_session()/attach_session() musi byc zawolane wczesniej.")
-        r = requests.get(
+        r = self.http.get(
             f"{self.base}/api/photo_studio/sessions/{sid}/photos/{photo_id}/file",
-            headers=self.headers,
             timeout=self.timeout_upload,
             stream=True,
         )
@@ -138,9 +140,8 @@ class AutomatUploader:
         return dest
 
     def open_session(self, product_name: str) -> int:
-        r = requests.post(
+        r = self.http.post(
             f"{self.base}/api/photo_studio/sessions",
-            headers=self.headers,
             data={"product_name": product_name},
             timeout=self.timeout_open,
         )
@@ -177,9 +178,8 @@ class AutomatUploader:
         self.open_session(self.product_name)
 
     def _post_announce(self, filename: str):
-        return requests.post(
+        return self.http.post(
             f"{self.base}/api/photo_studio/sessions/{self.session_id}/photos",
-            headers=self.headers,
             data={"filename": filename},
             timeout=self.timeout_open,
         )
@@ -202,15 +202,13 @@ class AutomatUploader:
         with open(processed_path, "rb") as fh:
             files = {"file": (processed_path.name, fh, "image/jpeg")}
             if photo_id is not None:
-                return requests.put(
+                return self.http.put(
                     f"{self.base}/api/photo_studio/sessions/{self.session_id}/photos/{photo_id}",
-                    headers=self.headers,
                     files=files,
                     timeout=self.timeout_upload,
                 )
-            return requests.post(
+            return self.http.post(
                 f"{self.base}/api/photo_studio/sessions/{self.session_id}/photos",
-                headers=self.headers,
                 files=files,
                 timeout=self.timeout_upload,
             )
@@ -220,9 +218,8 @@ class AutomatUploader:
         404 (zdjecie/sesja juz nie istnieje) traktowane jako sukces."""
         if self.session_id is None:
             raise RuntimeError("open_session() musi byc zawolane wczesniej.")
-        r = requests.delete(
+        r = self.http.delete(
             f"{self.base}/api/photo_studio/sessions/{self.session_id}/photos/{photo_id}",
-            headers=self.headers,
             timeout=self.timeout_open,
         )
         if r.status_code == 404:

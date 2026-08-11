@@ -226,6 +226,16 @@ document.addEventListener("keydown", e => {
     }
     return;
   }
+  // Skróty robota (⌘1/⌘2 pozycja ramienia, ⌘− oddal / ⌘= przybliż) — tylko
+  // na ekranie Sesji z otwartą sesją, czyli tam, gdzie panel jest widoczny.
+  // preventDefault, bo ⌘−/⌘= to systemowy zoom strony w WKWebView.
+  if ((e.metaKey || e.ctrlKey) && S.screen === "sesja" && S.state.session.name) {
+    const robotKey = {
+      "1": () => robotPose("top90"), "2": () => robotPose("a45"),
+      "-": () => robotStep(1), "=": () => robotStep(-1),
+    }[e.key];
+    if (robotKey) { e.preventDefault(); robotKey(); return; }
+  }
   if (e.metaKey || e.ctrlKey) return;
 
   // preventDefault na wszystkim co obslugujemy — bez tego WKWebView puszcza

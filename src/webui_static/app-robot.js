@@ -12,15 +12,21 @@ const ROBOT = {
   H_PRESETS: [280, 420, 560],
 };
 
+// Etykiety skrótów zależą od platformy: macOS ma ⌘, Windows (WebView2) Ctrl.
+// Obsługa klawiatury w app-main.js łapie metaKey I ctrlKey, więc różnią się
+// tylko napisy.
+const ROBOT_MAC = navigator.platform.toUpperCase().includes("MAC");
+const robotKbd = k => ROBOT_MAC ? `⌘${k}` : `Ctrl+${k}`;
+
 // Pozycje ramienia. `sub` dostaje bieżącą wysokość — opis pozycji 90° pokazuje
 // ją na żywo; odsunięcie przy 45° jest na razie stałą atrapą.
 const ROBOT_POSES = {
   top90: {
-    title: "Z góry — 90°", key: "⌘1",
+    title: "Z góry — 90°", key: robotKbd("1"),
     sub: h => `ramię pionowo nad produktem · h ${h} mm`,
   },
   a45: {
-    title: "Pod kątem 45°", key: "⌘2",
+    title: "Pod kątem 45°", key: robotKbd("2"),
     sub: () => "ramię z przodu · odsunięcie 260 mm",
   },
 };
@@ -67,7 +73,7 @@ function robotCard() {
   <div style="display: flex; flex-direction: column; gap: 8px;">
     <div style="display: flex; align-items: baseline; justify-content: space-between;">
       <div style="${head}">Robot — ustawienie ujęcia</div>
-      <div style="${mono} font-size: 10.5px; color: #6c6c74;">⌘1 … ⌘2</div>
+      <div style="${mono} font-size: 10.5px; color: #6c6c74;">${robotKbd("1")} … ${robotKbd("2")}</div>
     </div>
 
     ${robotPoseTile("top90")}
@@ -85,7 +91,7 @@ function robotCard() {
       </div>
       <div style="display: flex; justify-content: space-between; gap: 10px; margin-top: 9px;">
         <div style="${hint}">${ROBOT.H_MIN} mm<br>bliżej</div>
-        <div style="${hint} text-align: center;">⌘− oddal · ⌘= przybliż · krok ${ROBOT.H_STEP} mm</div>
+        <div style="${hint} text-align: center;">${robotKbd("−")} oddal · ${robotKbd("=")} przybliż · krok ${ROBOT.H_STEP} mm</div>
         <div style="${hint} text-align: right;">${ROBOT.H_MAX} mm<br>dalej</div>
       </div>
       <div style="display: flex; gap: 8px; margin-top: 12px;">

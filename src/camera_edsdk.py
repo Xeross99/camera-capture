@@ -28,6 +28,11 @@ _EDS_ERR_INTERNAL_ERROR = 0x0002
 _EDS_ERR_DEVICE_BUSY = 0x0081
 _EDS_ERR_OBJECT_NOTREADY = 0xA102
 _EDS_ERR_TAKE_PICTURE_AF_NG = 0x8D01
+# Kody oznaczajace ZERWANE lacze z aparatem — nie chwilowa czkawke:
+# INVALID_HANDLE (0x61) = uchwyt martwy, bo urzadzenie wypadlo z magistrali;
+# 0xC0-0xC5 = grupa bledow komunikacji (port zajety/rozlaczony/blad USB).
+_EDS_ERR_INVALID_HANDLE = 0x0061
+_FATAL_LINK_CODES = {_EDS_ERR_INVALID_HANDLE, 0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5}
 
 _PROP_SAVE_TO = 0x000B
 _PROP_EVF_MODE = 0x0501
@@ -512,6 +517,17 @@ class EdsdkSession:
                 last_evf = now
                 try:
                     self.preview_frame()
+                except EdsdkError as exc:
+                    # Zaobserwowane w polu: aparat potrafi WYPASC z magistrali
+                    # w trakcie zdjecia (zdarzenia przestaja przychodzic,
+                    # odczyt SaveTo zwraca None, uchwyt umiera na 0x61).
+                    # Czekanie pelnych 30 s + skan karty na martwym uchwycie
+                    # to strata pol minuty na cos, co widac po sekundach.
+                    if exc.code in _FATAL_LINK_CODES:
+                        raise RuntimeError(
+                            "EDSDK: połączenie z aparatem zerwane w trakcie "
+                            f"zdjęcia (0x{exc.code:04X}) — aparat wypadł z USB"
+                        ) from exc
                 except Exception:
                     pass
             time.sleep(0.05)

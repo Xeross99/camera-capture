@@ -1,15 +1,26 @@
 "use strict";
-// Sekcja „Robot — ustawienie ujęcia" w sidebarze Sesji — SAMO UI pod
-// nadchodzące ramię robota. Stan żyje lokalnie w S.robot (backendu jeszcze
-// nie ma); każde miejsce, gdzie później pójdzie komenda do robota, jest
-// oznaczone komentarzem „backend:".
+// Sekcja „Robot — ustawienie ujęcia" w sidebarze Sesji: dwa ujęcia kamery i nic
+// więcej. Sterowanie idzie do backendu (`robot_pose` → wątek robota w webui.py
+// → src/robot.py), a prawdą o zadanym ustawieniu jest STAN Z BACKENDU —
+// S.robot to tylko optymistyczne echo, żeby kliknięcie było widać zanim wróci
+// poll.
+//
+// Suwaki „Odległość od produktu" i „Kąt kamery" zostały USUNIĘTE ŚWIADOMIE
+// razem z całą mechaniką pod nimi: ujęcie to teraz zapisane kąty przegubów
+// (`ROBOT_JOINTS_*`, patrz robot.py), więc nie ma czego regulować i nie ma jak
+// zepsuć kadru. Każda regulacja to robiła — kadr wyjeżdżał, kąt głowicy
+// rozjeżdżał się z osią patrzenia, a ta sama pozycja wychodziła inaczej po
+// każdym uruchomieniu.
+//
 // Zmiany są łatane W MIEJSCU (robotSync), nigdy pełnym rebuildem ekranu —
-// rebuild niszczy <img> streamu MJPEG (patrz anti-flicker w app-main.js),
-// a suwak ciągnięty myszą nie przeżyłby podmiany DOM pod kursorem.
+// rebuild niszczy <img> streamu MJPEG (patrz anti-flicker w app-main.js).
 
-const ROBOT = {
-  H_MIN: 240, H_MAX: 620, H_STEP: 10,
-  H_PRESETS: [280, 420, 560],
+const robotState = () => (S.state && S.state.robot) || {};
+
+// Ramię w ruchu albo rozłączone = nie ma czym sterować.
+const robotLocked = () => {
+  const r = robotState();
+  return !r.connected || !!r.busy;
 };
 
 // Etykiety skrótów zależą od platformy: macOS ma ⌘, Windows (WebView2) Ctrl.
@@ -18,57 +29,68 @@ const ROBOT = {
 const ROBOT_MAC = navigator.platform.toUpperCase().includes("MAC");
 const robotKbd = k => ROBOT_MAC ? `⌘${k}` : `Ctrl+${k}`;
 
-// Pozycje ramienia. `sub` dostaje bieżącą wysokość — opis pozycji 90° pokazuje
-// ją na żywo; odsunięcie przy 45° jest na razie stałą atrapą.
+// Ujęcia. Klucze MUSZĄ zgadzać się z ROBOT_JOINTS w config.py — backend
+// odrzuca nieznaną nazwę. `tilt` służy WYŁĄCZNIE do nachylenia kreski w ikonie:
+// ujęcie to zapisane kąty przegubów, więc kąt patrzenia kamery nie jest znany
+// aplikacji i nie ma czego pokazywać w tytule.
 const ROBOT_POSES = {
-  top90: {
-    title: "Z góry — 90°", key: robotKbd("1"),
-    sub: h => `ramię pionowo nad produktem · h ${h} mm`,
-  },
-  a45: {
-    title: "Pod kątem 45°", key: robotKbd("2"),
-    sub: () => "ramię z przodu · odsunięcie 260 mm",
-  },
+  top90: { name: "Z góry", tilt: 90, key: robotKbd("1"), sub: "kamera pionowo nad produktem" },
+  a45: { name: "Z boku", tilt: 45, key: robotKbd("2"), sub: "kamera skośnie na produkt" },
 };
+// Ujęcie ustawione = ma zapisane kąty w .env (ROBOT_JOINTS_*). Nieustawione
+// mówi to WPROST, zamiast udawać, że ⌘1 gdzieś pojedzie — backend odmówi
+// ruchu, a operator nie miałby skąd wiedzieć, czego brakuje.
+const robotIsSet = p => ((robotState().set || {})[p] !== false);
+const robotSub = p => robotIsSet(p) ? ROBOT_POSES[p].sub
+  : "nieustawione — uruchom tools/roarm_teach.py";
 
-const robotTileStyle = on => `display: flex; align-items: center; gap: 12px; padding: 12px 13px; border-radius: 8px; border: 1px solid ${on ? ACCENT : "#2c2c31"}; background: ${on ? "#232a3d" : "#1f1f22"};`;
-const robotPresetStyle = on => `flex: 1; height: 30px; background: ${on ? "#232a3d" : "#1a1a1d"}; border: 1px solid ${on ? ACCENT : "#3d3d44"}; border-radius: 5px; color: #eaeaee; ${mono} font-size: 11.5px; font-family: 'IBM Plex Mono', monospace;`;
+const robotTileStyle = (on, locked) => `display: flex; align-items: center; gap: 12px; padding: 12px 13px; border-radius: 8px; border: 1px solid ${on ? ACCENT : "#2c2c31"}; background: ${on ? "#232a3d" : "#1f1f22"}; opacity: ${locked ? .45 : 1};`;
 
-// Ikona pozycji: kółko z kreską — pionową (ramię z góry) albo ukośną (45°).
+// Ikona ujęcia: kółko z kreską pod kątem patrzenia — pionową dla ujęcia
+// z góry, nachyloną o zmierzony kąt dla skosu (kreska idzie od produktu
+// w stronę kamery, więc pokazuje to samo, co tytuł kafelka).
 function robotIcon(pose, on) {
-  const c = on ? ACCENT : "#6c6c74";
-  const line = pose === "top90" ? 'x1="16" y1="9" x2="16" y2="23"' : 'x1="11" y1="11" x2="21" y2="21"';
+  const c = on ? ACCENT : (robotIsSet(pose) ? "#6c6c74" : "#4a4a52");
+  const rad = ROBOT_POSES[pose].tilt * Math.PI / 180, R = 7;
+  const dx = Math.round(R * Math.cos(rad) * 10) / 10, dy = Math.round(R * Math.sin(rad) * 10) / 10;
+  const line = `x1="${16 + dx}" y1="${16 - dy}" x2="${16 - dx}" y2="${16 + dy}"`;
   return `<svg width="32" height="32" viewBox="0 0 32 32" style="flex-shrink: 0; display: block;">
     <circle cx="16" cy="16" r="14" fill="none" stroke="${c}" stroke-width="1.5"/>
     <line ${line} stroke="${c}" stroke-width="2" stroke-linecap="round"/>
   </svg>`;
 }
 
-// Wypełnienie przebytej części toru suwaka — WebKit nie maluje go sam
-// (accent-color barwi tylko kciuk), więc tor to gradient: inline przy
-// renderze i podbijany z JS przy każdej zmianie wartości.
-function robotTrackBg() {
-  const p = 100 * (S.robot.h - ROBOT.H_MIN) / (ROBOT.H_MAX - ROBOT.H_MIN);
-  return `linear-gradient(to right, ${ACCENT} ${p}%, #3a3a41 ${p}%)`;
+// Jedna linia stanu pod kafelkami: co robi ramię albo czemu nie robi nic.
+// Znikająca sekcja nie mówiłaby operatorowi, czego szukać — panel zostaje,
+// tylko wyszarzony, z powodem wprost.
+function robotStatus() {
+  const r = robotState();
+  if (r.busy) return { text: r.busy + "…", color: "#d8c39a", spin: true };
+  if (!r.connected) {
+    return {
+      text: r.error || "ramię rozłączone — sprawdź kabel USB i zasilanie",
+      color: "#e0b96a", spin: false,
+    };
+  }
+  return { text: "ramię gotowe", color: "#8f9a88", spin: false };
 }
 
 function robotPoseTile(p) {
   const pose = ROBOT_POSES[p], on = S.robot.pose === p;
   return `
-  <div id="robot-pose-${p}" onclick="robotPose('${p}')" style="${robotTileStyle(on)}">
+  <div id="robot-pose-${p}" onclick="robotPose('${p}')" style="${robotTileStyle(on, robotLocked())}">
     ${robotIcon(p, on)}
     <div style="flex: 1; min-width: 0;">
-      <div style="font-size: 13px; font-weight: 600; color: #eaeaee;">${pose.title}</div>
-      <div id="robot-sub-${p}" style="margin-top: 2px; ${mono} font-size: 11px; color: #85858e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${pose.sub(S.robot.h)}</div>
+      <div style="font-size: 13px; font-weight: 600; color: ${robotIsSet(p) ? "#eaeaee" : "#8a8a92"};">${pose.name}</div>
+      <div id="robot-sub-${p}" style="margin-top: 2px; ${mono} font-size: 11px; color: #85858e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${robotSub(p)}</div>
     </div>
     <div style="${mono} font-size: 11px; color: #6c6c74;">${pose.key}</div>
   </div>`;
 }
 
 function robotCard() {
-  const r = S.robot;
-  const sideBtn = `flex: 0 0 30px; height: 30px; background: linear-gradient(#3f3f45, #35353a); border: 1px solid #4c4c54; border-radius: 5px; color: #eaeaee; font-size: 15px; font-family: inherit;`;
-  const hint = `${mono} font-size: 10.5px; color: #6c6c74; line-height: 1.5;`;
+  if (robotState().enabled === false) return "";   // ROBOT_ENABLED=false w .env
+  const st = robotStatus();
   return `
   <div style="display: flex; flex-direction: column; gap: 8px;">
     <div style="display: flex; align-items: baseline; justify-content: space-between;">
@@ -76,70 +98,63 @@ function robotCard() {
       <div style="${mono} font-size: 10.5px; color: #6c6c74;">${robotKbd("1")} … ${robotKbd("2")}</div>
     </div>
 
+    <div id="robot-status" style="display: flex; align-items: center; gap: 7px; ${mono} font-size: 11px; color: ${st.color};">
+      <span id="robot-spin" style="display: ${st.spin ? "inline-block" : "none"};" class="spinner"></span>
+      <span id="robot-status-text">${st.text}</span>
+    </div>
+
     ${robotPoseTile("top90")}
     ${robotPoseTile("a45")}
-
-    <div class="card" style="padding-bottom: 13px; margin-top: 4px;">
-      <div style="display: flex; align-items: baseline; justify-content: space-between;">
-        <div class="card-title">Wysokość nad stołem</div>
-        <div style="${mono} font-size: 12.5px; color: #eaeaee;"><span id="robot-h-val">${r.h}</span> <span style="color: #7e7e85;">mm</span></div>
-      </div>
-      <div style="display: flex; align-items: center; gap: 10px; margin-top: 14px;">
-        <button onclick="robotStep(-1)" style="${sideBtn}">−</button>
-        <input id="robot-slider" class="rslider" type="range" min="${ROBOT.H_MIN}" max="${ROBOT.H_MAX}" step="${ROBOT.H_STEP}" value="${r.h}" oninput="robotSetH(+this.value)" style="background: ${robotTrackBg()};" />
-        <button onclick="robotStep(1)" style="${sideBtn}">+</button>
-      </div>
-      <div style="display: flex; justify-content: space-between; gap: 10px; margin-top: 9px;">
-        <div style="${hint}">${ROBOT.H_MIN} mm<br>bliżej</div>
-        <div style="${hint} text-align: center;">${robotKbd("−")} oddal · ${robotKbd("=")} przybliż · krok ${ROBOT.H_STEP} mm</div>
-        <div style="${hint} text-align: right;">${ROBOT.H_MAX} mm<br>dalej</div>
-      </div>
-      <div style="display: flex; gap: 8px; margin-top: 12px;">
-        ${ROBOT.H_PRESETS.map(v => `<button id="robot-preset-${v}" onclick="robotSetH(${v})" style="${robotPresetStyle(r.h === v)}">${v} mm</button>`).join("")}
-      </div>
-    </div>
   </div>`;
 }
 
-// Dociągnięcie DOM do S.robot — wołane po każdej zmianie z kliknięcia,
-// klawiatury albo suwaka. Brak elementów (inny ekran) = nic do roboty.
+// Dociągnięcie DOM do S.robot + stanu z backendu — wołane po każdej zmianie
+// z kliknięcia, klawiatury ORAZ z updateVolatile() przy każdym pollu.
+// Brak elementów (inny ekran, robot wyłączony) = nic do roboty.
 function robotSync() {
-  const r = S.robot;
-  const sl = $("robot-slider");
-  if (!sl) return;
+  if (!$("robot-status")) return;
+  const r = S.robot, locked = robotLocked(), st = robotStatus();
   Object.keys(ROBOT_POSES).forEach(p => {
     const el = $("robot-pose-" + p);
     if (!el) return;
     const on = r.pose === p;
-    el.style.cssText = robotTileStyle(on);
+    el.style.cssText = robotTileStyle(on, locked);
     el.querySelector("svg").outerHTML = robotIcon(p, on);
-    $("robot-sub-" + p).textContent = ROBOT_POSES[p].sub(r.h);
+    $("robot-sub-" + p).textContent = robotSub(p);
   });
-  $("robot-h-val").textContent = r.h;
-  sl.value = r.h;
-  sl.style.background = robotTrackBg();
-  ROBOT.H_PRESETS.forEach(v => {
-    const b = $("robot-preset-" + v);
-    if (b) b.style.cssText = robotPresetStyle(r.h === v);
-  });
+  $("robot-status").style.color = st.color;
+  $("robot-status-text").textContent = st.text;
+  $("robot-spin").style.display = st.spin ? "inline-block" : "none";
+}
+
+// Stan z backendu wygrywa, ale nie natychmiast po lokalnej zmianie: przez
+// ~1 s po kliknięciu trzymamy własną wartość, żeby poll (500 ms) sprzed
+// dotarcia POST-a nie cofał zaznaczonego kafelka.
+const ROBOT_ECHO_MS = 1000;
+function robotReconcile() {
+  const r = robotState();
+  if (r.pose != null && performance.now() - S.robot.echoAt > ROBOT_ECHO_MS) {
+    S.robot.pose = r.pose;
+  }
+  robotSync();
+}
+
+// Odpowiedź backendu na komendę ruchu: odmowa (rozłączone ramię, trwa
+// zdjęcie, pozycja poza zakresem) ma być widoczna, a nie zjedzona po cichu.
+function robotPost(payload) {
+  S.robot.echoAt = performance.now();
+  robotSync();
+  post(payload).then(r => r.json()).then(res => {
+    if (res && res.ok === false) {
+      S.robot.echoAt = 0;          // wracamy do prawdy z backendu przy najbliższym pollu
+      const el = $("robot-status-text");
+      if (el) { el.textContent = res.error; $("robot-status").style.color = "#e0b96a"; }
+    }
+  }).catch(() => {});
 }
 
 function robotPose(p) {
-  if (!ROBOT_POSES[p] || S.robot.pose === p) return;
+  if (!ROBOT_POSES[p] || robotLocked() || S.robot.pose === p) return;
   S.robot.pose = p;
-  robotSync();
-  // backend: tu pójdzie komenda ustawienia pozycji ramienia,
-  // np. post({ action: "robot_pose", pose: p })
-}
-
-function robotSetH(h) {
-  const step = Math.round(h / ROBOT.H_STEP) * ROBOT.H_STEP;
-  S.robot.h = Math.max(ROBOT.H_MIN, Math.min(ROBOT.H_MAX, step));
-  robotSync();
-  // backend: tu pójdzie komenda wysokości ramienia,
-  // np. post({ action: "robot_height", mm: S.robot.h })
-}
-
-function robotStep(dir) {
-  robotSetH(S.robot.h + dir * ROBOT.H_STEP);
+  robotPost({ action: "robot_pose", pose: p });
 }

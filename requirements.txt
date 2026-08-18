@@ -9,3 +9,5 @@ requests>=2.32
 python-dotenv>=1.0
 pyusb>=1.2
 pywebview
+# ramie RoArm-M2-S po USB-serial (src/robot.py); ciagnie pyserial
+roarm-sdk>=0.1.0

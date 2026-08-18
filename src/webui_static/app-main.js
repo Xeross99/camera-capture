@@ -97,7 +97,13 @@ function updateVolatile(st) {
     });
   }
   const sl = $("shoot-label");
-  if (sl) sl.textContent = st.busy || "Zrób zdjęcie";
+  if (sl && performance.now() - shootErrAt > 4000) {
+    sl.textContent = st.busy || (st.robot && st.robot.busy ? "Ramię w ruchu…" : "Zrób zdjęcie");
+  }
+  // Panel robota też jest ŚWIADOMIE łatany, nie keyowany — stan ramienia
+  // zmienia się co poll (busy/rozłączenie), a rebuild ekranu zabiłby <img>
+  // streamu MJPEG przy każdym przejeździe.
+  robotReconcile();
   const up = $("update-progress");
   if (up) {
     const u = st.update || {};
@@ -185,8 +191,27 @@ function leaveSession() {
 
 function shoot() {
   if (!S.state.connected || !S.state.session.name) return;
+  // migawka w trakcie przejazdu ramienia = rozmycie; backend i tak odmówi,
+  // ale bez tego mignąłby jeszcze biały flash sugerujący zrobione zdjęcie
+  if (S.state.robot && S.state.robot.busy) return;
   flashNow();
-  post({ action: "shoot" });
+  // Odpowiedź MUSI być obejrzana. Sam flash jest lokalny, więc odmowa backendu
+  // („trwa aktualizacja", „ramię w ruchu") wyglądała identycznie jak zdjęcie
+  // zrobione poprawnie: błysk i nic więcej. Powód ląduje na przycisku, bo tam
+  // patrzy operator po naciśnięciu ENTER.
+  post({ action: "shoot" }).then(r => r.json()).then(res => {
+    if (res && res.ok === false) shootError(res.error);
+  }).catch(e => shootError("brak odpowiedzi aplikacji"));
+}
+
+// Napis wraca sam: `updateVolatile()` przepisuje etykietę przy każdym pollu
+// (500 ms), więc trzymamy błąd chwilę dłużej, żeby dało się go przeczytać.
+let shootErrAt = 0;
+function shootError(text) {
+  const el = $("shoot-label");
+  if (!el) return;
+  el.textContent = "✗ " + text;
+  shootErrAt = performance.now();
 }
 
 function toggleReview() {
@@ -226,13 +251,13 @@ document.addEventListener("keydown", e => {
     }
     return;
   }
-  // Skróty robota (⌘1/⌘2 pozycja ramienia, ⌘− oddal / ⌘= przybliż) — tylko
-  // na ekranie Sesji z otwartą sesją, czyli tam, gdzie panel jest widoczny.
-  // preventDefault, bo ⌘−/⌘= to systemowy zoom strony w WKWebView.
+  // Skróty robota (⌘1/⌘2 ujęcie) — tylko na ekranie Sesji z otwartą sesją,
+  // czyli tam, gdzie panel jest widoczny. Skróty odległości (⌘−/⌘=) i kąta
+  // kamery (⌘[/⌘]) usunięte razem z tymi suwakami: każda regulacja psuła
+  // ustawione ujęcie (patrz komentarz w app-robot.js).
   if ((e.metaKey || e.ctrlKey) && S.screen === "sesja" && S.state.session.name) {
     const robotKey = {
       "1": () => robotPose("top90"), "2": () => robotPose("a45"),
-      "-": () => robotStep(1), "=": () => robotStep(-1),
     }[e.key];
     if (robotKey) { e.preventDefault(); robotKey(); return; }
   }

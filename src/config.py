@@ -54,6 +54,10 @@ CLEAN_BG_INFERENCE_SIZE = 768
 # GPU przez DirectX 12, bez instalowania CUDA). `false` = wymus CPU,
 # kill-switch na wypadek smiesznych sterownikow.
 CLEAN_BG_GPU = os.environ.get("CLEAN_BG_GPU", "true").lower() in ("1", "true", "yes", "on")
+# FPS podglądu przy starcie. Wybor z Ustawien jest zapisywany tutaj przez
+# persist_env, wiec przezywa restart — na maszynach z kaprysnym USB operator
+# zjezdza na 10 fps i ma to zostac na stale, nie do najblizszego zamkniecia.
+PREVIEW_FPS = max(1, min(30, int(os.environ.get("PREVIEW_FPS", "30"))))
 CLEAN_BG_COLOR = (255, 255, 255)
 CLEAN_BG_MASK_THRESHOLD = 80
 CLEAN_BG_EDGE_BLUR = 0.6

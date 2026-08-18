@@ -49,9 +49,15 @@ from .config import PROJECT_DIR
 # Ile czekamy na odpowiedz dziecka, zanim uznamy je za zawieszone i zabijemy.
 # open: init SDK + konfiguracja aparatu; capture: wlasne timeouty EDSDK
 # (~40 s z awaryjnym pobraniem z karty) + sciagniecie 24 MP.
-_TIMEOUTS = {"open": 60.0, "preview": 12.0, "capture": 90.0,
+_TIMEOUTS = {"open": 60.0, "preview": 12.0, "capture": 120.0,
              "get_setting": 10.0, "set_setting": 10.0,
              "get_settings": 10.0, "close": 5.0}
+# Drugi, ostrzejszy limit: CISZA od dziecka. W trakcie strzalu dziecko nadaje
+# co sekunde (status „Czekam na plik…", wpisy logu), wiec 15 s bez zadnej ramki
+# oznacza zawieszke w DLL-u — nie ma po co czekac pelnych 120 s calkowitego
+# limitu, gdy np. EdsDownload utknie przy pobieraniu pliku. Dotyczy operacji
+# dlugich; krotkie (preview, ustawienia) i tak maja ciasne limity calkowite.
+_QUIET_LIMITS = {"open": 30.0, "capture": 15.0}
 
 
 class CameraProcError(RuntimeError):
@@ -62,15 +68,38 @@ class CameraProcError(RuntimeError):
 # ---------------------------------------------------------------- serwer
 
 def run_edsdk_server() -> int:
-    """Petla RPC w procesie-dziecku. Jednowatkowa i blokujaca Z PREMEDYTACJA:
+    """Petla RPC w procesie-dziecku — opakowana tak, ze ZADEN wyjatek nie
+    ucieka na wierzch: PyInstaller w buildzie okienkowym pokazuje wtedy
+    MessageBox „Unhandled exception in script", ktory wyskakiwal operatorowi
+    na pulpit, gdy osierocone dziecko probowalo pisac w martwa rure po
+    zamknieciu rodzica (OSError 22)."""
+    try:
+        return _serve()
+    except SystemExit as e:     # ciche zejscie (martwa rura do rodzica)
+        return int(e.code or 0)
+    except BaseException as e:  # noqa: BLE001 — dialogu nie bedzie NIGDY
+        try:
+            print(f"edsdk-server: {type(e).__name__}: {e}", file=sys.stderr)
+        except Exception:
+            pass
+        return 1
+
+
+def _serve() -> int:
+    """Wlasciwa petla. Jednowatkowa i blokujaca Z PREMEDYTACJA:
     gdy SDK zawisnie, wisi cale dziecko — a rodzic wtedy je zabija."""
     real_out = sys.stdout.buffer
     lock = threading.Lock()
 
     def send(obj: dict) -> None:
-        with lock:
-            real_out.write(json.dumps(obj, ensure_ascii=False).encode() + b"\n")
-            real_out.flush()
+        try:
+            with lock:
+                real_out.write(json.dumps(obj, ensure_ascii=False).encode() + b"\n")
+                real_out.flush()
+        except OSError:
+            # rodzic zniknal (zamkniecie aplikacji przy wiszacym watku camera
+            # osieroca dziecko) — nie ma dla kogo nadawac, koniec bez halasu
+            raise SystemExit(0)
 
     # stdout to KANAL RPC — print()y z SDK/konfiguracji musza isc na stderr.
     # Podmiana PRZED importem camera_edsdk, zeby zlapac tez printy z importu.
@@ -187,18 +216,34 @@ class EdsdkProxy:
         except OSError as e:
             self._kill()
             raise CameraProcError(f"proces EDSDK nie przyjął komendy ({e})") from e
-        deadline = _TIMEOUTS[op]
+        import time as _time
+        started = _time.monotonic()
+        quiet = _QUIET_LIMITS.get(op, _TIMEOUTS[op])
+        last_frame = started
         while True:
-            try:
-                frame = self._frames.get(timeout=deadline)
-            except queue.Empty:
-                # ZAWIESZKA w DLL-u Canona — dokladnie to, po co jest ten modul.
+            now = _time.monotonic()
+            timeout = min(quiet - (now - last_frame),
+                          _TIMEOUTS[op] - (now - started))
+            frame = None
+            if timeout > 0:
+                try:
+                    frame = self._frames.get(timeout=timeout)
+                except queue.Empty:
+                    pass
+            if frame is None and self._frames.empty():
+                # ZAWIESZKA w DLL-u Canona — dokladnie to, po co jest ten modul:
+                # albo minal limit calkowity, albo dziecko ZAMILKLO (w trakcie
+                # strzalu nadaje co sekunde, wiec cisza = wiszace wywolanie).
                 # Zabijamy dziecko; wyjatek wraca do petli camera, ktora zrobi
                 # reconnect i dostanie SWIEZY proces ze swiezym EdsInitializeSDK.
                 self._kill()
+                waited = _time.monotonic() - started
                 raise CameraProcError(
-                    f"aparat nie odpowiada ({op}, > {_TIMEOUTS[op]:.0f} s) — "
+                    f"aparat nie odpowiada ({op}, {waited:.0f} s bez reakcji) — "
                     "restartuję sterownik Canon i łączę od nowa")
+            if frame is None:
+                continue
+            last_frame = _time.monotonic()
             if frame is None:
                 tail = self._stderr_tail[-1] if self._stderr_tail else "brak szczegółów"
                 self._kill()
@@ -220,6 +265,17 @@ class EdsdkProxy:
                 self.on_status(frame.get("text", ""))
         except Exception:
             pass
+
+    def terminate(self) -> None:
+        """Twarde ubicie dziecka — wolane przy zamykaniu aplikacji (webui.stop).
+
+        Bez tego dziecko przezywa rodzica, gdy watek camera wisi w RPC:
+        po minutach jego zawieszone wywolanie wraca, proba odpowiedzi w martwa
+        rure konczy sie wyjatkiem, a PyInstaller pokazuje operatorowi dialog.
+        Ubicie dziecka konczy tez blokujace `_frames.get` w watku camera
+        (czytelnik wrzuca sentinel EOF), wiec join watku przy stop() nie stoi
+        pelnego timeoutu RPC."""
+        self._kill()
 
     # ---------- interfejs CameraSession ----------
 

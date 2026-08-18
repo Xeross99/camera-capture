@@ -36,6 +36,7 @@ from .automat_uploader import (AutomatNotFound, AutomatUploader,
                                describe_opened_session)
 from .camera import CAMERA_ERRORS, make_camera_session
 from .config import (
+    CAMERA_EDSDK_ISOLATION,
     CLEAN_BG_GPU,
     AUTOMAT_API_TOKEN,
     AUTOMAT_BASE_URL,
@@ -568,12 +569,32 @@ class WebUI:
         try:
             captured = self.session.capture_to(tmpdir)
         except (SystemExit, *CAMERA_ERRORS) as e:
-            self._log(f"✗ Błąd aparatu: {e}", "err")
-            shutil.rmtree(tmpdir, ignore_errors=True)
-            self._set_busy("")
-            with self.lock:
-                self.capturing = False
-            return
+            # Aparat potrafi WYPASC z USB w trakcie zdjecia (patrz
+            # camera_edsdk/_FATAL_LINK_CODES). Kadr sie nie zmienil — produkt
+            # lezy na stole — wiec zamiast wyrzucac ujecie: polaczenie od nowa
+            # (przy izolacji = swiezy proces SDK) i JEDNA ponowna proba.
+            self._log(f"✗ Błąd aparatu: {e} — łączę ponownie i ponawiam "
+                      "zdjęcie…", "err")
+            try:
+                self.session.close()
+            except Exception:
+                pass
+            try:
+                self._phase("łączenie z aparatem")
+                self._set_busy("Łączę ponownie…")
+                self.session.open()
+                self._phase("robienie zdjęcia (2. próba)")
+                self._set_busy("Ponawiam zdjęcie…")
+                captured = self.session.capture_to(tmpdir)
+                self._log("Zdjęcie wyszło za drugim podejściem.", "ok")
+            except (SystemExit, *CAMERA_ERRORS) as e2:
+                self._log(f"✗ Zdjęcie nie wyszło także po ponownym połączeniu: "
+                          f"{e2}", "err")
+                shutil.rmtree(tmpdir, ignore_errors=True)
+                self._set_busy("")
+                with self.lock:
+                    self.capturing = False
+                return
         # ramie moze sie znowu ruszac: kadr jest juz w pliku, dalsza obrobka
         # (rembg, upload) nie patrzy na to, gdzie stoi kamera
         with self.lock:
@@ -1730,12 +1751,21 @@ class WebUI:
         if not since or phase == "gotowy":
             return
         age = time.monotonic() - since
-        if age > self._CAM_STUCK_S and since != self._cam_warned_since:
+        # Strzal z awaryjnym pobraniem z karty potrafi legalnie trwac ~50 s —
+        # watchdog nie ma straszyc w trakcie normalnej (powolnej) operacji.
+        limit = 70.0 if phase.startswith("robienie zdjęcia") else self._CAM_STUCK_S
+        if age > limit and since != self._cam_warned_since:
             self._cam_warned_since = since
-            self._log(f"✗ Wątek aparatu utknął: „{phase}” trwa {age:.0f} s. "
-                      "Wywołania Canon SDK nie da się przerwać z aplikacji — "
-                      "odepnij i podepnij kabel USB aparatu, wtedy połączenie "
-                      "wstanie od nowa.", "err")
+            if CAMERA_EDSDK_ISOLATION and sys.platform == "win32":
+                hint = ("ogranicznik czasu zaraz sam zrestartuje sterownik "
+                        "Canon. Jeśli to wraca co chwilę, winne jest USB tego "
+                        "komputera — BIOS/sterowniki chipsetu, kabel, port.")
+            else:
+                hint = ("Wywołania Canon SDK nie da się przerwać z aplikacji — "
+                        "odepnij i podepnij kabel USB aparatu, wtedy połączenie "
+                        "wstanie od nowa.")
+            self._log(f"✗ Wątek aparatu utknął: „{phase}” trwa {age:.0f} s — "
+                      f"{hint}", "err")
 
     def state(self, log_since: int = 0) -> dict:
         self._cam_watchdog()

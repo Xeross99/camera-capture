@@ -226,6 +226,11 @@ class WebUI:
         self.robot_joints: list[float] | None = None
         # Serwa puszczone (moment off) — tylko na czas ustawiania ujecia recznie.
         self.robot_loose = False
+        # Co robi w tej chwili watek camera i od kiedy. Watek ma JEDNEGO
+        # wlasciciela portu, wiec kazda dluga operacja (podglad, strzal, odczyt
+        # kompensacji, reconnect) blokuje odbieranie komend — bez tej informacji
+        # „aparat nie odebral komendy" nie mowi, GDZIE utknal.
+        self._cam_phase = ("start", 0.0)
         self._robot_read_at = 0.0   # throttle odpytywania katow w bezczynnosci
         # trwa ekspozycja/pobieranie pliku z aparatu — na ten czas ramie stoi.
         # Osobno od `busy`, ktore obejmuje takze obrobke (patrz _robot_ready).
@@ -329,6 +334,7 @@ class WebUI:
         flapping = False   # polaczenie pada od razu — cykl leci po cichu
         while not self._stop.is_set():
             try:
+                self._phase('łączenie z aparatem')
                 self.session.open()
             except Exception as e:
                 if first_fail:
@@ -340,9 +346,24 @@ class WebUI:
                 continue
             first_fail = True
             started = time.monotonic()
-            self._run_connected(quiet=flapping)
+            try:
+                self._run_connected(quiet=flapping)
+            except Exception as e:
+                # Watek camera NIE MOZE umrzec po cichu. Wczesniej lecialo tu
+                # tylko to, co lapie `_run_connected` (CAMERA_ERRORS), a kazdy
+                # inny wyjatek — np. OSError z ctypes w EDSDK — wynosil sie z
+                # petli i zabijal watek. Objaw byl mylacy: `connected` zostawalo
+                # na True, MJPEG wisial na ostatniej klatce, a komendy pietrzyly
+                # sie w `_cam_q` („aparat nie odebral poprzedniej komendy").
+                self._log(f"✗ Wątek aparatu przerwany ({type(e).__name__}: {e}) "
+                          "— łączę ponownie…", "err")
             self.session.close()
             self._drop_preview()
+            with self.lock:
+                # obrobka mogla zostac przerwana w polowie: bez tego przycisk
+                # migawki zostawalby na „Wyzwalam migawke…" do konca sesji
+                self.busy = ""
+                self.capturing = False
             if time.monotonic() - started >= self._HEALTHY_AFTER:
                 backoff = self.RECONNECT_MIN
                 flapping = False
@@ -378,6 +399,10 @@ class WebUI:
             self._frame = None
             self._frame_cond.notify_all()
 
+    def _phase(self, name: str) -> None:
+        """Znacznik tego, co watek camera robi teraz (patrz `_cam_phase`)."""
+        self._cam_phase = (name, time.monotonic())
+
     def _run_connected(self, quiet: bool = False) -> None:
         """`quiet` = jesteśmy w pętli reconnectu z padającym live view: nie
         zaśmiecamy logu parą „połączony"/„podgląd przerwany" co cykl. Wpis
@@ -401,11 +426,13 @@ class WebUI:
                     cmd = None
                 if cmd is not None:
                     self._handle_cam_cmd(cmd)
+                    self._phase("gotowy")
                     continue
                 # przed gałęzią podglądu, żeby kompensacja odświeżała się także
                 # przy wyłączonym live view (operator wciąż kręci pokrętłem)
                 if time.monotonic() - self._ev_t0 >= self._EV_POLL_S:
                     self._ev_t0 = time.monotonic()
+                    self._phase('odczyt kompensacji ekspozycji')
                     self._refresh_ev()
                 if not self.preview_on:
                     time.sleep(0.1)
@@ -416,6 +443,7 @@ class WebUI:
                     time.sleep(min(wait, 0.05))
                     continue
                 try:
+                    self._phase('pobieranie klatki podglądu')
                     data = self.session.preview_frame()
                 except CAMERA_ERRORS as e:
                     if not quiet:
@@ -519,6 +547,7 @@ class WebUI:
             self.busy = text
 
     def _do_capture(self, opts: dict) -> None:
+        self._phase("robienie zdjęcia")
         self._set_busy("Wyzwalam migawkę…")
         tmpdir = Path(tempfile.mkdtemp(prefix="capture_"))
         t0 = time.perf_counter()
@@ -1395,8 +1424,11 @@ class WebUI:
         # utknal (typowo: EDSDK czeka na plik z aparatu) — bez tego wpisu ENTER
         # wyglada jak zignorowany, bo nic sie nie dzieje i nic nie tlumaczy.
         if self._cam_q.qsize():
+            phase, since = self._cam_phase
+            held = f", stoi na tym {time.monotonic() - since:.0f} s" if since else ""
             self._log(f"Migawka: aparat nie odebrał jeszcze poprzedniej komendy "
-                      f"({self._cam_q.qsize()} w kolejce) — czekam.", "warn")
+                      f"({self._cam_q.qsize()} w kolejce) — wątek aparatu: "
+                      f"{phase}{held}.", "warn")
         # od teraz do konca pobrania pliku ramie stoi (patrz _robot_ready)
         with self.lock:
             self.capturing = True
@@ -1752,17 +1784,35 @@ class WebUI:
 
     # ---------- start ----------
 
+    def _guarded(self, loop, what: str):
+        """Owija petle watku tak, zeby jej smierc byla WIDOCZNA.
+
+        Watek, ktory ginie na nieobsluzonym wyjatku, nie zostawia w UI zadnego
+        sladu: aplikacja dziala dalej, tylko przestaje reagowac na komendy —
+        i wyglada to na zepsuty sprzet, nie na blad programu."""
+        def run():
+            try:
+                loop()
+            except BaseException as e:      # noqa: BLE001 — logujemy WSZYSTKO
+                self._log(f"✗ Wątek {what} zakończył się błędem "
+                          f"({type(e).__name__}: {e}) — zrestartuj aplikację.", "err")
+                raise
+        return run
+
     def start(self) -> str:
         """Startuje watki + serwer na efemerycznym porcie 127.0.0.1.
         Zwraca URL z jednorazowym tokenem — bez niego serwer odpowiada 403,
         wiec UI jest dostepne tylko dla okna aplikacji (nie da sie wejsc
         "z boku" przegladarka na goly adres)."""
-        self._camera_thread = threading.Thread(target=self._camera_loop, daemon=True)
-        self._worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
+        self._camera_thread = threading.Thread(target=self._guarded(self._camera_loop, "aparatu"),
+                                               daemon=True)
+        self._worker_thread = threading.Thread(target=self._guarded(self._worker_loop, "obróbki"),
+                                               daemon=True)
         self._camera_thread.start()
         self._worker_thread.start()
         if ROBOT_ENABLED:
-            self._robot_thread = threading.Thread(target=self._robot_loop, daemon=True)
+            self._robot_thread = threading.Thread(target=self._guarded(self._robot_loop, "ramienia"),
+                                                  daemon=True)
             self._robot_thread.start()
         if self.automat_token:
             self._jobs.put(("list_sessions",))

@@ -238,6 +238,13 @@ class WebUI:
         # obrobka tla na GPU — przelaczalne z Ustawien (kill-switch na maszyny
         # z chorymi sterownikami; stan poczatkowy z .env)
         self.clean_bg_gpu = CLEAN_BG_GPU
+        # Rozgrzewka silnika czyszczenia tla: liczona OD STARTU aplikacji (job
+        # warmup jest ostatni w kolejce startowej, ale silnik i tak nie jest
+        # gotowy, zanim sie skonczy). Front pokazuje na podgladzie overlay —
+        # sam wpis w logu byl za malo widoczny, gdy kompilacja shaderow
+        # DirectML trzymala obrobke ~2 min.
+        self.warmup_t0 = time.monotonic()
+        self.warmup_done = False
         self._robot_read_at = 0.0   # throttle odpytywania katow w bezczynnosci
         # trwa ekspozycja/pobieranie pliku z aparatu — na ten czas ramie stoi.
         # Osobno od `busy`, ktore obejmuje takze obrobke (patrz _robot_ready).
@@ -1340,8 +1347,14 @@ class WebUI:
                   "uruchomieniu na GPU może potrwać do ~2 min; zdjęcia zrobione "
                   "w tym czasie poczekają w kolejce.")
         t0 = time.perf_counter()
-        with contextlib.redirect_stdout(_LogPipe(self)):
-            warmup_clean_bg()
+        try:
+            with contextlib.redirect_stdout(_LogPipe(self)):
+                warmup_clean_bg()
+        finally:
+            # overlay na podgladzie MUSI zgasnac takze po bledzie rozgrzewki —
+            # inaczej wisialby do konca uruchomienia
+            with self.lock:
+                self.warmup_done = True
         self._log(f"Silnik czyszczenia tła gotowy ({time.perf_counter() - t0:.0f} s).", "ok")
 
     _JOBS = {
@@ -1635,8 +1648,13 @@ class WebUI:
                 from . import background
                 background.set_gpu(on)
                 if on:
-                    self._log("Obróbka tła: GPU (DirectML) — pierwsza obróbka "
-                              "skompiluje shadery, to potrafi trwać ~2 min.", "ok")
+                    self._log("Obróbka tła: GPU (DirectML) — kompiluję shadery "
+                              "od razu, to potrafi trwać ~2 min.", "ok")
+                    # kompilacja MA sie odbyc teraz, z overlayem na podgladzie —
+                    # a nie dopiero przy pierwszym zdjeciu, udajac zawieszona obrobke
+                    self.warmup_done = False
+                    self.warmup_t0 = time.monotonic()
+                    self._jobs.put(("warmup",))
                 else:
                     self._log("Obróbka tła: CPU — działa od następnego zdjęcia.", "ok")
 
@@ -1728,6 +1746,7 @@ class WebUI:
             bg = self.bg_range
             return {
                 "connected": self.connected,
+                "warmup": None if self.warmup_done else int(time.monotonic() - self.warmup_t0),
                 "fps": round(self.fps),
                 "previewOn": self.preview_on,
                 "busy": self.busy,

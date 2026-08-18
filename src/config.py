@@ -42,6 +42,10 @@ CAMERA_BACKEND = os.environ.get("CAMERA_BACKEND", "auto").strip().lower()
 # Canon EDSDK (jedyny backend Windows): sciezka do EDSDK.dll albo katalogu
 # z nia; bez tego szukana obok aplikacji (PROJECT_DIR i PROJECT_DIR/edsdk).
 EDSDK_DLL = os.environ.get("EDSDK_DLL", "").strip() or None
+# EDSDK w osobnym procesie (src/camera_proc.py): zawieszke w DLL-u Canona
+# konczy zabicie dziecka i swiezy EdsInitializeSDK, zamiast martwej aplikacji.
+# false = stary tryb, SDK w procesie aplikacji.
+CAMERA_EDSDK_ISOLATION = os.environ.get("CAMERA_EDSDK_ISOLATION", "true").lower() in ("1", "true", "yes", "on")
 
 CLEAN_BG_MODEL = "u2netp"
 CLEAN_BG_INFERENCE_SIZE = 768

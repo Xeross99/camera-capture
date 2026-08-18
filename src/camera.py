@@ -619,8 +619,16 @@ def make_camera_session():
             backend, reason = "gphoto2", "auto"
 
     if backend == "edsdk":
-        from .camera_edsdk import EdsdkSession
-        session = EdsdkSession()
+        from .config import CAMERA_EDSDK_ISOLATION
+        if CAMERA_EDSDK_ISOLATION:
+            # SDK w osobnym procesie: zawieszka w DLL-u = kill dziecka +
+            # swiezy EdsInitializeSDK, nie martwa aplikacja (patrz camera_proc)
+            from .camera_proc import EdsdkProxy
+            session = EdsdkProxy()
+            reason += "; SDK w osobnym procesie"
+        else:
+            from .camera_edsdk import EdsdkSession
+            session = EdsdkSession()
     else:
         if backend != "gphoto2":
             reason = f"nieznany CAMERA_BACKEND={backend!r} — używam gphoto2"

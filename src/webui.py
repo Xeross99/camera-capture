@@ -37,6 +37,7 @@ from .automat_uploader import (AutomatNotFound, AutomatUploader,
 from .camera import CAMERA_ERRORS, make_camera_session
 from .config import (
     CAMERA_EDSDK_ISOLATION,
+    PREVIEW_FPS,
     CLEAN_BG_GPU,
     AUTOMAT_API_TOKEN,
     AUTOMAT_BASE_URL,
@@ -198,7 +199,7 @@ class WebUI:
         self.name_pattern = DEFAULT_NAME_PATTERN
         self.automat_url = AUTOMAT_BASE_URL
         self.automat_token = AUTOMAT_API_TOKEN or ""
-        self.preview_fps = 30
+        self.preview_fps = PREVIEW_FPS
         self.keep_raw = True
         self.test_result = ""
 
@@ -1660,6 +1661,8 @@ class WebUI:
                         self._jobs.put(("open_session", self.name))
             elif key == "preview_fps":
                 self.preview_fps = max(1, min(30, int(value)))
+                # do .env — wybor ma przezyc restart (patrz PREVIEW_FPS)
+                persist_env("PREVIEW_FPS", str(self.preview_fps))
             elif key == "keep_raw":
                 self.keep_raw = bool(value)
             elif key == "clean_bg_gpu":
@@ -1932,6 +1935,13 @@ class WebUI:
         if self._stop.is_set():
             return
         self._stop.set()
+        # Proces-dziecko EDSDK ubijamy OD RAZU (bezpieczne z innego watku —
+        # to operacja na procesie, nie na porcie): watek camera moze wisiec
+        # w RPC i join nizej czekalby pelnego timeoutu, a osierocone dziecko
+        # pokazywaloby po minutach dialog PyInstallera na pulpicie.
+        terminate = getattr(self.session, "terminate", None)
+        if terminate is not None:
+            terminate()
         self._jobs.put(None)
         if self._camera_thread is not None:
             self._camera_thread.join(timeout=4.0)

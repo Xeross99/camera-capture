@@ -28,6 +28,13 @@ function sesjaScreen() {
             <div style="width: 7px; height: 7px; border-radius: 50%; background: #ff4d4d; animation: livePulse 1.6s ease-in-out infinite;"></div>LIVE
           </div>` : ""}
           <div id="hist-badge" title="${histTitle(st)}" style="position: absolute; right: 12px; bottom: 12px; background: rgba(0,0,0,.55); border: 1px solid #3c3c44; padding: 3px 8px; ${mono} font-size: 10.5px; color: ${bgColor};">${histText}</div>
+          <div id="warmup-overlay" style="position: absolute; inset: 0; display: ${st.warmup != null ? "flex" : "none"}; align-items: center; justify-content: center; background: rgba(10,10,12,.72); z-index: 3;">
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; background: #1d1d20; border: 1px solid #3c3c44; border-radius: 8px; padding: 18px 26px; max-width: 78%; text-align: center;">
+              <span class="spinner" style="width: 18px; height: 18px;"></span>
+              <div style="font-size: 13.5px; font-weight: 600; color: #eaeaee;">Przygotowuję silnik czyszczenia tła… <span id="warmup-s">${st.warmup != null ? st.warmup : 0}</span> s</div>
+              <div style="${mono} font-size: 11px; color: #9d9da3; line-height: 1.5;">Pierwsze uruchomienie na GPU kompiluje shadery — do ~2 min.<br>Zdjęcia można robić: poczekają w kolejce i obrobią się po rozgrzewce.</div>
+            </div>
+          </div>
           <div id="flash" style="position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 4;"></div>
         </div>
       </div>

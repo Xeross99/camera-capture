@@ -100,6 +100,14 @@ function updateVolatile(st) {
   if (sl && performance.now() - shootErrAt > 4000) {
     sl.textContent = st.busy || (st.robot && st.robot.busy ? "Ramię w ruchu…" : "Zrób zdjęcie");
   }
+  // Overlay rozgrzewki silnika czyszczenia tła — łatany po id (rebuild zabiłby
+  // <img> streamu), znika sam, gdy backend zgłosi warmup: null.
+  const wo = $("warmup-overlay");
+  if (wo) {
+    wo.style.display = st.warmup != null ? "flex" : "none";
+    const ws = $("warmup-s");
+    if (ws && st.warmup != null) ws.textContent = st.warmup;
+  }
   // Panel robota też jest ŚWIADOMIE łatany, nie keyowany — stan ramienia
   // zmienia się co poll (busy/rozłączenie), a rebuild ekranu zabiłby <img>
   // streamu MJPEG przy każdym przejeździe.

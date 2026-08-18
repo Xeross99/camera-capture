@@ -231,6 +231,9 @@ class WebUI:
         # kompensacji, reconnect) blokuje odbieranie komend — bez tej informacji
         # „aparat nie odebral komendy" nie mowi, GDZIE utknal.
         self._cam_phase = ("start", 0.0)
+        # znacznik czasu fazy, dla ktorej juz ostrzeglismy o utknieciu —
+        # jedno ostrzezenie na epizod, nie co poll
+        self._cam_warned_since = 0.0
         self._robot_read_at = 0.0   # throttle odpytywania katow w bezczynnosci
         # trwa ekspozycja/pobieranie pliku z aparatu — na ten czas ramie stoi.
         # Osobno od `busy`, ktore obejmuje takze obrobke (patrz _robot_ready).
@@ -1675,7 +1678,34 @@ class WebUI:
         tail.reverse()
         return tail
 
+    # Po tylu sekundach w jednej fazie uznajemy, ze watek aparatu UTKNAL.
+    # Prog musi przezyc najdluzsza legalna operacje: strzal z awaryjnym
+    # pobraniem z karty potrafi trwac do _CAPTURE_TIMEOUT_S (~30 s).
+    _CAM_STUCK_S = 45.0
+
+    def _cam_watchdog(self) -> None:
+        """Wolane z kazdego pollu /api/state — wykrywa watek aparatu
+        zablokowany WEWNATRZ wywolania Canon SDK.
+
+        Takiego wywolania nie da sie przerwac z Pythona (ctypes siedzi w
+        DLL-u), wiec jedyne, co mozemy zrobic, to powiedziec operatorowi
+        WPROST, co uwalnia sytuacje: odpiecie kabla USB. Zablokowana funkcja
+        SDK wraca wtedy z bledem, a petla camera przechodzi w normalny
+        reconnect. Bez tego wpisu jedynym sladem byl rosnacy licznik
+        „N w kolejce" i aplikacja do restartu."""
+        phase, since = self._cam_phase
+        if not since or phase == "gotowy":
+            return
+        age = time.monotonic() - since
+        if age > self._CAM_STUCK_S and since != self._cam_warned_since:
+            self._cam_warned_since = since
+            self._log(f"✗ Wątek aparatu utknął: „{phase}” trwa {age:.0f} s. "
+                      "Wywołania Canon SDK nie da się przerwać z aplikacji — "
+                      "odepnij i podepnij kabel USB aparatu, wtedy połączenie "
+                      "wstanie od nowa.", "err")
+
     def state(self, log_since: int = 0) -> dict:
+        self._cam_watchdog()
         with self.lock:
             sdir = self.session_dir
         shots = self._session_shots(sdir)   # dyskowe I/O POZA lockiem

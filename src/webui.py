@@ -36,6 +36,7 @@ from .automat_uploader import (AutomatNotFound, AutomatUploader,
                                describe_opened_session)
 from .camera import CAMERA_ERRORS, make_camera_session
 from .config import (
+    CLEAN_BG_GPU,
     AUTOMAT_API_TOKEN,
     AUTOMAT_BASE_URL,
     OUTPUT_SIZE,
@@ -234,6 +235,9 @@ class WebUI:
         # znacznik czasu fazy, dla ktorej juz ostrzeglismy o utknieciu —
         # jedno ostrzezenie na epizod, nie co poll
         self._cam_warned_since = 0.0
+        # obrobka tla na GPU — przelaczalne z Ustawien (kill-switch na maszyny
+        # z chorymi sterownikami; stan poczatkowy z .env)
+        self.clean_bg_gpu = CLEAN_BG_GPU
         self._robot_read_at = 0.0   # throttle odpytywania katow w bezczynnosci
         # trwa ekspozycja/pobieranie pliku z aparatu — na ten czas ramie stoi.
         # Osobno od `busy`, ktore obejmuje takze obrobke (patrz _robot_ready).
@@ -1624,6 +1628,17 @@ class WebUI:
                 self.preview_fps = max(1, min(30, int(value)))
             elif key == "keep_raw":
                 self.keep_raw = bool(value)
+            elif key == "clean_bg_gpu":
+                on = bool(value)
+                self.clean_bg_gpu = on
+                persist_env("CLEAN_BG_GPU", "true" if on else "false")
+                from . import background
+                background.set_gpu(on)
+                if on:
+                    self._log("Obróbka tła: GPU (DirectML) — pierwsza obróbka "
+                              "skompiluje shadery, to potrafi trwać ~2 min.", "ok")
+                else:
+                    self._log("Obróbka tła: CPU — działa od następnego zdjęcia.", "ok")
 
     # ---------- stan dla frontu ----------
 
@@ -1765,6 +1780,7 @@ class WebUI:
                     "automatUrl": self.automat_url,
                     "tokenMasked": ("•" * 12 + self.automat_token[-4:]) if self.automat_token else "",
                     "previewFps": self.preview_fps,
+                    "cleanBgGpu": self.clean_bg_gpu,
                     "keepRaw": self.keep_raw,
                     "testResult": self.test_result,
                 },

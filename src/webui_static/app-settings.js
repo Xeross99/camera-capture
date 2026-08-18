@@ -40,13 +40,15 @@ function ustawieniaScreen() {
     </div>
 
     <div style="${card}">
-      <div style="${head}">Podgląd</div>
+      <div style="${head}">Podgląd i obróbka</div>
       <div style="display: grid; grid-template-columns: 120px 1fr; gap: 8px 10px; align-items: center;">
         <div style="color: #b4b4bb;">FPS podglądu</div>
         <select onchange="post({action:'set_app', key:'preview_fps', value:this.value})" style="${sel}">
           ${[10, 15, 20, 25, 30].map(f => `<option ${f === cfg.previewFps ? "selected" : ""}>${f}</option>`).join("")}
         </select>
       </div>
+      <label style="${label}"><input type="checkbox" ${cfg.cleanBgGpu ? "checked" : ""} onchange="post({action:'set_app', key:'clean_bg_gpu', value:this.checked})" style="${chk}" />Obróbka tła na GPU (DirectML)</label>
+      <div style="${mono} font-size: 10.5px; color: #77777f;">Wyłącz przy problemach ze sterownikami — obróbka pójdzie na CPU (wolniej, ale zawsze działa). Zmiana obowiązuje od następnego zdjęcia; po włączeniu pierwsza obróbka kompiluje shadery (~2 min).</div>
     </div>
 
     ${robotSetupCard(card)}

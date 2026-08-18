@@ -1,3 +1,4 @@
+import math
 import os
 import sys
 from pathlib import Path
@@ -68,6 +69,78 @@ SHARPEN_PERCENT = 120
 # Lokalny kosz (photos/.trash): zdjecia i sesje skasowane w aplikacji nie znikaja
 # od razu, tylko po tylu dniach. 0 = kasowanie natychmiastowe (bez kosza).
 TRASH_RETENTION_DAYS = int(os.environ.get("TRASH_RETENTION_DAYS", "30"))
+
+# ---------- ramie RoArm-M2-S (src/robot.py) ----------
+# Ujecie to ZAPISANE KATY PRZEGUBOW, nie punkt w przestrzeni. Sterowanie
+# wspolrzednymi (`pose_ctrl`) liczy kinematyke odwrotna: dojezdza „gdzies
+# blisko" (stad wpisy „dojechal z odchylka N mm") i dla tego samego punktu
+# potrafi ulozyc ramie inaczej, zaleznie od tego, skad jechalo. Sterowanie
+# katami nie ma zadnego z tych problemow — cel jest ta sama liczba za kazdym
+# razem, wiec kadr jest powtarzalny. Cena: odleglosc i kat nie sa regulowane
+# osobno, ujecie jest jedna pozycja i tyle.
+#
+# Ramienia zwykle nie ma na maszynie deweloperskiej, wiec brak portu/paczki to
+# stan „rozlaczony" w UI, a nie blad startu.
+ROBOT_ENABLED = os.environ.get("ROBOT_ENABLED", "true").lower() in ("1", "true", "yes", "on")
+ROBOT_TYPE = os.environ.get("ROBOT_TYPE", "roarm_m2")
+# Pusty = autodetekcja portu po VID plytki (patrz find_robot_port).
+ROBOT_PORT = os.environ.get("ROBOT_PORT", "").strip() or None
+ROBOT_BAUD = int(os.environ.get("ROBOT_BAUD", "115200"))
+
+ROBOT_MOVE_TIMEOUT = float(os.environ.get("ROBOT_MOVE_TIMEOUT", "20"))
+# Z jaka tolerancja uznajemy, ze przegub dojechal (stopnie). To NIE jest
+# tolerancja pozycji: cel jest zawsze ten sam kat, wiec ugiecie pod ciezarem
+# aparatu jest takie samo za kazdym razem i kadr sie nie rozjezdza.
+ROBOT_JOINT_TOL = float(os.environ.get("ROBOT_JOINT_TOL", "3"))
+
+# Predkosc i przyspieszenie ruchu (spd 1..4096, acc 1..254). Osobno dla calego
+# ramienia i dla osi 4: tam obraca sie sama glowica z kamera, wiec nie ma czego
+# rozhustac i moze chodzic szybciej niz wysieg, ktory przenosi szarpniecie na
+# stol.
+ROBOT_MOVE_SPEED = int(os.environ.get("ROBOT_MOVE_SPEED", "200"))
+ROBOT_MOVE_ACC = int(os.environ.get("ROBOT_MOVE_ACC", "10"))
+ROBOT_JOINT_SPEED = int(os.environ.get("ROBOT_JOINT_SPEED", "1200"))
+ROBOT_JOINT_ACC = int(os.environ.get("ROBOT_JOINT_ACC", "40"))
+# Korekta pozycji przyciskami w Ustawieniach (stopnie): maly krok do
+# wykonczenia kadru i duzy do zgrubnego dojechania. Reka nie da sie ustawic
+# ramienia z dokladnoscia do stopnia, a od tego zalezy kadr.
+ROBOT_NUDGE_STEP = float(os.environ.get("ROBOT_NUDGE_STEP", "1"))
+ROBOT_NUDGE_BIG = float(os.environ.get("ROBOT_NUDGE_BIG", "5"))
+
+# Os 4 (EoAT) ma na M2-S dwa tryby: chwytak (135 stopni) albo NADGARSTEK (270).
+# Z kamera na koncu chcemy nadgarstka — inaczej ta sama os zaciska szczeki
+# zamiast obracac glowice.
+ROBOT_WRIST_MODE = os.environ.get("ROBOT_WRIST_MODE", "true").lower() in ("1", "true", "yes", "on")
+# Przejazd do pozycji domowej (`move_init`) po polaczeniu. Przy sterowaniu
+# katami nie jest do niczego potrzebny (cel jest bezwzgledny), wiec domyslnie
+# OFF — ramie z aparatem nie ma ruszac samo zaraz po starcie aplikacji.
+ROBOT_HOME_ON_CONNECT = os.environ.get("ROBOT_HOME_ON_CONNECT", "false").lower() in ("1", "true", "yes", "on")
+
+
+def _robot_joints(key: str) -> list[float] | None:
+    """Ujecie z .env: cztery katy przegubow w stopniach, "j1,j2,j3,j4".
+
+    Wypisuje je `tools/roarm_teach.py`: puszcza serwa, operator ustawia ramie
+    recznie w docelowym ujeciu, skrypt odczytuje katy. Brak wpisu = ujecie
+    nieustawione; UI mowi to wprost, zamiast wysylac ramie w przypadkowe
+    miejsce z wartosci domyslnych."""
+    raw = os.environ.get(key, "").strip()
+    if not raw:
+        return None
+    parts = [p for p in raw.replace(";", ",").split(",") if p.strip()]
+    try:
+        nums = [float(p) for p in parts]
+    except ValueError:
+        print(f"⚠ {key}='{raw}' nie jest listą czterech kątów — ujęcie pominięte")
+        return None
+    if len(nums) != 4:
+        print(f"⚠ {key}='{raw}' ma {len(nums)} liczb zamiast 4 — ujęcie pominięte")
+        return None
+    return nums
+
+
+ROBOT_JOINTS_ENV = {"top90": "ROBOT_JOINTS_TOP90", "a45": "ROBOT_JOINTS_A45"}
+ROBOT_JOINTS = {name: _robot_joints(key) for name, key in ROBOT_JOINTS_ENV.items()}
 
 AUTOMAT_BASE_URL = os.environ.get("AUTOMAT_URL", "http://localhost:3000")
 AUTOMAT_API_TOKEN = os.environ.get("AUTOMAT_TOKEN")

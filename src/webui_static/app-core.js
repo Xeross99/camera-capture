@@ -17,7 +17,9 @@ const S = {           // stan klienta
   updateDismissed: "",// wersja, dla której operator kliknął „Później"
   checkStartedAt: 0,  // klik w „Sprawdź aktualizacje" — minimalny czas spinnera
   dayFocus: "",       // podświetlony dzień na osi ekranu startowego
-  robot: { pose: "top90", h: 420 },  // ustawienie ujęcia robota — SAMO UI, backendu jeszcze nie ma (app-robot.js)
+  // ustawienie ujęcia ramienia — optymistyczne echo stanu z backendu
+  // (state.robot); prawdą jest webui.py, patrz robotReconcile w app-robot.js
+  robot: { pose: "top90", echoAt: 0 },
 };
 const $ = id => document.getElementById(id);
 const post = (payload) => fetch("/api/action", { method: "POST", body: JSON.stringify(payload) });

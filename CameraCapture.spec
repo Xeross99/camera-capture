@@ -56,6 +56,10 @@ binaries = []
 hiddenimports = [
     "webview.platforms.winforms",
     "webview.platforms.edgechromium",
+    # importowane LENIWIE w src/robot.py (SDK ramienia + wyliczanie portow
+    # szeregowych), wiec analiza statyczna PyInstallera ich nie widzi
+    "roarm_sdk.roarm",
+    "serial.tools.list_ports",
 ]
 
 # rembg/onnxruntime maja natywne DLL-e i dane poza importami — collect_all

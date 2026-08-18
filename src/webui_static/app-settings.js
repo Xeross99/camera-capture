@@ -49,6 +49,8 @@ function ustawieniaScreen() {
       </div>
     </div>
 
+    ${robotSetupCard(card)}
+
     <div style="${card}">
       <div style="${head}">Aktualizacje</div>
       <div style="display: grid; grid-template-columns: 120px 1fr; gap: 8px 10px; align-items: center;">
@@ -72,6 +74,90 @@ function ustawieniaScreen() {
         <div>BACKSPACE — usuń oglądane zdjęcie</div><div>ESC — zamknij podgląd</div>
       </div>
     </div>`;
+}
+
+// Ustawianie ujęć ramienia. Cała „kalibracja" tego robota to zapisanie
+// bieżących kątów przegubów — ujęcie jest jedną pozycją, więc nie ma tu czego
+// mierzyć ani liczyć (patrz sekcja „Robot" w CLAUDE.md).
+//
+// Kolejność jest ważna i dlatego jest wypisana w UI: puszczone serwa oznaczają,
+// że ramię opada pod ciężarem aparatu i trzeba je TRZYMAĆ. Dopiero po złapaniu
+// momentu operator ma wolne ręce, żeby sprawdzić kadr na Sesji i kliknąć zapis.
+function robotSetupCard(card) {
+  const r = (S.state && S.state.robot) || {};
+  if (r.enabled === false) return "";
+  const set = r.set || {};
+  const line = `${mono} font-size: 10.5px; color: #8f8f97;`;
+  const poseBtn = (p, label) => `<button onclick="robotTeach('${p}')" ${r.connected ? "" : "disabled"} style="${btnGray} font-size: 11.5px; ${r.connected ? "" : "opacity: .5;"}">Zapisz jako ${label}</button>`;
+  return `
+    <div style="${card}">
+      <div style="${head}">Robot — ujęcia</div>
+      ${r.connected ? "" : `<div style="${line} color: #e0b96a;">ramię rozłączone — sprawdź kabel USB i zasilanie</div>`}
+      <div style="display: grid; grid-template-columns: 120px 1fr; gap: 8px 10px; align-items: center;">
+        <div style="color: #b4b4bb;">Z góry</div>
+        <div style="${mono} font-size: 11px; color: ${set.top90 ? "#9fe0a8" : "#e0b96a"};">${set.top90 ? "ustawione" : "nieustawione"}</div>
+        <div style="color: #b4b4bb;">Z boku</div>
+        <div style="${mono} font-size: 11px; color: ${set.a45 ? "#9fe0a8" : "#e0b96a"};">${set.a45 ? "ustawione" : "nieustawione"}</div>
+      </div>
+      ${robotNudgeRows()}
+      <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+        <button onclick="robotSetupPost({action:'robot_torque', on:${r.loose ? "true" : "false"}})" ${r.connected ? "" : "disabled"} style="${btnGray} font-size: 11.5px; ${r.connected ? "" : "opacity: .5;"}">${r.loose ? "2. Złap pozycję" : "1. Puść serwa"}</button>
+        ${poseBtn("top90", "z góry")}
+        ${poseBtn("a45", "z boku")}
+      </div>
+      <div id="robot-setup-msg" style="${mono} font-size: 10.5px; color: #e07a7a;"></div>
+      <div style="${line}">
+        Zgrubnie: <b>Puść serwa</b> i PRZYTRZYMAJ ramię (z aparatem opada samo), ustaw z ręki,
+        potem <b>Złap pozycję</b>.<br>
+        Dokładnie: dostrój przyciskami wyżej, patrząc na podgląd na zakładce Sesja.<br>
+        Na koniec zapisz ujęcie — wróci dokładnie tutaj przy ⌘1 / ⌘2.
+      </div>
+    </div>`;
+}
+
+// Korekta pozycji przyciskami. Ręką nie ustawi się ramienia z dokładnością do
+// stopnia, a od tego zależy, czy produkt siedzi na środku kadru — więc każda
+// oś ma własny wiersz i dwa kroki: mały do wykończenia, duży do dojechania.
+// Nazwy osi są opisowe, bo „j2" nic nie mówi o tym, co się ruszy.
+const ROBOT_JOINT_NAMES = ["Obrót podstawy", "Bark (wysokość)", "Łokieć (wysięg)", "Głowica (kąt)"];
+
+function robotNudgeRows() {
+  const r = (S.state && S.state.robot) || {};
+  const j = r.joints, [small, big] = r.nudge || [1, 5];
+  const locked = !r.connected || r.loose || !!r.busy;
+  const b = `${btnGray} height: 24px; padding: 0 8px; font-size: 11px; ${locked ? "opacity: .5;" : ""}`;
+  const row = i => `
+    <div style="color: #b4b4bb;">${ROBOT_JOINT_NAMES[i]}</div>
+    <div style="display: flex; align-items: center; gap: 5px;">
+      <button onclick="robotNudge(${i + 1}, ${-big})" ${locked ? "disabled" : ""} style="${b}">−${big}</button>
+      <button onclick="robotNudge(${i + 1}, ${-small})" ${locked ? "disabled" : ""} style="${b}">−${small}</button>
+      <div style="${mono} font-size: 11px; color: #c9c9cf; min-width: 62px; text-align: center;">${j ? j[i].toFixed(1) + "°" : "—"}</div>
+      <button onclick="robotNudge(${i + 1}, ${small})" ${locked ? "disabled" : ""} style="${b}">+${small}</button>
+      <button onclick="robotNudge(${i + 1}, ${big})" ${locked ? "disabled" : ""} style="${b}">+${big}</button>
+    </div>`;
+  return `
+    <div style="display: grid; grid-template-columns: 120px 1fr; gap: 6px 10px; align-items: center;">
+      ${[0, 1, 2, 3].map(row).join("")}
+    </div>
+    ${r.loose ? `<div style="${mono} font-size: 10.5px; color: #e0b96a;">serwa puszczone — korekta przyciskami zadziała po „Złap pozycję"</div>` : ""}`;
+}
+
+function robotNudge(joint, delta) {
+  robotSetupPost({ action: "robot_nudge", joint: joint, delta: delta });
+}
+
+// Odmowa z backendu (rozłączone ramię, puszczone serwa, trwa zdjęcie) MUSI być
+// widoczna. Bez tego kliknięcie, które backend odrzucił, wyglądało dokładnie
+// tak samo jak zepsuta komenda: „klikam i nic się nie dzieje".
+function robotSetupPost(payload) {
+  post(payload).then(r => r.json()).then(res => {
+    const el = $("robot-setup-msg");
+    if (el) el.textContent = (res && res.ok === false) ? "✗ " + res.error : "";
+  }).catch(() => {});
+}
+
+function robotTeach(pose) {
+  robotSetupPost({ action: "robot_teach", pose: pose });
 }
 
 function checkUpdate() {

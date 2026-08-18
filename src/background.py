@@ -36,13 +36,31 @@ Bbox = tuple[int, int, int, int]  # (left, top, right, bottom)
 Window = tuple[int, int, int, int]  # okno cropu w pikselach source (sl, st, sr, sb)
 
 
+# Biezacy stan przelacznika GPU — startuje z .env, ale UI moze go przestawic
+# w locie (Ustawienia). Osobna zmienna, bo CLEAN_BG_GPU to stala z importu.
+_GPU_ENABLED = CLEAN_BG_GPU
+
+
+def set_gpu(enabled: bool) -> None:
+    """Runtime kill-switch obrobki na GPU (checkbox w Ustawieniach).
+
+    Czysci cache sesji rembg, wiec nastepna obrobka zbuduje ja od nowa z
+    wlasciwymi providerami — bez restartu aplikacji. Po WLACZENIU pierwsza
+    inferencja na DirectML znow kompiluje shadery (patrz warmup_clean_bg)."""
+    global _GPU_ENABLED
+    if _GPU_ENABLED == bool(enabled):
+        return
+    _GPU_ENABLED = bool(enabled)
+    _session.cache_clear()
+
+
 def _gpu_providers() -> list[str] | None:
     """Lista providerow onnxruntime z GPU na czele, albo None (= sam CPU).
 
     rembg sam z siebie wykrywa tylko CUDA/ROCm — DirectML (paczka
     onnxruntime-directml, Windows: kazde GPU przez DirectX 12, bez CUDA)
     trzeba wskazac jawnie."""
-    if not CLEAN_BG_GPU:
+    if not _GPU_ENABLED:
         return None
     try:
         import onnxruntime as ort

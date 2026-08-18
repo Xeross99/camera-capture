@@ -429,6 +429,28 @@ class EdsdkSession:
         return data
 
     def capture_to(self, workdir: Path) -> Path:
+        try:
+            return self._capture_to_inner(workdir)
+        finally:
+            # Zaobserwowane w polu (Ryzen 5800H + RTX 3080; identyczny .exe na
+            # innym laptopie dziala): PIERWSZE EdsDownloadEvfImage tuz po
+            # zdjeciu wisi na zawsze wewnatrz DLL-a — watchdog pokazywal
+            # „pobieranie klatki podgladu, stoi na tym 108 s", a uwalnialo
+            # dopiero wypiecie kabla USB. Po strzale dajemy wiec aparatowi
+            # dokonczyc przejscie stanu (pompowanie zdarzen ~0,6 s) i
+            # restartujemy potok EVF przez ponowne ustawienie wyjscia — ten sam
+            # zabieg, ktorym _evf_paused wskrzesza podglad po skanie karty.
+            self._settle_after_capture()
+
+    def _settle_after_capture(self) -> None:
+        deadline = time.monotonic() + 0.6
+        while time.monotonic() < deadline:
+            self._pump()
+            time.sleep(0.05)
+        self._set_u32(_PROP_EVF_OUTPUT_DEVICE, self._evf_out,
+                      "Evf restart po zdjęciu", required=False)
+
+    def _capture_to_inner(self, workdir: Path) -> Path:
         if self._pending_item is not None:
             self._sdk.EdsRelease(self._pending_item)   # spozniony uchwyt z poprzedniego strzalu
         self._pending_item = None

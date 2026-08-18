@@ -24,6 +24,14 @@ if len(sys.argv) > 2 and sys.argv[1] == "--apply-update":
 
     raise SystemExit(run_apply_update(sys.argv[2:]))
 
+if len(sys.argv) > 1 and sys.argv[1] == "--edsdk-server":
+    # Proces-dziecko z EDSDK (patrz src/camera_proc.py): watchdog rodzica
+    # zabija go przy zawieszce w DLL-u Canona. Przed resztą importów — serwer
+    # nie potrzebuje ani UI, ani rembg, a ma wstawać w ułamku sekundy.
+    from src.camera_proc import run_edsdk_server
+
+    raise SystemExit(run_edsdk_server())
+
 import argparse
 import os
 import threading

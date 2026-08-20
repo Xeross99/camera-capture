@@ -125,7 +125,7 @@ function sesjaScreen() {
       </div>
 
       <div style="flex: 0 0 auto; border-top: 1px solid #17171a; background: #26262a; padding: 12px 16px 14px;">
-        <button onclick="shoot()" style="width: 100%; height: 44px; ${btnBlue} border-radius: 6px; font-size: 14px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 10px;"><span id="shoot-label">${st.busy || "Zrób zdjęcie"}</span> <span style="${mono} font-size: 11px; opacity: .75;">ENTER</span></button>
+        <button onclick="shoot()" style="width: 100%; height: 44px; ${btnBlue} border-radius: 6px; font-size: 14px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 10px;"><span id="shoot-spin" class="spinner" style="flex: 0 0 auto; border-color: rgba(255,255,255,.35); border-top-color: #fff; display: ${shootBusy(st) ? "inline-block" : "none"};"></span><span id="shoot-label">${st.busy || "Zrób zdjęcie"}</span> <span style="${mono} font-size: 11px; opacity: .75;">ENTER</span></button>
       </div>
     </div>
 
@@ -229,6 +229,11 @@ function evReconcile(st) {
     b.classList.toggle("off", !active);
   });
 }
+
+// Spinner w przycisku migawki: krecy sie przez caly czas, gdy przycisk nie
+// zrobi zdjecia od reki — strzal/obrobka (st.busy niesie tekst fazy) albo
+// przejazd ramienia. Sam tekst faz byl statyczny i wygladal na zawieszke.
+const shootBusy = st => !!(st.busy || (st.robot && st.robot.busy));
 
 const bgStatus = st => (st.connected && BG_LABEL[st.camera.bgStatus]) ? st.camera.bgStatus : "unknown";
 const histLabel = st => BG_LABEL[bgStatus(st)];

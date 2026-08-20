@@ -18,6 +18,7 @@ Stan recenzji per sesja w photos/<sesja>/.review.json:
 import contextlib
 import io
 import os
+import sys
 import queue
 import secrets
 import shutil

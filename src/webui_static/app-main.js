@@ -50,11 +50,18 @@ function shell() {
 
 // ---------- rendering ----------
 
-let lastShellKey = "", lastSesja = "", lastUstawienia = "";
+let lastShellKey = "", lastSesja = "", lastUstawienia = "", lastStrip = "";
 
-const sesjaKey = st => JSON.stringify([st.session.name, st.session.dir, st.shots,
-  st.processing, st.downloading, st.post, st.previewOn, S.selShot, S.logOpen,
-  S.grid, S.reviewMode]);
+// W trybie przeglądania (overlay) zdjęcia NIE są częścią klucza: świeży strzał
+// dołączający do listy (processing → shots) przebudowywałby ekran i odtwarzał
+// overlay — mignięcie + powtórka animacji wejścia dokładnie w chwili, gdy
+// zdjęcie „się dodaje". Pasek w overlayu aktualizuje wtedy refreshStrips()
+// z pollu (renderScreens), bez dotykania reszty DOM.
+const sesjaKey = st => JSON.stringify([st.session.name, st.session.dir,
+  ...(S.reviewMode ? [] : [st.shots, st.processing, st.downloading]),
+  st.post, st.previewOn, S.selShot, S.logOpen, S.grid, S.reviewMode]);
+
+const stripSig = st => JSON.stringify([st.shots, st.processing, st.downloading]);
 
 function renderShell(force) {
   const st = S.state;
@@ -176,8 +183,18 @@ function renderScreens(force) {
     }
   } else if (S.screen === "sesja") {
     const key = sesjaKey(st);
-    if (force || key !== lastSesja) {
+    if (!(force || key !== lastSesja)) {
+      // bez rebuildu, ale w przeglądzie pasek zdjęć ma nadążać za stanem
+      // (świeży strzał, skeleton obróbki) — łatka zamiast przebudowy
+      if (S.reviewMode && stripSig(st) !== lastStrip) {
+        lastStrip = stripSig(st);
+        refreshStrips();
+      }
+      return;
+    }
+    {
       lastSesja = key;
+      lastStrip = stripSig(st);
       S.lastLogLen = logSig(st);
       $("screen-sesja").innerHTML = sesjaScreen();
       // najnowsze zdjecie na wierzchu; w podgladzie zamiast tego dojezdzamy do
@@ -300,11 +317,19 @@ document.addEventListener("keydown", e => {
        "p", "P", "a", "A", "x", "X"].includes(e.key)) {
     e.preventDefault();
   }
+  // przy otwartym potwierdzeniu wyjscia reaguja TYLKO ESC (anuluj)
+  // i ENTER (potwierdz) — reszta klawiszy nie ma strzelac zza modala
+  if (S.leaveConfirm && !["Escape", "Enter"].includes(e.key)) return;
   switch (e.key) {
-    case "Enter": shoot(); break;
+    case "Enter":
+      if (S.leaveConfirm) confirmLeave();
+      else shoot();
+      break;
     case " ": toggleReview(); break;
     case "Escape":
-      if (S.reviewMode) closeReview();
+      if (S.leaveConfirm) hideLeaveConfirm();
+      else if (S.reviewMode) closeReview();
+      else if (S.screen === "sesja" && S.state && S.state.session.name) showLeaveConfirm();
       break;
     case "Backspace":
       if (S.reviewMode) deleteReviewed();

@@ -20,6 +20,7 @@ const S = {           // stan klienta
   checkStartedAt: 0,  // klik w „Sprawdź aktualizacje" — minimalny czas spinnera
   dayFocus: "",       // podświetlony dzień na osi ekranu startowego
   sessionFilter: "",  // filtr listy sesji na ekranie startowym (nazwa/produkt)
+  leaveConfirm: false,// modal „wrócić do menu głównego?" (ESC na ekranie Sesji)
   // ustawienie ujęcia ramienia — optymistyczne echo stanu z backendu
   // (state.robot); prawdą jest webui.py, patrz robotReconcile w app-robot.js
   robot: { pose: "top90", echoAt: 0 },

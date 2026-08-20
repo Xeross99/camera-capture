@@ -46,7 +46,7 @@ function sesjaScreen() {
             <div>SPACJA podgląd</div><div>← → wybór</div><div>BACKSPACE usuń</div><div>ESC zamknij</div>
           </div>
         </div>
-        <div id="filmstrip" style="display: flex; gap: 8px; overflow-x: auto; overflow-y: hidden;">${filmstrip()}</div>
+        <div id="filmstrip" style="${stripBox}">${filmstrip()}</div>
       </div>
 
       <div style="flex: 0 0 auto; border-top: 1px solid #2c2c31; background: #191a1c;">
@@ -93,9 +93,9 @@ function sesjaScreen() {
               <div id="ev-hint" style="margin-top: 3px; font-size: 11.5px; line-height: 1.5; color: #85858e;">${evHint(st)}</div>
             </div>
             <div style="flex-shrink: 0; display: flex; align-items: center; background: #17171a; border: 1px solid #3d3d44; border-radius: 5px; overflow: hidden; ${mono} font-size: 12px;">
-              <span id="ev-minus" onclick="stepEv(-1)" style="padding: 5px 11px; color: #d0d0d6; opacity: ${cam.ev ? 1 : .35};">−</span>
-              <span id="ev-value" style="min-width: 44px; padding: 5px 0; text-align: center; color: #eaeaee; border-left: 1px solid #3d3d44; border-right: 1px solid #3d3d44;">${cam.ev ? evLabel(cam.ev.current) : "—"}</span>
-              <span id="ev-plus" onclick="stepEv(1)" style="padding: 5px 11px; color: #d0d0d6; opacity: ${cam.ev ? 1 : .35};">+</span>
+              <span id="ev-minus" class="ev-btn${cam.ev && !S.evPending ? "" : " off"}" onclick="stepEv(-1)" style="padding: 5px 11px; color: #d0d0d6; opacity: ${cam.ev && !S.evPending ? 1 : .35};">−</span>
+              <span id="ev-value" style="min-width: 44px; padding: 5px 0; text-align: center; color: #eaeaee; border-left: 1px solid #3d3d44; border-right: 1px solid #3d3d44;">${S.evPending ? '<span class="spinner"></span>' : cam.ev ? evLabel(cam.ev.current) : "—"}</span>
+              <span id="ev-plus" class="ev-btn${cam.ev && !S.evPending ? "" : " off"}" onclick="stepEv(1)" style="padding: 5px 11px; color: #d0d0d6; opacity: ${cam.ev && !S.evPending ? 1 : .35};">+</span>
             </div>
           </div>
         </div>
@@ -160,7 +160,7 @@ function evHint(st) {
 
 function stepEv(dir) {
   const ev = S.state.camera && S.state.camera.ev;
-  if (!ev || !ev.choices || !ev.choices.length) return;
+  if (S.evPending || !ev || !ev.choices || !ev.choices.length) return;
   // sortujemy po wartości, nie ufamy kolejności listy z aparatu — bywa malejąca
   const opts = ev.choices
     .map(c => ({ c, n: evNumber(c) }))
@@ -175,12 +175,49 @@ function stepEv(dir) {
   else hit = [...opts].reverse().find(o => o.n < cur - eps) || opts[0];
   const next = hit && hit.c;
   if (!next || next === ev.current) return;
-  // Pokazujemy nową wartość od razu, ale źródłem prawdy jest aparat: jeśli
-  // odrzuci wartość, najbliższe odpytanie (2 s) wróci ze starą.
-  ev.current = next;
-  const val = $("ev-value");
-  if (val) val.textContent = evLabel(next);
+  // Zamiast optymistycznego echa: spinner i zablokowane przyciski, aż aparat
+  // ODDA nową wartość (poll EV co 2 s). Źródłem prawdy jest aparat — gdy
+  // odrzuci wartość, timeout w evReconcile() przywraca kontrolkę ze starą
+  // (powód ląduje w logu z _do_set_ev).
+  S.evPending = { target: hit.n, since: performance.now() };
+  evReconcile(S.state);
   post({ action: "set_ev", value: next });
+}
+
+// Łatka kontrolki EV wołana z updateVolatile() przy każdym pollu (kontrolka
+// jest ŚWIADOMIE łatana po id, nie keyowana — rebuild zabiłby <img> streamu,
+// a kompensacja zmienia się też z pokrętła na aparacie). Limit czekania musi
+// przeżyć: zapis + odczyt w wątku camera i jeden pełny cykl pollu EV (2 s)
+// z zapasem na zajętą kolejkę aparatu.
+const EV_PENDING_MAX_MS = 8000;
+
+function evReconcile(st) {
+  const val = $("ev-value");
+  if (!val) return;
+  const ev = st.connected && st.camera ? st.camera.ev : null;
+  if (S.evPending) {
+    // tolerancja 0.2: zapisy potrafią się różnić notacją („+2 2/3" vs „+2.6"
+    // to ta sama wartość, ale liczbowo 0.067 różnicy), a sąsiednie kroki
+    // dzieli ≥0.3 — więc 0.2 łapie tę samą wartość, nie łapiąc sąsiada
+    const cur = ev ? evNumber(ev.current) : null;
+    const done = cur !== null && Math.abs(cur - S.evPending.target) < 0.2;
+    const expired = !ev || performance.now() - S.evPending.since > EV_PENDING_MAX_MS;
+    if (done || expired) S.evPending = null;
+  }
+  if (S.evPending) {
+    if (!val.querySelector(".spinner")) val.innerHTML = '<span class="spinner"></span>';
+  } else {
+    val.textContent = ev ? evLabel(ev.current) : "—";
+  }
+  const hint = $("ev-hint");
+  if (hint) hint.textContent = evHint(st);
+  const active = !!ev && !S.evPending;
+  ["ev-minus", "ev-plus"].forEach(id => {
+    const b = $(id);
+    if (!b) return;
+    b.style.opacity = active ? 1 : .35;
+    b.classList.toggle("off", !active);
+  });
 }
 
 const bgStatus = st => (st.connected && BG_LABEL[st.camera.bgStatus]) ? st.camera.bgStatus : "unknown";
@@ -218,7 +255,7 @@ function reviewOverlay() {
       <div onclick="closeReview()" style="position: absolute; right: 14px; top: 14px; background: rgba(0,0,0,.55); border: 1px solid #3c3c44; padding: 3px 10px; ${mono} font-size: 10.5px; color: #d0d0d6;">ZAMKNIJ ESC</div>
     </div>
     <div style="flex: 0 0 auto; border-top: 1px solid #2c2c31; background: #1d1d20; padding: 10px 14px 12px;">
-      <div id="review-strip" style="display: flex; gap: 8px; overflow-x: auto; overflow-y: hidden;">${filmstrip()}</div>
+      <div id="review-strip" style="${stripBox}">${filmstrip()}</div>
     </div>
   </div>`;
 }
@@ -369,6 +406,12 @@ function flashNow() {
 
 // ---------- filmstrip ----------
 
+// Pas ma STAŁĄ wysokość: kafelek (72 + 4 + 12 podpisu = 88) + 8 na poziomy
+// scrollbar, który pojawia się przy przepełnieniu. Bez tego pusty stan
+// („brak zdjęć") był niższy niż kafelki i całe menu pod spodem podskakiwało
+// przy pierwszym zdjęciu — a potem drugi raz, gdy wjeżdżał scrollbar.
+const stripBox = "height: 96px; display: flex; align-items: flex-start; gap: 8px; overflow-x: auto; overflow-y: hidden;";
+
 function tileBg(sess, file) {
   return `background: #202024 url('/img?s=${encodeURIComponent(sess)}&f=${encodeURIComponent(file)}&thumb=1') center / cover;`;
 }
@@ -383,7 +426,7 @@ function filmstrip() {
         <span style="${mono} font-size: 10px; color: #fff; text-shadow: 0 1px 2px #000;">#${i + 1}</span>
         <span style="${mono} font-size: 10px; color: ${m.color}; text-shadow: 0 1px 2px #000;">${m.mark}</span>
       </div>
-      <div style="${mono} font-size: 9.5px; color: #6c6c74; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${s.file}</div>
+      <div style="${mono} font-size: 9.5px; line-height: 12px; color: #6c6c74; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${s.file}</div>
     </div>`;
   });
   if (st.processing) {
@@ -394,7 +437,7 @@ function filmstrip() {
         <span style="${mono} font-size: 10px; color: #8b8b93;">#${st.shots.length + 1}</span>
         <span style="${mono} font-size: 10px; color: ${m.color};">${m.mark}</span>
       </div>
-      <div style="${mono} font-size: 9.5px; color: #6c6c74; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${st.processing}</div>
+      <div style="${mono} font-size: 9.5px; line-height: 12px; color: #6c6c74; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${st.processing}</div>
     </div>`);
   }
   // pobieranie zdjec sesji z Automatu — kafelek-skeleton az plik wyladuje na dysku
@@ -407,5 +450,5 @@ function filmstrip() {
       <div class="skeleton" style="height: 9px; margin-top: 6px;"></div>
     </div>`);
   });
-  return items.join("") || `<div style="${mono} font-size: 10.5px; color: #6c6c74; padding: 26px 0;">(brak zdjęć w tej sesji)</div>`;
+  return items.join("") || `<div style="${mono} font-size: 10.5px; color: #6c6c74; align-self: center;">(brak zdjęć w tej sesji)</div>`;
 }

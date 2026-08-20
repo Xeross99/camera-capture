@@ -84,18 +84,10 @@ function updateVolatile(st) {
     hist.title = histTitle(st);
   }
   // EV jest ŚWIADOMIE łatane, nie keyowane: rebuild ekranu niszczy <img>
-  // streamu MJPEG, a kompensacja zmienia się też z pokrętła na aparacie
-  const evVal = $("ev-value");
-  if (evVal) {
-    const ev = st.camera && st.camera.ev;
-    evVal.textContent = ev ? evLabel(ev.current) : "—";
-    const hint = $("ev-hint");
-    if (hint) hint.textContent = evHint(st);
-    ["ev-minus", "ev-plus"].forEach(id => {
-      const b = $(id);
-      if (b) b.style.opacity = ev ? 1 : .35;
-    });
-  }
+  // streamu MJPEG, a kompensacja zmienia się też z pokrętła na aparacie.
+  // Cała łatka (w tym spinner oczekiwania na potwierdzenie z aparatu)
+  // siedzi w evReconcile() w app-session.js.
+  evReconcile(st);
   const sl = $("shoot-label");
   if (sl && performance.now() - shootErrAt > 4000) {
     sl.textContent = st.busy || (st.robot && st.robot.busy ? "Ramię w ruchu…" : "Zrób zdjęcie");

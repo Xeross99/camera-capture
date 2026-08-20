@@ -63,6 +63,13 @@ button:active:not(:disabled) { transform: scale(.96); filter: brightness(1.25); 
    — WebKit nie wypełnia przebytej części sam, accent-color barwi tylko kciuk. */
 .rslider { -webkit-appearance: none; appearance: none; flex: 1; min-width: 0; height: 4px; border-radius: 2px; background: #3a3a41; margin: 0; }
 .rslider::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #e8e8ea; box-shadow: 0 1px 3px rgba(0, 0, 0, .5); }
+/* Stepper kompensacji EV: −/+ to spany, więc feedback wciśnięcia z reguły
+   button ich nie obejmuje. `.off` gasi też :active przez pointer-events —
+   przy rozłączonym aparacie i w trakcie czekania na potwierdzenie klik nie
+   ma udawać, że coś robi. */
+.ev-btn { user-select: none; transition: transform .08s ease, filter .08s ease, opacity .15s ease; }
+.ev-btn:active { transform: scale(.88); filter: brightness(1.4); }
+.ev-btn.off { pointer-events: none; }
 /* Kręciołek przy operacjach sieciowych (sprawdzanie/pobieranie aktualizacji). */
 .spinner { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .2); border-top-color: #4a8cff; animation: spin .7s linear infinite; vertical-align: -1px; }
 @keyframes spin { to { transform: rotate(360deg); } }

@@ -142,6 +142,10 @@ function renderScreens(force) {
       const el = document.activeElement;
       const editing = el && el.id === "new-session-input";
       const keep = editing ? el.value : null;
+      // fokus na polu nazwy tylko przy WEJŚCIU na ekran startowy (start
+      // aplikacji, powrót z sesji/Ustawień — lastSesja jest wtedy zerowane);
+      // kolejne rebuildy (dolatujące okładki) nie mają kraść fokusa
+      const entering = !(typeof lastSesja === "string" && lastSesja.startsWith('["start"'));
       // okładki dolatują po kolei, każda = rebuild — bez tego lista skakałaby
       // na górę operatorowi w trakcie przeglądania
       const scroll = $("start-scroll") ? $("start-scroll").scrollTop : 0;
@@ -152,6 +156,9 @@ function renderScreens(force) {
         const i = $("new-session-input");
         i.value = keep;
         i.focus();
+      } else if (entering) {
+        const i = $("new-session-input");
+        if (i) i.focus();
       }
     }
   } else if (S.screen === "sesja") {

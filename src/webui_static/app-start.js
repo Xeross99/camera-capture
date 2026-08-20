@@ -32,7 +32,7 @@ function sessionCard(s) {
   return `
   <div onclick='pickSession(${s.id}, ${JSON.stringify(s.name)})' style="background: #232326; border: 1px solid #2f2f35; border-radius: 8px; overflow: hidden; cursor: default; display: flex; flex-direction: column;"
        onmouseover="this.style.borderColor='${ACCENT}'" onmouseout="this.style.borderColor='#2f2f35'">
-    <div style="position: relative; aspect-ratio: 4 / 3; background: #f4f4f6;">${cover}</div>
+    <div style="position: relative; aspect-ratio: 1 / 1; background: #fff;">${cover}</div>
     <div style="padding: 9px 12px 11px; display: flex; flex-direction: column; gap: 3px; min-width: 0;">
       <div style="font-size: 13px; font-weight: 600; color: #e8e8ea; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${s.name}</div>
       <div style="font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${sub}</div>

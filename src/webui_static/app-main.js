@@ -92,6 +92,11 @@ function updateVolatile(st) {
   if (sl && performance.now() - shootErrAt > 4000) {
     sl.textContent = st.busy || (st.robot && st.robot.busy ? "Ramię w ruchu…" : "Zrób zdjęcie");
   }
+  // Spinner obok tekstu fazy — widoczny zawsze, gdy przycisk nie strzeli od
+  // reki (takze podczas komunikatu bledu po odmowie: busy jest wtedy false,
+  // wiec znika i nie sugeruje trwajacej pracy).
+  const ss = $("shoot-spin");
+  if (ss) ss.style.display = shootBusy(st) ? "inline-block" : "none";
   // Overlay rozgrzewki silnika czyszczenia tła — łatany po id (rebuild zabiłby
   // <img> streamu), znika sam, gdy backend zgłosi warmup: null.
   const wo = $("warmup-overlay");

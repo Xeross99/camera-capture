@@ -134,11 +134,15 @@ function renderScreens(force) {
   updateVolatile(st);
 
   if (S.screen === "sesja" && !st.session.name) {
-    const key = JSON.stringify(["start", st.automat, S.pendingNew, S.dayFocus]);
+    const key = JSON.stringify(["start", st.automat, S.pendingNew, S.dayFocus,
+                                S.sessionFilter]);
     if (force || key !== lastSesja) {
+      // fokus i wartosc przezywaja rebuild w OBU polach ekranu startowego
+      // (nazwa nowej sesji, filtr listy) — filtr rebuilduje na kazda litere
       const el = document.activeElement;
-      const editing = el && el.id === "new-session-input";
-      const keep = editing ? el.value : null;
+      const editId = el && (el.id === "new-session-input" || el.id === "session-filter")
+        ? el.id : null;
+      const keep = editId ? el.value : null;
       // fokus na polu nazwy tylko przy WEJŚCIU na ekran startowy (start
       // aplikacji, powrót z sesji/Ustawień — lastSesja jest wtedy zerowane);
       // kolejne rebuildy (dolatujące okładki) nie mają kraść fokusa
@@ -150,9 +154,12 @@ function renderScreens(force) {
       $("screen-sesja").innerHTML = startScreen();
       if ($("start-scroll")) $("start-scroll").scrollTop = scroll;
       if (keep !== null) {
-        const i = $("new-session-input");
-        i.value = keep;
-        i.focus();
+        const i = $(editId);
+        if (i) {
+          i.value = keep;
+          i.focus();
+          i.setSelectionRange(keep.length, keep.length);
+        }
       } else if (entering) {
         const i = $("new-session-input");
         if (i) i.focus();

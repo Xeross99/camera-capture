@@ -70,9 +70,21 @@ function focusDay(key) {
   if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+/** Filtr listy sesji (male pole po prawej): nazwa sesji albo nazwa produktu. */
+function filterSessions(v) {
+  S.sessionFilter = v;
+  // rebuild jest tani (lista to dziesiatki kafelkow), a fokus i wartosc pola
+  // przezywaja go przez mechanizm w renderScreens (jak new-session-input)
+  renderScreens(true);
+}
+
 function startScreen() {
   const a = S.state.automat;
-  const groups = groupByDay(a.sessions);
+  const q = (S.sessionFilter || "").trim().toLowerCase();
+  const visible = !q ? a.sessions : a.sessions.filter(s =>
+    (s.name || "").toLowerCase().includes(q)
+    || ((s.product && s.product.name) || "").toLowerCase().includes(q));
+  const groups = groupByDay(visible);
   const feed = groups.map(g => `
     <div id="day-${g.key}" style="display: flex; flex-direction: column; gap: 12px; scroll-margin-top: 6px;">
       <div style="display: flex; align-items: baseline; gap: 8px;">
@@ -82,7 +94,10 @@ function startScreen() {
       <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; align-content: start;">
         ${g.items.map(sessionCard).join("")}
       </div>
-    </div>`).join("");
+    </div>`).join("")
+    || (q && a.sessions.length
+        ? `<div style="${mono} font-size: 11px; color: #7e7e85;">Żadna sesja nie pasuje do „${S.sessionFilter.trim()}".</div>`
+        : "");
   const info = !a.hasToken
     ? `<div style="${mono} font-size: 11px; color: #e0b96a;">Brak tokenu Automatu (.env / Ustawienia) — sesje z Automatu niedostępne, możesz utworzyć lokalną.</div>`
     : a.error
@@ -92,7 +107,7 @@ function startScreen() {
         : "";
   const p = S.pendingNew;
   const pend = !p ? "" : `
-    <div style="background: #26231d; border: 1px solid #5a4a2a; border-radius: 6px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;">
+    <div style="background: #26231d; border: 1px solid #5a4a2a; border-radius: 6px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 660px; box-sizing: border-box;">
       <div style="font-size: 12.5px; color: #e8e8ea;">Sesja <b>${p.match.name}</b> już istnieje w Automacie (${fmtDate(p.match.created_at)}, zdjęć: ${p.match.photos_count}).</div>
       <div style="display: flex; gap: 8px; flex-wrap: wrap;">
         <button onclick="resolvePending(true)" style="height: 28px; padding: 0 14px; ${btnBlue} border-radius: 4px; font-size: 12px; font-weight: 600;">Podłącz do istniejącej</button>
@@ -103,24 +118,27 @@ function startScreen() {
   return `
   <div style="flex: 1; display: flex; min-width: 0; background: #1d1d20;">
 
-    <div style="flex: 0 0 216px; border-right: 1px solid #26262b; padding: 22px 12px 22px 18px; overflow: auto;">
+    <div style="flex: 0 0 216px; border-right: 1px solid #26262b; padding: 22px 12px 22px 18px; overflow-y: scroll; overflow-x: hidden;">
       <div style="${head} padding: 0 6px 10px;">Dni zdjęciowe</div>
       ${dayRail(groups)}
     </div>
 
-    <div id="start-scroll" style="flex: 1; overflow: auto; padding: 22px 26px 28px; display: flex; flex-direction: column; gap: 20px; min-width: 0;">
-      <div style="display: flex; flex-direction: column; gap: 8px;">
-        <div style="display: flex; align-items: center; gap: 10px;">
+    <div id="start-scroll" style="flex: 1; overflow-y: scroll; overflow-x: hidden; padding: 22px 26px 28px; display: flex; flex-direction: column; gap: 20px; min-width: 0;">
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px 0 2px;">
           <div style="${head}">Nowa sesja zdjęciowa</div>
-          <button onclick="post({action: 'refresh_sessions'})" style="${btnGray} height: 22px; padding: 0 10px; font-size: 11px;">Odśwież listę</button>
+          <div style="display: flex; gap: 10px; width: 100%; max-width: 660px;">
+            <input id="new-session-input" placeholder="nazwa produktu…" style="flex: 1; min-width: 0; ${inp} height: 42px; font-size: 14.5px; padding: 0 14px; border-radius: 6px;" />
+            <button onclick="commitNewSession()" style="flex-shrink: 0; height: 42px; padding: 0 24px; ${btnBlue} border-radius: 6px; font-size: 13.5px; font-weight: 600;">Utwórz i otwórz</button>
+          </div>
+          <div style="${mono} font-size: 10.5px; color: #77777f; text-align: center;">nazwa = folder w photos/ i sesja w Automacie (dopasowanie do produktu po nazwie)</div>
           ${info}
+          ${pend}
         </div>
-        <div style="display: flex; gap: 8px; max-width: 560px;">
-          <input id="new-session-input" placeholder="nazwa produktu…" style="flex: 1; ${inp} font-size: 12px; height: 32px;" />
-          <button onclick="commitNewSession()" style="height: 32px; padding: 0 18px; ${btnBlue} border-radius: 5px; font-size: 12.5px; font-weight: 600;">Utwórz i otwórz</button>
+        <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px;">
+          <button onclick="post({action: 'refresh_sessions'})" style="${btnGray} height: 26px; padding: 0 10px; font-size: 11px;">Odśwież listę</button>
+          <input id="session-filter" placeholder="filtruj sesje…" value="${(S.sessionFilter || "").replace(/"/g, "&quot;")}" oninput="filterSessions(this.value)" style="${inp} width: 210px;" />
         </div>
-        <div style="${mono} font-size: 10.5px; color: #77777f;">nazwa = folder w photos/ i sesja w Automacie (dopasowanie do produktu po nazwie)</div>
-        ${pend}
       </div>
       ${feed}
     </div>

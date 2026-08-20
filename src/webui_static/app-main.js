@@ -32,12 +32,14 @@ function shell() {
   <div style="height: 34px; flex: 0 0 34px; background: #2a2a2d; border-bottom: 1px solid #17171a; display: flex; align-items: stretch; padding: 0 10px; gap: 2px;">
     <div onclick="go('sesja')" style="display: flex; align-items: center; padding: 0 18px; font-size: 12.5px; font-weight: 500; cursor: default; color: ${tab("sesja")}; border-bottom: 2px solid ${bar("sesja")};">Sesja</div>
     <div onclick="go('ustawienia')" style="display: flex; align-items: center; padding: 0 18px; font-size: 12.5px; font-weight: 500; cursor: default; color: ${tab("ustawienia")}; border-bottom: 2px solid ${bar("ustawienia")};">Ustawienia</div>
-    <div style="margin-left: auto; display: flex; align-items: center; gap: 14px; ${mono} font-size: 11px; color: #7e7e85;">
-      <div>sesja: <span style="color: #c9c9cf;" id="stat-name">—</span></div>
-      <div>zdjęć: <span style="color: #c9c9cf;" id="stat-count">0</span></div>
-      <div style="display: flex; align-items: center; gap: 7px; font-family: -apple-system, 'Helvetica Neue', Helvetica, sans-serif; font-size: 11.5px; color: #9d9da3;">
+    <div style="margin-left: auto; display: flex; align-items: center; gap: 16px; font-size: 11.5px; color: #9d9da3;">
+      <div style="display: flex; align-items: center; gap: 7px;">
         <div style="width: 7px; height: 7px; border-radius: 50%; background: ${conn ? "#34c759" : "#e05a5a"};"></div><span id="conn-label">${conn ? `Aparat połączony · ${st.fps} fps` : "Aparat rozłączony"}</span>
       </div>
+      ${st && st.robot && st.robot.enabled ? `
+      <div style="display: flex; align-items: center; gap: 7px;">
+        <div id="robot-dot" style="width: 7px; height: 7px; border-radius: 50%; background: ${st.robot.connected ? "#34c759" : "#e05a5a"};"></div><span id="robot-conn-label">${st.robot.connected ? "Robot połączony" : "Robot rozłączony"}</span>
+      </div>` : ""}
     </div>
   </div>
 
@@ -77,6 +79,15 @@ function renderShell(force) {
 function updateVolatile(st) {
   const conn = $("conn-label");
   if (conn) conn.textContent = st.connected ? `Aparat połączony · ${st.fps} fps` : "Aparat rozłączony";
+  // status robota w pasku zakładek — łatany po id jak aparat, bo połączenie
+  // ramienia zmienia się bez rebuildu shella (nie siedzi w jego kluczu)
+  const rl = $("robot-conn-label");
+  if (rl) {
+    const rc = !!(st.robot && st.robot.connected);
+    rl.textContent = rc ? "Robot połączony" : "Robot rozłączony";
+    const rd = $("robot-dot");
+    if (rd) rd.style.background = rc ? "#34c759" : "#e05a5a";
+  }
   const hist = $("hist-badge");
   if (hist) {
     hist.textContent = histLabel(st);
@@ -129,8 +140,6 @@ function updateVolatile(st) {
 
 function renderScreens(force) {
   const st = S.state;
-  $("stat-name").textContent = st.session.name || "—";
-  $("stat-count").textContent = st.session.count;
   updateVolatile(st);
 
   if (S.screen === "sesja" && !st.session.name) {
@@ -205,6 +214,9 @@ function go(screen) {
 // wlasnie tamtedy (pole "Utworz i otworz"), wiec sidebar nie ma juz inputa.
 function leaveSession() {
   S.pendingNew = null;
+  // filtr listy nie ma przezywac wejscia do sesji — po powrocie operator ma
+  // widziec pelna liste, a nie ogryzek po starym wyszukiwaniu
+  S.sessionFilter = "";
   post({ action: "clear_session" });
 }
 

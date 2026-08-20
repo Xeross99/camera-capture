@@ -158,11 +158,13 @@ function commitNewSession() {
     renderScreens(true);
     return;
   }
+  S.sessionFilter = "";
   post({ action: "set_session", name: v });
 }
 
 function pickSession(id, name) {
   S.pendingNew = null;
+  S.sessionFilter = "";
   post({ action: "set_session", name, session_id: id });
 }
 
@@ -170,6 +172,7 @@ function resolvePending(attach) {
   const p = S.pendingNew;
   S.pendingNew = null;
   if (!p) return;
+  S.sessionFilter = "";
   if (attach) post({ action: "set_session", name: p.match.name, session_id: p.match.id });
   else post({ action: "set_session", name: p.name });
 }

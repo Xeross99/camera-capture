@@ -84,8 +84,8 @@ function sesjaScreen() {
         </div>
 
         <div class="card">
-          <div class="card-title">Ekspozycja</div>
-          <div class="card-desc">Jasność zdjęcia, ustawiana zanim ono powstanie.</div>
+          <div class="card-title">Aparat</div>
+          <div class="card-desc">Opcje ustawiane przed zrobieniem zdjęcia — działają na to, co oddaje aparat.</div>
           <div class="card-rule"></div>
           <div class="opt-row" style="display: flex; align-items: flex-start; gap: 12px;">
             <div style="flex: 1; min-width: 0;">

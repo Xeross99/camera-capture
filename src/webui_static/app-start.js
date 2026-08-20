@@ -1,6 +1,6 @@
 "use strict";
 // Ekran startowy: lista sesji photo_studio z Automatu, układ jak Photo Studio
-// (lewa oś dni + kafelki grupowane nagłówkami dat) i pole „Utwórz i otwórz".
+// (lewa oś dni + kafelki grupowane nagłówkami dat) i pole „Rozpocznij sesję".
 
 /** Sesje z Automatu (posortowane od najnowszej) → grupy po dniu. */
 function groupByDay(sessions) {
@@ -129,7 +129,7 @@ function startScreen() {
           <div style="${head}">Nowa sesja zdjęciowa</div>
           <div style="display: flex; gap: 10px; width: 100%; max-width: 660px;">
             <input id="new-session-input" placeholder="nazwa produktu…" style="flex: 1; min-width: 0; ${inp} height: 42px; font-size: 14.5px; padding: 0 14px; border-radius: 6px;" />
-            <button onclick="commitNewSession()" style="flex-shrink: 0; height: 42px; padding: 0 24px; ${btnBlue} border-radius: 6px; font-size: 13.5px; font-weight: 600;">Utwórz i otwórz</button>
+            <button onclick="commitNewSession()" style="flex-shrink: 0; height: 42px; padding: 0 24px; ${btnBlue} border-radius: 6px; font-size: 13.5px; font-weight: 600;">Rozpocznij sesję</button>
           </div>
           <div style="${mono} font-size: 10.5px; color: #77777f; text-align: center;">nazwa = folder w photos/ i sesja w Automacie (dopasowanie do produktu po nazwie)</div>
           ${info}

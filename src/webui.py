@@ -1875,9 +1875,20 @@ class WebUI:
         tpath = tdir / path.name
         if not tpath.exists() or tpath.stat().st_mtime < path.stat().st_mtime:
             tdir.mkdir(exist_ok=True)
-            img = Image.open(path)
-            img.thumbnail((THUMB_SIZE, THUMB_SIZE))
-            img.save(tpath, "JPEG", quality=80)
+            # Uciety/nieczytelny JPEG (np. plik sprzed zapisu atomowego) nie moze
+            # wywracac requestu tracebackiem — 404, front sprobuje przy nastepnym
+            # odswiezeniu paska. Miniatura tez idzie przez tmp + rename, zeby
+            # przerwany zapis nie zostawil w cache uciętej miniatury ze swiezym
+            # mtime (taka nigdy nie zostalaby przeliczona).
+            ttmp = tdir / (path.name + ".part")
+            try:
+                img = Image.open(path)
+                img.thumbnail((THUMB_SIZE, THUMB_SIZE))
+                img.save(ttmp, "JPEG", quality=80)
+            except OSError:
+                ttmp.unlink(missing_ok=True)
+                return None
+            os.replace(ttmp, tpath)
         return tpath.read_bytes()
 
     # ---------- start ----------

@@ -127,6 +127,16 @@ function updateVolatile(st) {
   // zmienia się co poll (busy/rozłączenie), a rebuild ekranu zabiłby <img>
   // streamu MJPEG przy każdym przejeździe.
   robotReconcile();
+  // „Odśwież listę" na ekranie startowym — spinner do konca odswiezania;
+  // data-busy chroni animacje spinnera przed restartem przy kazdym pollu
+  const rb = $("refresh-btn");
+  if (rb) {
+    const on = refreshingNow(st) ? "1" : "";
+    if ((rb.dataset.busy || "") !== on) {
+      rb.dataset.busy = on;
+      rb.innerHTML = refreshBtnHtml();
+    }
+  }
   const up = $("update-progress");
   if (up) {
     const u = st.update || {};
@@ -165,12 +175,13 @@ function renderScreens(force) {
 
   if (S.screen === "sesja" && !st.session.name) {
     const key = JSON.stringify(["start", st.automat, S.pendingNew, S.dayFocus,
-                                S.sessionFilter]);
+                                S.sessionFilter, S.photosMin, S.photosMax, S.dateFilter]);
     if (force || key !== lastSesja) {
       // fokus i wartosc przezywaja rebuild w OBU polach ekranu startowego
       // (nazwa nowej sesji, filtr listy) — filtr rebuilduje na kazda litere
       const el = document.activeElement;
-      const editId = el && (el.id === "new-session-input" || el.id === "session-filter")
+      const editId = el && ["new-session-input", "session-filter",
+                            "photos-min", "photos-max"].includes(el.id)
         ? el.id : null;
       const keep = editId ? el.value : null;
       // fokus na polu nazwy tylko przy WEJŚCIU na ekran startowy (start
@@ -253,9 +264,9 @@ function go(screen) {
 // wlasnie tamtedy (pole "Utworz i otworz"), wiec sidebar nie ma juz inputa.
 function leaveSession() {
   S.pendingNew = null;
-  // filtr listy nie ma przezywac wejscia do sesji — po powrocie operator ma
+  // filtry listy nie maja przezywac wejscia do sesji — po powrocie operator ma
   // widziec pelna liste, a nie ogryzek po starym wyszukiwaniu
-  S.sessionFilter = "";
+  S.sessionFilter = S.photosMin = S.photosMax = S.dateFilter = "";
   S.pickIdx = -1;
   post({ action: "clear_session" });
 }

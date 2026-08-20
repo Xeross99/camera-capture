@@ -263,9 +263,9 @@ function reviewOverlay() {
   if (!shot) return "";
   const sess = encodeURIComponent(S.state.session.name);
   return `
-  <div id="review-wrap" style="position: fixed; inset: 0; z-index: 60; background: #131315; display: flex; flex-direction: column; transition: opacity .2s ease, transform .2s ease;">
+  <div id="review-wrap" style="position: fixed; inset: 0; z-index: 60; background: #131315; display: flex; flex-direction: column; transition: opacity .24s cubic-bezier(0.32, 0.72, 0, 1), transform .24s cubic-bezier(0.32, 0.72, 0, 1);">
     <div style="flex: 1; position: relative; min-height: 0;">
-      <img src="/img?s=${sess}&f=${encodeURIComponent(shot.file)}" style="position: absolute; inset: 14px; width: calc(100% - 28px); height: calc(100% - 28px); object-fit: contain; animation: reviewIn .26s cubic-bezier(0.8, -0.4, 0.5, 1);" />
+      <img src="/img?s=${sess}&f=${encodeURIComponent(shot.file)}" style="position: absolute; inset: 14px; width: calc(100% - 28px); height: calc(100% - 28px); object-fit: contain; animation: reviewIn .32s cubic-bezier(0.32, 0.72, 0, 1);" />
       <div id="review-label" style="position: absolute; left: 14px; bottom: 14px; background: rgba(0,0,0,.55); border: 1px solid #3c3c44; padding: 3px 8px; ${mono} font-size: 10.5px; color: #d0d0d6;">${reviewLabelText(shot)}</div>
       <div onclick="closeReview()" style="position: absolute; right: 14px; top: 14px; background: rgba(0,0,0,.55); border: 1px solid #3c3c44; padding: 3px 10px; ${mono} font-size: 10.5px; color: #d0d0d6;">ZAMKNIJ ESC</div>
     </div>
@@ -372,10 +372,10 @@ function showShot(next, dir) {
     // Skok musi byc WIDOCZNY, inaczej krzywa easingu nie ma czego pokazac —
     // przy poprzednich 6 px kazdy easing wygladal identycznie.
     img.style.transition = "none";
-    img.style.transform = `translateX(${dir * 56}px)`;
-    img.style.opacity = "0.45";
+    img.style.transform = `translateX(${dir * 32}px)`;
+    img.style.opacity = "0.35";
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      img.style.transition = "transform .5s cubic-bezier(0.16, 1, 0.3, 1), opacity .32s cubic-bezier(0.16, 1, 0.3, 1)";
+      img.style.transition = "transform .34s cubic-bezier(0.32, 0.72, 0, 1), opacity .24s cubic-bezier(0.32, 0.72, 0, 1)";
       img.style.transform = "none";
       img.style.opacity = "1";
     }));

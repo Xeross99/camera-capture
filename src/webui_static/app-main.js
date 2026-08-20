@@ -145,6 +145,20 @@ function updateVolatile(st) {
   }
 }
 
+// Jednorazowe przejscie przy zmianie widoku (lista sesji <-> sesja) — fade +
+// minimalny scale, w duchu macOS. TYLKO przy realnej zmianie widoku: rebuildy
+// w obrebie tego samego widoku (okladki, poll) i powroty po rebuildzie shella
+// (prev === "") nie animuja, bo mrugaloby przy reconnextach i zmianie zakladki.
+function playScreenIn() {
+  const el = $("screen-sesja");
+  if (!el) return;
+  el.style.animation = "none";
+  void el.offsetWidth;   // restart animacji przy kolejnych przejsciach
+  el.style.animation = "screenIn .38s cubic-bezier(0.32, 0.72, 0, 1)";
+}
+
+const isStartKey = k => typeof k === "string" && k.startsWith('["start"');
+
 function renderScreens(force) {
   const st = S.state;
   updateVolatile(st);
@@ -166,8 +180,10 @@ function renderScreens(force) {
       // okładki dolatują po kolei, każda = rebuild — bez tego lista skakałaby
       // na górę operatorowi w trakcie przeglądania
       const scroll = $("start-scroll") ? $("start-scroll").scrollTop : 0;
+      const fromSesja = lastSesja && !isStartKey(lastSesja);
       lastSesja = key;
       $("screen-sesja").innerHTML = startScreen();
+      if (fromSesja) playScreenIn();
       if ($("start-scroll")) $("start-scroll").scrollTop = scroll;
       if (keep !== null) {
         const i = $(editId);
@@ -197,10 +213,12 @@ function renderScreens(force) {
       return;
     }
     {
+      const fromStart = isStartKey(lastSesja);
       lastSesja = key;
       lastStrip = stripSig(st);
       S.lastLogLen = logSig(st);
       $("screen-sesja").innerHTML = sesjaScreen();
+      if (fromStart) playScreenIn();
       // najnowsze zdjecie na wierzchu; w podgladzie zamiast tego dojezdzamy do
       // zaznaczonego kafelka, zeby bylo widac, ktore zdjecie sie oglada
       ["filmstrip", "review-strip"].forEach(id => {

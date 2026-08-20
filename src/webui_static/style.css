@@ -57,7 +57,10 @@ button:active:not(:disabled) { transform: scale(.96); filter: brightness(1.25); 
 .card-rule { margin-top: 12px; border-top: 1px solid #2c2c31; }
 .opt-row { padding: 11px 0; border-bottom: 1px solid #2c2c31; }
 .opt-row:last-child { border-bottom: none; }
-@keyframes reviewIn { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes reviewIn { from { opacity: 0; transform: scale(.985); } to { opacity: 1; transform: none; } }
+/* Przejscie lista sesji <-> sesja: delikatny fade + wzrost z .985, easing jak
+   w macOS (szybki start, miekkie domkniecie). Jednorazowe, na mount widoku. */
+@keyframes screenIn { from { opacity: 0; transform: scale(.985); } to { opacity: 1; transform: none; } }
 @keyframes livePulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
 /* Suwak wysokości robota (app-robot.js). Tor maluje JS gradientem (robotTrack)
    — WebKit nie wypełnia przebytej części sam, accent-color barwi tylko kciuk. */

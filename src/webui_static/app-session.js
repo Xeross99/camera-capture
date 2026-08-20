@@ -297,6 +297,52 @@ function navShot(dir) {
 
 // Klik w kafelek paska: w podgladzie podmienia zdjecie W MIEJSCU (pelny rebuild
 // zabilby overlay i powtorzyl animacje wejscia), poza podgladem otwiera podglad.
+// ---------- potwierdzenie wyjscia z sesji (ESC na ekranie Sesji) ----------
+// Modal zyje BEZPOSREDNIO w <body>, poza keyowanym renderem ekranu — rebuildy
+// sesji (dolatujace zdjecia, poll) nie maja go czym zniszczyc ani odtworzyc.
+
+function showLeaveConfirm() {
+  if ($("leave-confirm")) return;
+  S.leaveConfirm = true;
+  const el = document.createElement("div");
+  el.id = "leave-confirm";
+  // modal zyje w <body>, POZA #app — font aplikacji trzeba ustawic samemu,
+  // inaczej karta dziedziczy domyslny font przegladarki
+  el.style.cssText = "position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.45); opacity: 0; transition: opacity .18s ease; font-family: -apple-system, 'Helvetica Neue', Helvetica, sans-serif;";
+  el.innerHTML = `
+    <div id="leave-card" style="background: #232326; border: 1px solid #3c3c44; border-radius: 10px; padding: 22px 26px; max-width: 400px; display: flex; flex-direction: column; gap: 14px; transform: scale(.94) translateY(8px); transition: transform .22s cubic-bezier(0.16, 1, 0.3, 1); box-shadow: 0 18px 50px rgba(0,0,0,.5);">
+      <div style="font-size: 15px; font-weight: 600; color: #eaeaee;">Wrócić do menu głównego?</div>
+      <div style="font-size: 12.5px; line-height: 1.5; color: #9d9da3;">Sesja zostanie zamknięta. Zdjęcia są zapisane — wrócisz do listy sesji.</div>
+      <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 2px;">
+        <button onclick="hideLeaveConfirm()" style="${btnGray} height: 30px;">Zostań <span style="${mono} font-size: 10px; opacity: .7;">ESC</span></button>
+        <button onclick="confirmLeave()" style="height: 30px; padding: 0 14px; ${btnBlue} border-radius: 4px; font-size: 12px; font-weight: 600;">Wróć do menu <span style="${mono} font-size: 10px; opacity: .8;">ENTER</span></button>
+      </div>
+    </div>`;
+  // klik w przyciemnione tlo = anuluj (ten sam gest co ESC)
+  el.addEventListener("click", ev => { if (ev.target === el) hideLeaveConfirm(); });
+  document.body.appendChild(el);
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    el.style.opacity = "1";
+    const card = $("leave-card");
+    if (card) card.style.transform = "none";
+  }));
+}
+
+function hideLeaveConfirm() {
+  S.leaveConfirm = false;
+  const el = $("leave-confirm");
+  if (!el) return;
+  el.style.opacity = "0";
+  const card = $("leave-card");
+  if (card) card.style.transform = "scale(.94) translateY(8px)";
+  setTimeout(() => el.remove(), 200);
+}
+
+function confirmLeave() {
+  hideLeaveConfirm();
+  leaveSession();
+}
+
 function openShot(i) {
   if (!S.reviewMode) {
     S.selShot = i;

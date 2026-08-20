@@ -238,6 +238,7 @@ function leaveSession() {
   // filtr listy nie ma przezywac wejscia do sesji — po powrocie operator ma
   // widziec pelna liste, a nie ogryzek po starym wyszukiwaniu
   S.sessionFilter = "";
+  S.pickIdx = -1;
   post({ action: "clear_session" });
 }
 
@@ -301,6 +302,16 @@ document.addEventListener("keydown", e => {
     if (e.key === "Enter" && document.activeElement.id === "new-session-input") {
       commitNewSession();
     }
+    // pole filtra: ↑/↓ przesuwaja zaznaczenie kafelka bez wychodzenia
+    // z inputa (←/→ zostaja dla kursora w tekscie), ENTER wchodzi w sesje
+    if (document.activeElement.id === "session-filter") {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        movePick(e.key === "ArrowDown" ? 1 : -1);
+      } else if (e.key === "Enter") {
+        openPicked();
+      }
+    }
     return;
   }
   // Skróty robota (⌘1/⌘2 ujęcie) — tylko na ekranie Sesji z otwartą sesją,
@@ -324,6 +335,15 @@ document.addEventListener("keydown", e => {
   // przy otwartym potwierdzeniu wyjscia reaguja TYLKO ESC (anuluj)
   // i ENTER (potwierdz) — reszta klawiszy nie ma strzelac zza modala
   if (S.leaveConfirm && !["Escape", "Enter"].includes(e.key)) return;
+  // ekran startowy bez fokusa w polu: strzalki chodza po kafelkach sesji,
+  // ENTER wchodzi w zaznaczona — skroty sesyjne (shoot itd.) nie dotycza
+  // tego widoku
+  if (S.screen === "sesja" && S.state && !S.state.session.name && !S.leaveConfirm) {
+    if (["ArrowLeft", "ArrowUp"].includes(e.key)) { e.preventDefault(); movePick(-1); }
+    else if (["ArrowRight", "ArrowDown"].includes(e.key)) { e.preventDefault(); movePick(1); }
+    else if (e.key === "Enter") { e.preventDefault(); openPicked(); }
+    return;
+  }
   switch (e.key) {
     case "Enter":
       if (S.leaveConfirm) confirmLeave();

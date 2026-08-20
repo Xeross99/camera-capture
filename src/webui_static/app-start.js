@@ -19,7 +19,7 @@ function groupByDay(sessions) {
   return groups;
 }
 
-function sessionCard(s) {
+function sessionCard(s, idx) {
   // okładkę robi backend (photos/.covers) — dopóki jej nie ma, kafelek pokazuje
   // szkielet i wypełni się sam przy kolejnym poll-u
   const cover = s.cover
@@ -29,9 +29,10 @@ function sessionCard(s) {
     ? `<span style="color: #9fe0a8;">${s.product.name}</span>`
     : `<span style="color: #8f8f97;">Sesja luźna</span>`;
   const d = new Date(s.created_at);
+  // podswietlenie (hover i zaznaczenie klawiatura) idzie JEDNYM stanem:
+  // S.pickIdx + paintPick() — dwie osobne mechaniki gryzly sie o ramke
   return `
-  <div onclick='pickSession(${s.id}, ${JSON.stringify(s.name)})' style="background: #232326; border: 1px solid #2f2f35; border-radius: 8px; overflow: hidden; cursor: default; display: flex; flex-direction: column;"
-       onmouseover="this.style.borderColor='${ACCENT}'" onmouseout="this.style.borderColor='#2f2f35'">
+  <div data-pick="${idx}" onclick='pickSession(${s.id}, ${JSON.stringify(s.name)})' onmouseover="pickTo(${idx})" style="background: #232326; border: 1px solid ${idx === S.pickIdx ? ACCENT : "#2f2f35"}; border-radius: 8px; overflow: hidden; cursor: default; display: flex; flex-direction: column;">
     <div style="position: relative; aspect-ratio: 1 / 1; background: #fff;">${cover}</div>
     <div style="padding: 9px 12px 11px; display: flex; flex-direction: column; gap: 3px; min-width: 0;">
       <div style="font-size: 13px; font-weight: 600; color: #e8e8ea; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${s.name}</div>
@@ -73,9 +74,44 @@ function focusDay(key) {
 /** Filtr listy sesji (male pole po prawej): nazwa sesji albo nazwa produktu. */
 function filterSessions(v) {
   S.sessionFilter = v;
+  // wyszukiwanie od razu zaznacza pierwszy wynik — ENTER wchodzi w niego
+  // bez odrywania rak od klawiatury; puste pole = brak zaznaczenia
+  S.pickIdx = v.trim() ? 0 : -1;
   // rebuild jest tani (lista to dziesiatki kafelkow), a fokus i wartosc pola
   // przezywaja go przez mechanizm w renderScreens (jak new-session-input)
   renderScreens(true);
+}
+
+// ---------- zaznaczenie kafelka (strzalki / hover / ENTER) ----------
+// pickIdx to indeks w S.pickList (widoczne sesje w kolejnosci wyswietlania);
+// zmiana zaznaczenia tylko przemalowuje ramki (paintPick), zero rebuildow.
+
+function paintPick() {
+  document.querySelectorAll("[data-pick]").forEach(el => {
+    el.style.borderColor = +el.dataset.pick === S.pickIdx ? ACCENT : "#2f2f35";
+  });
+}
+
+function pickTo(i) {
+  if (i === S.pickIdx) return;
+  S.pickIdx = i;
+  paintPick();
+}
+
+function movePick(d) {
+  const n = (S.pickList || []).length;
+  if (!n) return;
+  S.pickIdx = S.pickIdx < 0
+    ? (d > 0 ? 0 : n - 1)
+    : Math.max(0, Math.min(n - 1, S.pickIdx + d));
+  paintPick();
+  const el = document.querySelector(`[data-pick="${S.pickIdx}"]`);
+  if (el) el.scrollIntoView({ block: "nearest" });
+}
+
+function openPicked() {
+  const s = (S.pickList || [])[S.pickIdx];
+  if (s) pickSession(s.id, s.name);
 }
 
 function startScreen() {
@@ -84,7 +120,10 @@ function startScreen() {
   const visible = !q ? a.sessions : a.sessions.filter(s =>
     (s.name || "").toLowerCase().includes(q)
     || ((s.product && s.product.name) || "").toLowerCase().includes(q));
+  S.pickList = visible;
+  if (S.pickIdx >= visible.length) S.pickIdx = visible.length ? 0 : -1;
   const groups = groupByDay(visible);
+  let pi = 0;
   const feed = groups.map(g => `
     <div id="day-${g.key}" style="display: flex; flex-direction: column; gap: 12px; scroll-margin-top: 6px;">
       <div style="display: flex; align-items: baseline; gap: 8px;">
@@ -92,7 +131,7 @@ function startScreen() {
         <div style="${mono} font-size: 10.5px; color: #77777f;">· ${plSessions(g.items.length)}</div>
       </div>
       <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; align-content: start;">
-        ${g.items.map(sessionCard).join("")}
+        ${g.items.map(s => sessionCard(s, pi++)).join("")}
       </div>
     </div>`).join("")
     || (q && a.sessions.length

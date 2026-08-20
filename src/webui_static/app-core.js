@@ -21,6 +21,8 @@ const S = {           // stan klienta
   dayFocus: "",       // podświetlony dzień na osi ekranu startowego
   sessionFilter: "",  // filtr listy sesji na ekranie startowym (nazwa/produkt)
   leaveConfirm: false,// modal „wrócić do menu głównego?" (ESC na ekranie Sesji)
+  pickIdx: -1,        // zaznaczony kafelek na ekranie startowym (nawigacja
+  pickList: null,     // strzałkami/hover, ENTER wchodzi); lista = widoczne sesje
   // ustawienie ujęcia ramienia — optymistyczne echo stanu z backendu
   // (state.robot); prawdą jest webui.py, patrz robotReconcile w app-robot.js
   robot: { pose: "top90", echoAt: 0 },

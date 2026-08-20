@@ -94,7 +94,7 @@ function sesjaScreen() {
             </div>
             <div style="flex-shrink: 0; display: flex; align-items: center; background: #17171a; border: 1px solid #3d3d44; border-radius: 5px; overflow: hidden; ${mono} font-size: 12px;">
               <span id="ev-minus" class="ev-btn${cam.ev && !S.evPending ? "" : " off"}" onclick="stepEv(-1)" style="padding: 5px 11px; color: #d0d0d6; opacity: ${cam.ev && !S.evPending ? 1 : .35};">−</span>
-              <span id="ev-value" style="min-width: 44px; padding: 5px 0; text-align: center; color: #eaeaee; border-left: 1px solid #3d3d44; border-right: 1px solid #3d3d44;">${S.evPending ? '<span class="spinner"></span>' : cam.ev ? evLabel(cam.ev.current) : "—"}</span>
+              <span id="ev-value" style="position: relative; min-width: 44px; padding: 5px 0; line-height: 14px; text-align: center; color: #eaeaee; border-left: 1px solid #3d3d44; border-right: 1px solid #3d3d44;">${evValueHtml(cam.ev)}</span>
               <span id="ev-plus" class="ev-btn${cam.ev && !S.evPending ? "" : " off"}" onclick="stepEv(1)" style="padding: 5px 11px; color: #d0d0d6; opacity: ${cam.ev && !S.evPending ? 1 : .35};">+</span>
             </div>
           </div>
@@ -175,13 +175,23 @@ function stepEv(dir) {
   else hit = [...opts].reverse().find(o => o.n < cur - eps) || opts[0];
   const next = hit && hit.c;
   if (!next || next === ev.current) return;
-  // Zamiast optymistycznego echa: spinner i zablokowane przyciski, aż aparat
-  // ODDA nową wartość (poll EV co 2 s). Źródłem prawdy jest aparat — gdy
-  // odrzuci wartość, timeout w evReconcile() przywraca kontrolkę ze starą
-  // (powód ląduje w logu z _do_set_ev).
-  S.evPending = { target: hit.n, since: performance.now() };
+  // Docelowa wartość jest widoczna od razu (przygaszona, ze spinnerem NAD nią),
+  // a przyciski są zablokowane, aż aparat ODDA nową wartość (poll EV co 2 s).
+  // Źródłem prawdy jest aparat — gdy odrzuci wartość, timeout w evReconcile()
+  // przywraca kontrolkę ze starą (powód ląduje w logu z _do_set_ev).
+  S.evPending = { target: hit.n, label: next, since: performance.now() };
   evReconcile(S.state);
   post({ action: "set_ev", value: next });
+}
+
+// Zawartość celi z wartością EV. W trakcie czekania na aparat: docelowa
+// wartość przygaszona + spinner POZYCJONOWANY ABSOLUTNIE nad nią (`.ev-spin`)
+// — spinner w miejscu tekstu był wyższy niż linijka tekstu i cała karta
+// podskakiwała o 2 px na czas ładowania.
+function evValueHtml(ev) {
+  if (S.evPending)
+    return `<span style="opacity: .3;">${evLabel(S.evPending.label)}</span><span class="spinner ev-spin"></span>`;
+  return ev ? evLabel(ev.current) : "—";
 }
 
 // Łatka kontrolki EV wołana z updateVolatile() przy każdym pollu (kontrolka
@@ -205,7 +215,7 @@ function evReconcile(st) {
     if (done || expired) S.evPending = null;
   }
   if (S.evPending) {
-    if (!val.querySelector(".spinner")) val.innerHTML = '<span class="spinner"></span>';
+    if (!val.querySelector(".spinner")) val.innerHTML = evValueHtml(ev);
   } else {
     val.textContent = ev ? evLabel(ev.current) : "—";
   }

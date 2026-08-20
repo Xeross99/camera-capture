@@ -14,7 +14,7 @@ const S = {           // stan klienta
   selShot: -1,
   grid: 0, reviewMode: false, lastLogLen: -1,
   pendingNew: null,   // {name, match} — wpisana nazwa koliduje z istniejącą sesją Automatu
-  evPending: null,    // {target, since} — klik w −/+ czeka, aż aparat ODDA nową wartość
+  evPending: null,    // {target, label, since} — klik w −/+ czeka, aż aparat ODDA nową wartość
                       // (spinner w kontrolce EV; czyści evReconcile w app-session.js)
   updateDismissed: "",// wersja, dla której operator kliknął „Później"
   checkStartedAt: 0,  // klik w „Sprawdź aktualizacje" — minimalny czas spinnera

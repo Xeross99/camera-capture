@@ -181,7 +181,12 @@ class WebUI:
         self._camera_thread: threading.Thread | None = None
         self._worker_thread: threading.Thread | None = None
         self._robot_thread: threading.Thread | None = None
+        self._sync_thread: threading.Thread | None = None
         self.lock = threading.RLock()
+        # .review.json ma DWOCH pisarzy (worker i watek sync) — kazdy cykl
+        # load -> mutacja -> save idzie pod tym zamkiem. RLock, bo _prune_local
+        # (pod zamkiem) wola _discard_files, ktore kiedys moze go tez chciec.
+        self._review_lock = threading.RLock()
 
         self.name: str | None = sanitize_name(name) if name else None
         self.base_output = base_output
@@ -291,6 +296,10 @@ class WebUI:
         self._frame: bytes | None = None
         self._cam_q: queue.Queue[tuple] = queue.Queue()
         self._jobs: queue.Queue = queue.Queue()
+        # zlecenia synchronizacji sesji (name, session_id) — WLASNY watek,
+        # zeby pobieranie dziesiatek zdjec nie blokowalo kolejki workera
+        # (obrobka strzalu czekalaby za siecia); None = sygnal konca
+        self._sync_q: queue.Queue = queue.Queue()
         self.robot = RoArmSession()
         self.robot.should_stop = self._stop.is_set
         self.robot.log = self._log
@@ -857,7 +866,10 @@ class WebUI:
             return
         self._log(*describe_opened_session(u, name))
         self.uploader = u
-        self._jobs.put(("sync_session", name))
+        # sync w OSOBNYM watku (nie job workera): pobieranie zdjec starej
+        # sesji nie moze wstrzymywac obrobki strzalow oddanych zaraz po wejsciu
+        if u.session_id is not None:
+            self._sync_q.put((name, int(u.session_id)))
 
     def _job_upload_off(self) -> None:
         self.uploader = None
@@ -932,25 +944,55 @@ class WebUI:
         stale = [f for f in finals(outdir) if f not in remote]
         if not stale:
             return 0
-        review = load_review(outdir)
-        self._discard_files(session, stale, review)
-        save_review(outdir, review)
+        with self._review_lock:
+            review = load_review(outdir)
+            self._discard_files(session, stale, review)
+            save_review(outdir, review)
         self._log(f"Zdjęcia nieobecne w Automacie: {len(stale)} {_trash_note()}.",
                   "warn")
         return len(stale)
 
-    def _job_sync_session(self, name: str) -> None:
+    def _sync_loop(self) -> None:
+        """Petla watku sync — wlasciciel pobierania zdjec sesji z Automatu.
+
+        Osobny watek (nie worker), bo sync starej sesji to potrafi byc
+        kilkadziesiat MB po sieci — jako job workera wstrzymywalby obrobke
+        zdjec strzelonych zaraz po wejsciu w sesje. Zalegle zlecenia sa
+        zwijane: liczy sie ostatnio otwarta sesja."""
+        while not self._stop.is_set():
+            item = self._sync_q.get()
+            if item is None:
+                return
+            while True:
+                try:
+                    nxt = self._sync_q.get_nowait()
+                except queue.Empty:
+                    break
+                if nxt is None:
+                    return
+                item = nxt
+            name, sid = item
+            try:
+                self._sync_session(name, sid)
+            except Exception as e:
+                # pojedyncza wtopa nie klade watku — nastepne wejscie w sesje
+                # ma miec dzialajacy sync
+                self._log(f"✗ Synchronizacja sesji {name}: {e}", "err")
+
+    def _sync_session(self, name: str, sid: int) -> None:
         """Dwustronne zrownanie filmstripa z sesja w Automacie — Automat jest
         zrodlem prawdy: czego nie ma lokalnie, sciagamy (operator wszedl w
         sesje na maszynie, ktora jej nie strzelala — inny komputer, wyczyszczone
         photos/), czego nie ma juz zdalnie, kasujemy lokalnie (odsial zdjecia w
         UI Automatu — pliki ida do kosza, nie od razu na zawsze). Raw nigdy nie
-        szedl po sieci, wiec wraca sam finalny JPEG; nie odtwarzamy raw/."""
-        u = self.uploader
-        if u is None or u.session_id is None:
-            return
+        szedl po sieci, wiec wraca sam finalny JPEG; nie odtwarzamy raw/.
+
+        Biega w watku sync z WLASNYM uploaderem (id sesji jawnie w kazdym
+        wywolaniu) — worker w tym samym czasie robi announce/upload swoim
+        obiektem, a requests.Session nie jest bezpieczne dla dwoch watkow."""
+        u = self._make_uploader()
         try:
-            photos = u.session_photos()
+            photos = u.session_photos(session_id=sid)
         except AutomatNotFound:
             # calej sesji nie ma juz po drugiej stronie — folder do kosza
             self._trash_session(name)
@@ -983,14 +1025,19 @@ class WebUI:
         self._log(f"↓ Pobieram {len(missing)} {_photos_word(len(missing))} "
                   "sesji z Automatu…")
         outdir.mkdir(parents=True, exist_ok=True)
-        review = load_review(outdir)
         ok = 0
         with self.lock:
             self.syncing = [f for _, f in missing]
         try:
             for pid, fname in missing:
+                with self.lock:
+                    left = self.name != name
+                if left:
+                    # operator wyszedl z sesji (albo wszedl w inna) — nie ma
+                    # po co dociagac reszty, nastepne wejscie zrobi swoj sync
+                    break
                 try:
-                    u.download_photo(pid, outdir / fname)
+                    u.download_photo(pid, outdir / fname, session_id=sid)
                 except Exception as e:
                     self._log(f"✗ Pobranie {fname} z Automatu nie wyszło: {e}", "err")
                     continue
@@ -1000,14 +1047,18 @@ class WebUI:
                     with self.lock:
                         if fname in self.syncing:
                             self.syncing.remove(fname)
-                review["automat"][fname] = pid
-                if fname not in review["uploaded"]:
-                    review["uploaded"].append(fname)
+                # recenzja aktualizowana per plik pod _review_lock — worker
+                # rownolegle pisze swoje wpisy po strzale/uploadzie
+                with self._review_lock:
+                    review = load_review(outdir)
+                    review["automat"][fname] = pid
+                    if fname not in review["uploaded"]:
+                        review["uploaded"].append(fname)
+                    save_review(outdir, review)
                 ok += 1
         finally:
             with self.lock:
                 self.syncing = []
-        save_review(outdir, review)
         if ok:
             self._log(f"↓ Pobrano {ok} {_photos_word(ok)} z Automatu do {name}.", "ok")
 
@@ -1061,20 +1112,21 @@ class WebUI:
             else:
                 raw.unlink()
 
-        review = load_review(outdir)
         bits = []
         if job["add_logo"]:
             bits.append("logo")
         if job["auto_zoom"]:
             bits.append("zoom")
         bits.append(f"{OUTPUT_SIZE}×{OUTPUT_SIZE}")
-        review["meta"][out.name] = " · ".join(bits)
-        n = len([f for f in finals(outdir) if f not in review["rejected"]])
-        if announced_id:
-            # nawet gdy upload pozniej padnie, placeholder w Automacie istnieje —
-            # delete musi go umiec sprzatnac
-            review["automat"][out.name] = announced_id
-        save_review(outdir, review)
+        with self._review_lock:
+            review = load_review(outdir)
+            review["meta"][out.name] = " · ".join(bits)
+            n = len([f for f in finals(outdir) if f not in review["rejected"]])
+            if announced_id:
+                # nawet gdy upload pozniej padnie, placeholder w Automacie
+                # istnieje — delete musi go umiec sprzatnac
+                review["automat"][out.name] = announced_id
+            save_review(outdir, review)
         self._log(f"Zapisano {out.name} (#{n}) · " + " · ".join(steps), "ok")
         # Upload jako OSOBNY job na koncu kolejki: przy strzelaniu seriami
         # obrobka kolejnego zdjecia nie czeka na siec (~2-3 s na strzale).
@@ -1100,12 +1152,13 @@ class WebUI:
         except Exception as e:
             self._log(f"✗ Upload do Automatu nie wyszedł: {e}", "err")
             return
-        review = load_review(job["outdir"])
-        review["uploaded"].append(out.name)
-        pid = resp.get("id") or job["photo_id"]
-        if pid:
-            review["automat"][out.name] = int(pid)
-        save_review(job["outdir"], review)
+        with self._review_lock:
+            review = load_review(job["outdir"])
+            review["uploaded"].append(out.name)
+            pid = resp.get("id") or job["photo_id"]
+            if pid:
+                review["automat"][out.name] = int(pid)
+            save_review(job["outdir"], review)
         self._log(f"↑ {out.name} w Automacie ({time.perf_counter() - t0:.1f} s).", "ok")
 
     def _job_delete(self, session: str, files: list[str]) -> None:
@@ -1113,9 +1166,10 @@ class WebUI:
         (odwracalne przez TRASH_RETENTION_DAYS dni), w Automacie od razu —
         rekordu po drugiej stronie i tak nie umiemy przywrócić."""
         outdir = self.base_output / session
-        review = load_review(outdir)
-        automat_ids = list(self._discard_files(session, files, review).items())
-        save_review(outdir, review)
+        with self._review_lock:
+            review = load_review(outdir)
+            automat_ids = list(self._discard_files(session, files, review).items())
+            save_review(outdir, review)
         self._log(f"{len(files)} {_photos_word(len(files))} z {session} "
                   f"{_trash_note()}.", "warn")
         if not automat_ids:
@@ -1385,7 +1439,6 @@ class WebUI:
         "upload_photo": _job_upload_photo,
         "open_session": _job_open_session,
         "upload_off": _job_upload_off,
-        "sync_session": _job_sync_session,
         "list_sessions": _job_list_sessions,
         "session_covers": _job_session_covers,
         "delete": _job_delete,
@@ -1625,17 +1678,18 @@ class WebUI:
 
     def _review_mark(self, session: str, filename: str, verdict: str) -> None:
         outdir = self.base_output / session
-        review = load_review(outdir)
-        was_rejected = filename in review["rejected"]
-        if verdict == "rejected":
-            if not was_rejected:
-                review["rejected"].append(filename)
-                self._log(f"Zdjęcie {filename} odrzucone.", "warn")
-        else:
-            if was_rejected:
-                review["rejected"].remove(filename)
-                self._log(f"Zdjęcie {filename} zaakceptowane.", "ok")
-        save_review(outdir, review)
+        with self._review_lock:
+            review = load_review(outdir)
+            was_rejected = filename in review["rejected"]
+            if verdict == "rejected":
+                if not was_rejected:
+                    review["rejected"].append(filename)
+                    self._log(f"Zdjęcie {filename} odrzucone.", "warn")
+            else:
+                if was_rejected:
+                    review["rejected"].remove(filename)
+                    self._log(f"Zdjęcie {filename} zaakceptowane.", "ok")
+            save_review(outdir, review)
 
     def _set_app_setting(self, key: str, value) -> None:
         with self.lock:
@@ -1917,8 +1971,11 @@ class WebUI:
                                                daemon=True)
         self._worker_thread = threading.Thread(target=self._guarded(self._worker_loop, "obróbki"),
                                                daemon=True)
+        self._sync_thread = threading.Thread(
+            target=self._guarded(self._sync_loop, "synchronizacji"), daemon=True)
         self._camera_thread.start()
         self._worker_thread.start()
+        self._sync_thread.start()
         if ROBOT_ENABLED:
             self._robot_thread = threading.Thread(target=self._guarded(self._robot_loop, "ramienia"),
                                                   daemon=True)
@@ -1954,10 +2011,15 @@ class WebUI:
         if terminate is not None:
             terminate()
         self._jobs.put(None)
+        self._sync_q.put(None)
         if self._camera_thread is not None:
             self._camera_thread.join(timeout=4.0)
         if self._worker_thread is not None:
             self._worker_thread.join(timeout=3.0)
+        if self._sync_thread is not None:
+            # w najgorszym razie w locie jest jedno pobranie — krotki join,
+            # pliki i tak pisza sie przez .part + rename
+            self._sync_thread.join(timeout=2.0)
         if self._robot_thread is not None:
             # watek zwalnia port szeregowy (niezamkniety = „resource busy" przy
             # nastepnym starcie); czekanie na koniec przejazdu przerywa

@@ -4,6 +4,7 @@ okladki ekranu startowego (photos/.covers) i mapowanie zdalnych nazw na
 lokalne pliki. Czysta warstwa plikowa — zero HTTP i zero stanu WebUI."""
 
 import json
+import os
 import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -38,8 +39,13 @@ def load_review(session_dir: Path) -> dict:
 
 
 def save_review(session_dir: Path, data: dict) -> None:
+    # tmp + rename: review pisza dwa watki (worker i sync), a czyta m.in.
+    # poll stanu — load w trakcie golego write_text widzialby uciety JSON,
+    # load_review polknalby ValueError i oddal PUSTA recenzje
     session_dir.mkdir(parents=True, exist_ok=True)
-    review_path(session_dir).write_text(json.dumps(data, indent=1))
+    tmp = review_path(session_dir).with_suffix(".json.part")
+    tmp.write_text(json.dumps(data, indent=1))
+    os.replace(tmp, review_path(session_dir))
 
 
 def finals(session_dir: Path) -> list[str]:

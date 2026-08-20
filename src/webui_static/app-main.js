@@ -34,11 +34,11 @@ function shell() {
     <div onclick="go('ustawienia')" style="display: flex; align-items: center; padding: 0 18px; font-size: 12.5px; font-weight: 500; cursor: default; color: ${tab("ustawienia")}; border-bottom: 2px solid ${bar("ustawienia")};">Ustawienia</div>
     <div style="margin-left: auto; display: flex; align-items: center; gap: 16px; font-size: 11.5px; color: #9d9da3;">
       <div style="display: flex; align-items: center; gap: 7px;">
-        <div style="width: 7px; height: 7px; border-radius: 50%; background: ${conn ? "#34c759" : "#e05a5a"};"></div><span id="conn-label">${conn ? `Aparat połączony · ${st.fps} fps` : "Aparat rozłączony"}</span>
+        <span style="display: flex; color: ${conn ? "#34c759" : "#e05a5a"};">${CAM_ICON}</span><span id="conn-label">${conn ? `Aparat połączony · ${st.fps} fps` : "Aparat rozłączony"}</span>
       </div>
       ${st && st.robot && st.robot.enabled ? `
       <div style="display: flex; align-items: center; gap: 7px;">
-        <div id="robot-dot" style="width: 7px; height: 7px; border-radius: 50%; background: ${st.robot.connected ? "#34c759" : "#e05a5a"};"></div><span id="robot-conn-label">${st.robot.connected ? "Robot połączony" : "Robot rozłączony"}</span>
+        <span id="robot-dot" style="display: flex; color: ${st.robot.connected ? "#34c759" : "#e05a5a"};">${ROBOT_ICON}</span><span id="robot-conn-label">${st.robot.connected ? "Robot połączony" : "Robot rozłączony"}</span>
       </div>` : ""}
     </div>
   </div>
@@ -93,7 +93,7 @@ function updateVolatile(st) {
     const rc = !!(st.robot && st.robot.connected);
     rl.textContent = rc ? "Robot połączony" : "Robot rozłączony";
     const rd = $("robot-dot");
-    if (rd) rd.style.background = rc ? "#34c759" : "#e05a5a";
+    if (rd) rd.style.color = rc ? "#34c759" : "#e05a5a";
   }
   const hist = $("hist-badge");
   if (hist) {

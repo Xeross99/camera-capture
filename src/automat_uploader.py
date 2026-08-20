@@ -92,9 +92,14 @@ class AutomatUploader:
 
     def list_sessions(self) -> list[dict]:
         """GET wszystkich sesji photo_studio: [{id, name, product, created_at,
-        photos_count}, ...] — dla ekranu startowego aplikacji."""
+        photos_count}, ...] — dla ekranu startowego aplikacji.
+
+        limit=1000: bez parametru Rails oddaje tylko 20 najnowszych i starsze
+        dni w ogóle nie docierały na ekran startowy. 1000 to też sufit
+        serwera (INDEX_LIMIT_MAX w trix-automat)."""
         r = self.http.get(
             f"{self.base}/api/photo_studio/sessions",
+            params={"limit": 1000},
             timeout=self.timeout_open,
         )
         if not r.ok:

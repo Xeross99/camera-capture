@@ -173,12 +173,16 @@ function renderScreens(force) {
         const i = $(editId);
         if (i) {
           i.value = keep;
-          i.focus();
+          // preventScroll: pole nazwy jest auto-fokusowane przy wejsciu i
+          // fokus na nim ZOSTAJE, wiec kazdy rebuild (dolatujaca okladka)
+          // odtwarzal fokus, a gole focus() dowozi element do widoku —
+          // przewinieta lista wracala na gore mimo odtworzenia scrollTop
+          i.focus({ preventScroll: true });
           i.setSelectionRange(keep.length, keep.length);
         }
       } else if (entering) {
         const i = $("new-session-input");
-        if (i) i.focus();
+        if (i) i.focus({ preventScroll: true });
       }
     }
   } else if (S.screen === "sesja") {

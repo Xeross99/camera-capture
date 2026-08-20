@@ -18,8 +18,12 @@ const S = {           // stan klienta
                       // (spinner w kontrolce EV; czyści evReconcile w app-session.js)
   updateDismissed: "",// wersja, dla której operator kliknął „Później"
   checkStartedAt: 0,  // klik w „Sprawdź aktualizacje" — minimalny czas spinnera
+  refreshStartedAt: 0,// klik w „Odśwież listę" — minimalny czas spinnera
   dayFocus: "",       // podświetlony dzień na osi ekranu startowego
   sessionFilter: "",  // filtr listy sesji na ekranie startowym (nazwa/produkt)
+  photosMin: "",      // filtr ilości zdjęć: minimum (puste = brak)
+  photosMax: "",      // filtr ilości zdjęć: maksimum (puste = brak)
+  dateFilter: "",     // filtr daty: "" / "today" / "7" / "30" (dni wstecz)
   leaveConfirm: false,// modal „wrócić do menu głównego?" (ESC na ekranie Sesji)
   pickIdx: -1,        // zaznaczony kafelek na ekranie startowym (nawigacja
   pickList: null,     // strzałkami/hover, ENTER wchodzi); lista = widoczne sesje

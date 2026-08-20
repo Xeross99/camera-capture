@@ -260,6 +260,7 @@ class WebUI:
         self.syncing: list[str] = []  # nazwy zdjec pobieranych wlasnie z Automatu (skeletony w filmstripie)
         self.automat_sessions: list[dict] = []
         self.automat_sessions_error = ""
+        self.sessions_refreshing = False  # trwa odswiezanie listy (spinner w UI)
         self.attach_to: dict | None = None  # {"id", "name"} — podłączenie do istniejącej sesji Automatu
         # aktualizacje (GitHub Releases — patrz src/updater.py)
         self.update_info: dict | None = None   # {"version", "url", "notes", "page", "size"}
@@ -1193,6 +1194,7 @@ class WebUI:
         except Exception as e:
             with self.lock:
                 self.automat_sessions_error = str(e)
+                self.sessions_refreshing = False
             self._log(f"✗ Lista sesji z Automatu: {e}", "err")
             return
         for s in sessions:
@@ -1200,6 +1202,7 @@ class WebUI:
         with self.lock:
             self.automat_sessions = sessions
             self.automat_sessions_error = ""
+            self.sessions_refreshing = False
         self._jobs.put(("session_covers",))
 
     def _local_cover_source(self, name: str) -> Path | None:
@@ -1484,6 +1487,10 @@ class WebUI:
 
     def _act_refresh_sessions(self, data: dict) -> None:
         if self.automat_token:
+            # flaga JUZ TERAZ (nie w jobie) — łapie ją pierwszy poll nawet gdy
+            # worker jest zajęty, jak update.checking w _act_check_update
+            with self.lock:
+                self.sessions_refreshing = True
             self._jobs.put(("list_sessions",))
 
     def _act_set_ev(self, data: dict) -> dict | None:
@@ -1879,6 +1886,7 @@ class WebUI:
                     "sessions": self.automat_sessions,
                     "error": self.automat_sessions_error,
                     "hasToken": bool(self.automat_token),
+                    "refreshing": self.sessions_refreshing,
                 },
                 "settings": {
                     "photosDir": str(self.base_output),

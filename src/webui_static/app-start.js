@@ -75,8 +75,8 @@ function focusDay(key) {
 function filterSessions(v) {
   S.sessionFilter = v;
   // wyszukiwanie od razu zaznacza pierwszy wynik — ENTER wchodzi w niego
-  // bez odrywania rak od klawiatury; puste pole = brak zaznaczenia
-  S.pickIdx = v.trim() ? 0 : -1;
+  // bez odrywania rak od klawiatury; zadnego aktywnego filtra = brak zaznaczenia
+  S.pickIdx = anyFilter() ? 0 : -1;
   // rebuild jest tani (lista to dziesiatki kafelkow), a fokus i wartosc pola
   // przezywaja go przez mechanizm w renderScreens (jak new-session-input)
   renderScreens(true);
@@ -114,12 +114,79 @@ function openPicked() {
   if (s) pickSession(s.id, s.name);
 }
 
+// ---------- „Odśwież listę" ze spinnerem ----------
+// Flaga z backendu (state.automat.refreshing, ustawiana JUZ w akcji) +
+// minimum ~650 ms po kliknieciu po stronie frontu — odpowiedz potrafi wrocic
+// szybciej niz poll 500 ms i spinner mignalby bez sladu (wzor: checkStartedAt
+// przy „Sprawdz aktualizacje"). Przycisk lata updateVolatile() po data-busy.
+
+function refreshingNow(st) {
+  // refreshStartedAt = 0 znaczy „nigdy nie kliknieto" — bez tego guardu
+  // performance.now() < 650 na starcie strony zapiekalo spinner w pierwszym
+  // renderze na stale (data-busy z szablonu nie zmienial sie juz nigdy)
+  return !!(st && st.automat && st.automat.refreshing)
+    || (S.refreshStartedAt > 0 && performance.now() - S.refreshStartedAt < 650);
+}
+
+function refreshBtnHtml() {
+  return refreshingNow(S.state)
+    ? '<span class="spinner"></span>Odświeżam…'
+    : "Odśwież listę";
+}
+
+function refreshSessions() {
+  if (refreshingNow(S.state)) return;
+  S.refreshStartedAt = performance.now();
+  post({ action: "refresh_sessions" });
+  const b = $("refresh-btn");
+  if (b) {
+    b.dataset.busy = "1";
+    b.innerHTML = refreshBtnHtml();
+  }
+}
+
+// Czy ktorykolwiek filtr listy jest aktywny (tekst / min-max zdjec / data).
+const anyFilter = () => !!((S.sessionFilter || "").trim()
+  || (S.photosMin || "").trim() || (S.photosMax || "").trim() || S.dateFilter);
+
+/** Filtry poza polem tekstowym (min/max zdjec, data) — zmiana = rebuild. */
+function setStartFilter(key, v) {
+  if (key === "min") S.photosMin = v;
+  else if (key === "max") S.photosMax = v;
+  else S.dateFilter = v;
+  S.pickIdx = anyFilter() ? 0 : -1;
+  renderScreens(true);
+}
+
+function matchesFilters(s, q, now) {
+  if (q && !((s.name || "").toLowerCase().includes(q)
+             || ((s.product && s.product.name) || "").toLowerCase().includes(q)))
+    return false;
+  const mn = parseInt(S.photosMin, 10);
+  if (!isNaN(mn) && s.photos_count < mn) return false;
+  const mx = parseInt(S.photosMax, 10);
+  if (!isNaN(mx) && s.photos_count > mx) return false;
+  if (S.dateFilter) {
+    const d = new Date(s.created_at);
+    if (isNaN(d)) return false;
+    if (S.dateFilter === "today") {
+      const t = new Date();
+      if (d.getFullYear() !== t.getFullYear() || d.getMonth() !== t.getMonth()
+          || d.getDate() !== t.getDate()) return false;
+    } else if (now - d.getTime() > +S.dateFilter * 86400000) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function startScreen() {
   const a = S.state.automat;
   const q = (S.sessionFilter || "").trim().toLowerCase();
-  const visible = !q ? a.sessions : a.sessions.filter(s =>
-    (s.name || "").toLowerCase().includes(q)
-    || ((s.product && s.product.name) || "").toLowerCase().includes(q));
+  const now = Date.now();
+  const visible = anyFilter()
+    ? a.sessions.filter(s => matchesFilters(s, q, now))
+    : a.sessions;
   S.pickList = visible;
   if (S.pickIdx >= visible.length) S.pickIdx = visible.length ? 0 : -1;
   const groups = groupByDay(visible);
@@ -134,8 +201,8 @@ function startScreen() {
         ${g.items.map(s => sessionCard(s, pi++)).join("")}
       </div>
     </div>`).join("")
-    || (q && a.sessions.length
-        ? `<div style="${mono} font-size: 11px; color: #7e7e85;">Żadna sesja nie pasuje do „${S.sessionFilter.trim()}".</div>`
+    || (anyFilter() && a.sessions.length
+        ? `<div style="${mono} font-size: 11px; color: #7e7e85;">Żadna sesja nie pasuje do filtrów.</div>`
         : "");
   const info = !a.hasToken
     ? `<div style="${mono} font-size: 11px; color: #e0b96a;">Brak tokenu Automatu (.env / Ustawienia) — sesje z Automatu niedostępne, możesz utworzyć lokalną.</div>`
@@ -168,14 +235,22 @@ function startScreen() {
           <div style="${head}">Nowa sesja zdjęciowa</div>
           <div style="display: flex; gap: 10px; width: 100%; max-width: 660px;">
             <input id="new-session-input" placeholder="nazwa produktu…" style="flex: 1; min-width: 0; ${inp} height: 42px; font-size: 14.5px; padding: 0 14px; border-radius: 6px;" />
-            <button onclick="commitNewSession()" style="flex-shrink: 0; height: 42px; padding: 0 24px; ${btnBlue} border-radius: 6px; font-size: 13.5px; font-weight: 600;">Rozpocznij sesję</button>
+            <button onclick="commitNewSession()" tabindex="-1" style="flex-shrink: 0; height: 42px; padding: 0 24px; ${btnBlue} border-radius: 6px; font-size: 13.5px; font-weight: 600;">Rozpocznij sesję</button>
           </div>
           <div style="${mono} font-size: 10.5px; color: #77777f; text-align: center;">nazwa = folder w photos/ i sesja w Automacie (dopasowanie do produktu po nazwie)</div>
           ${info}
           ${pend}
         </div>
         <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px;">
-          <button onclick="post({action: 'refresh_sessions'})" style="${btnGray} height: 26px; padding: 0 10px; font-size: 11px;">Odśwież listę</button>
+          <button id="refresh-btn" onclick="refreshSessions()" tabindex="-1" data-busy="${refreshingNow(S.state) ? "1" : ""}" style="${btnGray} height: 26px; padding: 0 10px; font-size: 11px; display: inline-flex; align-items: center; gap: 6px;">${refreshBtnHtml()}</button>
+          <input id="photos-min" inputmode="numeric" placeholder="min zdjęć" value="${S.photosMin}" oninput="setStartFilter('min', this.value)" tabindex="-1" style="${inp} width: 72px;" />
+          <input id="photos-max" inputmode="numeric" placeholder="max zdjęć" value="${S.photosMax}" oninput="setStartFilter('max', this.value)" tabindex="-1" style="${inp} width: 72px;" />
+          <select onchange="setStartFilter('date', this.value)" tabindex="-1" style="${sel} height: 26px;">
+            <option value="">data: wszystkie</option>
+            <option value="today" ${S.dateFilter === "today" ? "selected" : ""}>dzisiaj</option>
+            <option value="7" ${S.dateFilter === "7" ? "selected" : ""}>ostatnie 7 dni</option>
+            <option value="30" ${S.dateFilter === "30" ? "selected" : ""}>ostatnie 30 dni</option>
+          </select>
           <input id="session-filter" placeholder="filtruj sesje…" value="${(S.sessionFilter || "").replace(/"/g, "&quot;")}" oninput="filterSessions(this.value)" style="${inp} width: 210px;" />
         </div>
       </div>
@@ -197,13 +272,13 @@ function commitNewSession() {
     renderScreens(true);
     return;
   }
-  S.sessionFilter = "";
+  S.sessionFilter = S.photosMin = S.photosMax = S.dateFilter = "";
   post({ action: "set_session", name: v });
 }
 
 function pickSession(id, name) {
   S.pendingNew = null;
-  S.sessionFilter = "";
+  S.sessionFilter = S.photosMin = S.photosMax = S.dateFilter = "";
   post({ action: "set_session", name, session_id: id });
 }
 
@@ -211,7 +286,7 @@ function resolvePending(attach) {
   const p = S.pendingNew;
   S.pendingNew = null;
   if (!p) return;
-  S.sessionFilter = "";
+  S.sessionFilter = S.photosMin = S.photosMax = S.dateFilter = "";
   if (attach) post({ action: "set_session", name: p.match.name, session_id: p.match.id });
   else post({ action: "set_session", name: p.name });
 }

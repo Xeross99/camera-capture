@@ -70,6 +70,10 @@ button:active:not(:disabled) { transform: scale(.96); filter: brightness(1.25); 
 .ev-btn { user-select: none; transition: transform .08s ease, filter .08s ease, opacity .15s ease; }
 .ev-btn:active { transform: scale(.88); filter: brightness(1.4); }
 .ev-btn.off { pointer-events: none; }
+/* Spinner NAD wartością EV w trakcie czekania na potwierdzenie z aparatu:
+   absolutny, więc nie wpływa na wysokość celi (inline'owy podnosił wiersz
+   o 2 px i całe menu drgało). */
+.ev-spin { position: absolute; inset: 0; margin: auto; }
 /* Kręciołek przy operacjach sieciowych (sprawdzanie/pobieranie aktualizacji). */
 .spinner { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .2); border-top-color: #4a8cff; animation: spin .7s linear infinite; vertical-align: -1px; }
 @keyframes spin { to { transform: rotate(360deg); } }

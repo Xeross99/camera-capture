@@ -1,3 +1,4 @@
+import os
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -110,6 +111,12 @@ def process(
     if add_logo:
         image = overlay_logo(image, logo_path, logo_position)
 
+    # Zapis atomowy (tmp + rename): filmstrip w GUI widzi plik w katalogu od
+    # pierwszego bajtu i prosi o miniature, zanim zapis sie skonczy — PIL
+    # konczylo wtedy na "image file is truncated". Pod docelowa nazwa plik
+    # pojawia sie dopiero CALY (jak przy download_photo w automat_uploader).
     out_path = output_dir / f"{stem}.jpg"
-    image.save(out_path, "JPEG", quality=JPEG_QUALITY)
+    tmp_path = output_dir / f"{stem}.jpg.part"
+    image.save(tmp_path, "JPEG", quality=JPEG_QUALITY)
+    os.replace(tmp_path, out_path)
     return out_path

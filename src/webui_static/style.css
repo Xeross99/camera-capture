@@ -48,7 +48,7 @@ button:active:not(:disabled) { transform: scale(.96); filter: brightness(1.25); 
 @keyframes skeleton { from { background-position: 160% 0; } to { background-position: -60% 0; } }
 .crumb { color: #77777f; text-decoration: none; }
 .crumb:hover { color: #b4b4bb; }
-/* Sekcje sidebara. Bez własnego tła i ramki „Ekspozycja" i „Postprocessing"
+/* Sekcje sidebara. Bez własnego tła i ramki „Aparat" i „Postprocessing"
    zlewały się w jedną drabinę nagłówków i hairline'ów — ten sam rytm, żadnej
    granicy. Ostatni wiersz w karcie gubi kreskę (inline stylem się nie da). */
 .card { background: #1f1f22; border: 1px solid #2c2c31; border-radius: 8px; padding: 13px 14px 2px; }

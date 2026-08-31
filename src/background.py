@@ -73,6 +73,12 @@ def _gpu_providers() -> list[str] | None:
     return None
 
 
+def gpu_active() -> bool:
+    """Czy inferencja rembg pojdzie na GPU: przelacznik ON i onnxruntime ma
+    provider GPU. Od tego zalezy, czy rozgrzewka ma sens (patrz warmup_clean_bg)."""
+    return _gpu_providers() is not None
+
+
 @lru_cache(maxsize=1)
 def _session(model_name: str):
     from rembg import new_session
@@ -98,7 +104,11 @@ def warmup_clean_bg() -> None:
     u operatora zmierzone ~110 s, ktore bez rozgrzewki obrywalo PIERWSZE
     zdjecie sesji. Wolane z workera przy starcie aplikacji, gdy operator
     dopiero wybiera sesje. Rozmiar wejscia bez znaczenia: rembg i tak skaluje
-    kazda klatke do stalego wejscia modelu, wiec mala kompiluje to samo."""
+    kazda klatke do stalego wejscia modelu, wiec mala kompiluje to samo.
+
+    Wolana TYLKO gdy gpu_active(): na CPU pierwsza inferencja to ulamek
+    sekundy na zaladowanie modelu, a rozgrzewka z overlayem „przygotowuje
+    silnik" wygladalaby jak przygotowywanie GPU, ktorego operator wylaczyl."""
     from rembg import remove
 
     img = Image.new("RGBA", (64, 64), (255, 255, 255, 255))

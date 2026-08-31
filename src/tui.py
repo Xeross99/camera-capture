@@ -474,9 +474,10 @@ class CaptureTUI:
         koszty (model; na GPU kompilacje pod karte), ktore inaczej obrywaloby
         pierwsze zdjecie."""
         try:
-            from .background import warmup_clean_bg
+            from .background import gpu_active, warmup_clean_bg
 
-            warmup_clean_bg()
+            if gpu_active():  # na CPU nie ma czego kompilowac
+                warmup_clean_bg()
         except Exception:
             pass
 

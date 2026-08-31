@@ -1420,12 +1420,13 @@ class WebUI:
         ~110 s u operatora). Bez tego joba cały ten rachunek obrywało PIERWSZE
         zdjęcie sesji i wyglądało to na zawieszoną obróbkę. Worker robi joby
         po kolei, więc strzał oddany w trakcie rozgrzewki po prostu poczeka —
-        tyle samo, ile czekałby bez niej."""
+        tyle samo, ile czekałby bez niej. Kolejkowana TYLKO gdy inferencja
+        idzie na GPU (`_queue_warmup`) — na CPU nie ma czego kompilować."""
         from .background import warmup_clean_bg  # import lazy jak w process()
 
-        self._log("Przygotowuję silnik czyszczenia tła — przy pierwszym "
-                  "uruchomieniu na GPU może potrwać do ~2 min; zdjęcia zrobione "
-                  "w tym czasie poczekają w kolejce.")
+        self._log("Przygotowuję silnik czyszczenia tła na GPU — przy pierwszym "
+                  "uruchomieniu kompilacja shaderów może potrwać do ~2 min; "
+                  "zdjęcia zrobione w tym czasie poczekają w kolejce.")
         t0 = time.perf_counter()
         try:
             with contextlib.redirect_stdout(_LogPipe(self)):
@@ -1436,6 +1437,23 @@ class WebUI:
             with self.lock:
                 self.warmup_done = True
         self._log(f"Silnik czyszczenia tła gotowy ({time.perf_counter() - t0:.0f} s).", "ok")
+
+    def _queue_warmup(self) -> bool:
+        """Rozgrzewka tylko wtedy, gdy rembg faktycznie pójdzie na GPU
+        (przełącznik ON i onnxruntime ma provider GPU). W trybie CPU — a na
+        macOS zawsze — nie ma shaderów do kompilacji, więc ani job, ani
+        overlay „Przygotowuję silnik…" na podglądzie nie mają racji bytu."""
+        from . import background
+
+        if not background.gpu_active():
+            with self.lock:
+                self.warmup_done = True
+            return False
+        with self.lock:
+            self.warmup_done = False
+            self.warmup_t0 = time.monotonic()
+        self._jobs.put(("warmup",))
+        return True
 
     _JOBS = {
         "warmup": _job_warmup,
@@ -1734,13 +1752,14 @@ class WebUI:
                 from . import background
                 background.set_gpu(on)
                 if on:
-                    self._log("Obróbka tła: GPU (DirectML) — kompiluję shadery "
-                              "od razu, to potrafi trwać ~2 min.", "ok")
                     # kompilacja MA sie odbyc teraz, z overlayem na podgladzie —
                     # a nie dopiero przy pierwszym zdjeciu, udajac zawieszona obrobke
-                    self.warmup_done = False
-                    self.warmup_t0 = time.monotonic()
-                    self._jobs.put(("warmup",))
+                    if self._queue_warmup():
+                        self._log("Obróbka tła: GPU (DirectML) — kompiluję shadery "
+                                  "od razu, to potrafi trwać ~2 min.", "ok")
+                    else:
+                        self._log("Obróbka tła: GPU włączone, ale onnxruntime nie ma "
+                                  "providera GPU — liczę dalej na CPU.", "warn")
                 else:
                     self._log("Obróbka tła: CPU — działa od następnego zdjęcia.", "ok")
 
@@ -1995,8 +2014,9 @@ class WebUI:
         self._jobs.put(("check_update",))
         self._jobs.put(("purge_trash",))
         # ostatnia w kolejce startowej — szybkie joby wyżej nie mogą czekać
-        # dziesiątek sekund za kompilacją shaderów DirectML
-        self._jobs.put(("warmup",))
+        # dziesiątek sekund za kompilacją shaderów DirectML; w trybie CPU
+        # nie jest kolejkowana wcale
+        self._queue_warmup()
 
         handler = type("BoundHandler", (Handler,), {"ui": self})
         self._server = ThreadingHTTPServer(("127.0.0.1", self.port), handler)

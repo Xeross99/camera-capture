@@ -130,6 +130,27 @@ def _filter_small_blobs(arr: np.ndarray, min_fraction: float = 0.03) -> np.ndarr
     return np.isin(labels, keep_ids)
 
 
+def _drop_rembg_rejected_blobs(
+    binary: np.ndarray, rembg_alpha: np.ndarray, min_alpha: int = 32
+) -> np.ndarray:
+    """Maska luminancyjna (light bg) lapie kazdy ciemniejszy punkt stolu —
+    pylek, wlos, slad po pisaku. Taki smiec 2 m od produktu (w skali kadru)
+    rozdmuchuje bbox i auto-center centruje okno na pustym stole zamiast
+    na produkcie. rembg smiecia nie widzi (alpha ~0), produkt widzi zawsze
+    (255), wiec zostawiamy tylko bloby, w ktorych szczyt alfy rembg
+    przekracza `min_alpha`. Brak kryterium rozmiaru — smiec wiekszy niz
+    kilka procent produktu tez odpada. Gdy rembg nie zaakceptowal ZADNEGO
+    bloba, nie ruszamy nic (lepszy pelny kadr niz pusty bbox)."""
+    labels, n = ndimage.label(binary)
+    if n <= 1:
+        return binary
+    peaks = np.asarray(ndimage.maximum(rembg_alpha, labels, index=np.arange(1, n + 1)))
+    keep_ids = np.where(peaks >= min_alpha)[0] + 1
+    if len(keep_ids) == 0 or len(keep_ids) == n:
+        return binary
+    return np.isin(labels, keep_ids)
+
+
 def _mask_bbox(mask: Image.Image) -> Bbox | None:
     arr = np.array(mask) > 128
     if not arr.any():
@@ -250,11 +271,11 @@ def _product_alpha(
     typowy bialy stol):
     - light bg: alpha liczona WYLACZNIE z luminancji obrazu (cubic falloff
       w [bg_lum*0.75, bg_lum*0.98]), binary to prog luminancji — rembg
-      sluzy tu tylko do pomiaru bg_lum. Blob-filter i fill-holes byly na
-      tej sciezce liczone i WYRZUCANE (nic z nich nie trafialo ani do alfy,
-      ani do binary) — a to one, na pelnych 24 MP, zjadaly wiekszosc etapu
-      "maska" z linii pomiaru. Wyciete bez zmiany wyniku (potwierdzone
-      bit w bit na obu sciezkach).
+      sluzy tu do pomiaru bg_lum i do ODSIANIA blobow, ktorych w ogole nie
+      widzi (`_drop_rembg_rejected_blobs`: pylek na stole ma luminancje
+      ponizej progu, wiec wchodzil do binary i rozdmuchiwal bbox — produkt
+      ladowal przy krawedzi kadru). Dawny rozmiarowy blob-filter i
+      fill-holes byly tu liczone i WYRZUCANE, wiec zostaly wyciete.
     - dark bg: alpha z rembg (region po _filter_small_blobs — ten dziala
       i zostaje) z kontrastem [FLOOR, CEILING] -> [0, 255]; fill-holes
       takze tu byl martwy (maska dziur zerowana przed uzyciem).
@@ -272,7 +293,13 @@ def _product_alpha(
         span = max(hi - lo, 1.0)
         t = np.clip((hi - img_lum.astype(np.float32)) / span, 0.0, 1.0)
         alpha_arr = t * t * t * 255.0
-        binary = Image.fromarray(((img_lum < bg_lum * 0.90).astype(np.uint8) * 255))
+        binary_arr = img_lum < bg_lum * 0.90
+        kept = _drop_rembg_rejected_blobs(binary_arr, np.array(rembg_alpha))
+        if kept is not binary_arr:
+            # Smiec wypada tez z alfy — inaczej pylek obok produktu zostalby
+            # namalowany na bialym canvasie jako szara kropka.
+            alpha_arr = np.where(binary_arr & ~kept, 0.0, alpha_arr)
+        binary = Image.fromarray((kept.astype(np.uint8) * 255))
     else:
         filtered = _filter_small_blobs(np.array(_binarize(rembg_alpha)) > 0)
         alpha_arr = np.where(filtered, np.array(rembg_alpha), 0).astype(np.float32)

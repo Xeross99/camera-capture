@@ -1442,10 +1442,26 @@ class WebUI:
         """Rozgrzewka tylko wtedy, gdy rembg faktycznie pójdzie na GPU
         (przełącznik ON i onnxruntime ma provider GPU). W trybie CPU — a na
         macOS zawsze — nie ma shaderów do kompilacji, więc ani job, ani
-        overlay „Przygotowuję silnik…" na podglądzie nie mają racji bytu."""
-        from . import background
+        overlay „Przygotowuję silnik…" na podglądzie nie mają racji bytu.
 
-        if not background.gpu_active():
+        Wołane z głównego wątku w `start()`, więc import `background` (numpy,
+        scipy — natywne DLL-e) NIE MOŻE wywrócić startu: na maszynie, gdzie
+        Windows (Smart App Control / WDAC) blokuje niepodpisany `.pyd`
+        scipy'ego, aplikacja ma wstać i powiedzieć w logu, co jest nie tak —
+        martwy proces z dialogiem PyInstallera nie mówi operatorowi nic."""
+        try:
+            from . import background
+            active = background.gpu_active()
+        except Exception as e:  # noqa: BLE001 — DLL load failed, brak paczki itp.
+            self._log(f"✗ Silnik czyszczenia tła nie ładuje się ({e}) — obróbka "
+                      "zdjęć nie zadziała. Jeśli komunikat mówi o zasadach "
+                      "kontroli aplikacji: Windows blokuje niepodpisaną "
+                      "bibliotekę z paczki — wyłącz Inteligentną kontrolę "
+                      "aplikacji (Zabezpieczenia Windows → Kontrola aplikacji "
+                      "i przeglądarki) albo poproś administratora o wyjątek "
+                      "dla katalogu aplikacji.", "err")
+            active = False
+        if not active:
             with self.lock:
                 self.warmup_done = True
             return False

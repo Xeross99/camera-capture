@@ -12,6 +12,36 @@ from the camera with a framing grid, exposure compensation and
 post-processing toggles in the sidebar, and the session filmstrip
 filling up as you shoot.
 
+## The desktop app
+
+The app talks to the camera directly through the manufacturer's own
+SDK — Canon EDSDK on Windows, `libgphoto2` (which speaks Canon's PTP
+protocol) on macOS/Linux. No vendor GUI in the middle, no capture folder
+being watched: the shutter is fired and the file is pulled over USB by
+the app itself, and the live view is streamed from the sensor into the
+window.
+
+![All sessions, grouped by shooting day](assets/readme/app_sessions.jpg)
+
+The start screen lists every photo session from Automat, grouped by
+day, with the newest shot of each session as its cover. Start typing to
+filter, `ENTER` opens the highlighted session — or type a new product
+name to start a fresh one.
+
+![Inside a session: live view with grid, sidebar, filmstrip](assets/readme/app_session.jpg)
+
+Inside a session: live view with the 6×4 framing grid, a "background OK"
+badge measured from the frame edges, exposure compensation next to it,
+and the post-processing toggles in the sidebar. Photos already in the
+session (including ones shot on another machine and pulled back from
+Automat) show up in the filmstrip at the bottom.
+
+![Reviewing photos taken in the session](assets/readme/app_review.jpg)
+
+`SPACE` opens the review mode: the processed 3000×3000 result full
+window, `←`/`→` to move between shots, `BACKSPACE` to delete one (it goes
+to a local trash and is removed from Automat), `ESC` back to live view.
+
 ## Why I built this
 
 Every new product in an online shop needs catalog photos: clean white
@@ -46,7 +76,8 @@ what you want on a product page.
 One pass, full sensor resolution, one final resize. No SaaS calls,
 nothing leaves the machine.
 
-1. `gphoto2` triggers the shutter and pulls a 6000×4000 JPEG over USB.
+1. The camera SDK (`libgphoto2` on macOS/Linux, Canon EDSDK on Windows)
+   triggers the shutter and pulls a 6000×4000 JPEG over USB.
 2. `rembg` (model `u2netp`) runs locally on CPU and produces an alpha
    mask.
 3. Small mask blobs (dust, paper edges) are filtered out by area.
@@ -112,7 +143,9 @@ attached to that record.
 
 ## Stack
 
-Python 3.12 + `python-gphoto2`, `rembg`, `onnxruntime`, `Pillow`,
+Python 3.12 + `python-gphoto2` (macOS/Linux) or Canon EDSDK via
+`ctypes` (Windows) for camera control, `pywebview` for the desktop
+window, `rembg`, `onnxruntime`, `Pillow`,
 `numpy`, `scipy.ndimage`, `rich`, plus `requests` and `python-dotenv`
 for the optional Automat upload. No GPU, no cloud inference, runs
 offline (the upload is the only network hop, and it's local-LAN by

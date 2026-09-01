@@ -21,6 +21,19 @@ being watched: the shutter is fired and the file is pulled over USB by
 the app itself, and the live view is streamed from the sensor into the
 window.
 
+The window itself is [pywebview](https://pywebview.flowrl.com/): a
+native OS window (WKWebView on macOS, WebView2 on Windows) with the
+system title bar, hosting a plain HTML/CSS/vanilla-JS frontend — no
+Qt, no Tk, no Electron, no JS framework, and no network dependencies
+(even the font is bundled). Behind it runs a small stdlib HTTP server
+bound to `127.0.0.1` on a random port with a per-launch token, which
+serves the static files, streams the live view as MJPEG, and exposes a
+state poll plus an action endpoint the UI calls. That split keeps the
+camera, image pipeline and robot arm in Python threads, while the UI is
+just a web page — `python3 gui.py --browser` opens the very same UI in
+a regular browser, which is also the fallback when pywebview isn't
+installed.
+
 ![All sessions, grouped by shooting day](assets/readme/app_sessions.jpg)
 
 The start screen lists every photo session from the shop's back office,
@@ -150,7 +163,8 @@ attached to that record.
 
 Python 3.12 + `python-gphoto2` (macOS/Linux) or Canon EDSDK via
 `ctypes` (Windows) for camera control, `pywebview` for the desktop
-window, `rembg`, `onnxruntime`, `Pillow`,
+window (native webview + a stdlib HTTP backend, frontend in plain
+HTML/JS), `rembg`, `onnxruntime`, `Pillow`,
 `numpy`, `scipy.ndimage`, `rich`, plus `requests` and `python-dotenv`
 for the optional catalog upload. No GPU, no cloud inference, runs
 offline (the upload is the only network hop, and it's local-LAN by

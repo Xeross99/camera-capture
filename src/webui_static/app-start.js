@@ -24,20 +24,20 @@ function sessionCard(s, idx) {
   // szkielet i wypełni się sam przy kolejnym poll-u
   const cover = s.cover
     ? `<img src="/img?cover=${s.id}" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;" />`
-    : `<div class="${s.photos_count ? "skeleton" : ""}" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; ${mono} font-size: 10px; color: #9a9aa2;">${s.photos_count ? "" : "bez zdjęć"}</div>`;
+    : `<div class="${s.photos_count ? "skeleton" : ""}" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; ${mono} font-size: 10px; color: var(--fg-3);">${s.photos_count ? "" : "bez zdjęć"}</div>`;
   const sub = s.product
-    ? `<span style="color: #9fe0a8;">${s.product.name}</span>`
-    : `<span style="color: #8f8f97;">Sesja luźna</span>`;
+    ? `<span style="color: var(--ok);">${s.product.name}</span>`
+    : `<span style="color: var(--fg-4);">Sesja luźna</span>`;
   const d = new Date(s.created_at);
   // podswietlenie (hover i zaznaczenie klawiatura) idzie JEDNYM stanem:
   // S.pickIdx + paintPick() — dwie osobne mechaniki gryzly sie o ramke
   return `
-  <div data-pick="${idx}" onclick='pickSession(${s.id}, ${JSON.stringify(s.name)})' onmouseover="pickTo(${idx})" style="background: #232326; border: 1px solid ${idx === S.pickIdx ? ACCENT : "#2f2f35"}; border-radius: 8px; overflow: hidden; cursor: default; display: flex; flex-direction: column;">
+  <div data-pick="${idx}" onclick='pickSession(${s.id}, ${JSON.stringify(s.name)})' onmouseover="pickTo(${idx})" style="background: var(--bg-2); border: 1px solid ${idx === S.pickIdx ? ACCENT : "var(--line-2)"}; border-radius: 8px; overflow: hidden; cursor: default; display: flex; flex-direction: column;">
     <div style="position: relative; aspect-ratio: 1 / 1; background: #fff;">${cover}</div>
     <div style="padding: 9px 12px 11px; display: flex; flex-direction: column; gap: 3px; min-width: 0;">
-      <div style="font-size: 13px; font-weight: 600; color: #e8e8ea; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${s.name}</div>
+      <div style="font-size: 13px; font-weight: 600; color: var(--fg-0); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${s.name}</div>
       <div style="font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${sub}</div>
-      <div style="${mono} font-size: 10.5px; color: #6c6c74;">${plPhotos(s.photos_count)}${isNaN(d) ? "" : ` · ${hhmm(d)}`}</div>
+      <div style="${mono} font-size: 10.5px; color: var(--fg-5);">${plPhotos(s.photos_count)}${isNaN(d) ? "" : ` · ${hhmm(d)}`}</div>
     </div>
   </div>`;
 }
@@ -47,16 +47,16 @@ function dayRail(groups) {
     const on = S.dayFocus === g.key;
     return `
     <div onclick="focusDay('${g.key}')" style="display: flex; align-items: center; gap: 10px; padding: 5px 6px; border-radius: 6px; position: relative; cursor: default;">
-      <div style="width: 22px; height: 22px; flex: 0 0 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; z-index: 1; color: ${on ? "#fff" : "#8f8f97"}; background: ${on ? ACCENT : "#2b2b31"}; border: 1px solid ${on ? ACCENT : "#3a3a42"};">${CAM_ICON}</div>
+      <div style="width: 22px; height: 22px; flex: 0 0 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; z-index: 1; color: ${on ? "#fff" : "var(--fg-4)"}; background: ${on ? ACCENT : "var(--bg-4)"}; border: 1px solid ${on ? ACCENT : "var(--line-3)"};">${CAM_ICON}</div>
       <div style="min-width: 0;">
-        <div style="font-size: 12px; color: ${on ? ACCENT : "#c9c9cf"}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${isNaN(g.date) ? "bez daty" : plDay(g.date)}</div>
-        <div style="${mono} font-size: 10px; color: #77777f; white-space: nowrap;">${plSessions(g.items.length)}</div>
+        <div style="font-size: 12px; color: ${on ? ACCENT : "var(--fg-1)"}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${isNaN(g.date) ? "bez daty" : plDay(g.date)}</div>
+        <div style="${mono} font-size: 10px; color: var(--fg-4); white-space: nowrap;">${plSessions(g.items.length)}</div>
       </div>
     </div>`;
   }).join("");
   return `
   <div style="position: relative; display: flex; flex-direction: column; gap: 2px;">
-    <div style="position: absolute; left: 17px; top: 16px; bottom: 16px; width: 1px; background: #2f2f35;"></div>
+    <div style="position: absolute; left: 17px; top: 16px; bottom: 16px; width: 1px; background: var(--line-2);"></div>
     ${items}
   </div>`;
 }
@@ -88,7 +88,7 @@ function filterSessions(v) {
 
 function paintPick() {
   document.querySelectorAll("[data-pick]").forEach(el => {
-    el.style.borderColor = +el.dataset.pick === S.pickIdx ? ACCENT : "#2f2f35";
+    el.style.borderColor = +el.dataset.pick === S.pickIdx ? ACCENT : "var(--line-2)";
   });
 }
 
@@ -194,27 +194,27 @@ function startScreen() {
   const feed = groups.map(g => `
     <div id="day-${g.key}" style="display: flex; flex-direction: column; gap: 12px; scroll-margin-top: 6px;">
       <div style="display: flex; align-items: baseline; gap: 8px;">
-        <div style="font-size: 13px; font-weight: 600; color: #d6d6db;">${isNaN(g.date) ? "bez daty" : plDay(g.date)}</div>
-        <div style="${mono} font-size: 10.5px; color: #77777f;">· ${plSessions(g.items.length)}</div>
+        <div style="font-size: 13px; font-weight: 600; color: var(--fg-1);">${isNaN(g.date) ? "bez daty" : plDay(g.date)}</div>
+        <div style="${mono} font-size: 10.5px; color: var(--fg-4);">· ${plSessions(g.items.length)}</div>
       </div>
       <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; align-content: start;">
         ${g.items.map(s => sessionCard(s, pi++)).join("")}
       </div>
     </div>`).join("")
     || (anyFilter() && a.sessions.length
-        ? `<div style="${mono} font-size: 11px; color: #7e7e85;">Żadna sesja nie pasuje do filtrów.</div>`
+        ? `<div style="${mono} font-size: 11px; color: var(--fg-4);">Żadna sesja nie pasuje do filtrów.</div>`
         : "");
   const info = !a.hasToken
-    ? `<div style="${mono} font-size: 11px; color: #e0b96a;">Brak tokenu Automatu (.env / Ustawienia) — sesje z Automatu niedostępne, możesz utworzyć lokalną.</div>`
+    ? `<div style="${mono} font-size: 11px; color: var(--warn);">Brak tokenu Automatu (.env / Ustawienia) — sesje z Automatu niedostępne, możesz utworzyć lokalną.</div>`
     : a.error
-      ? `<div style="${mono} font-size: 11px; color: #e07a7a;">✗ ${a.error}</div>`
+      ? `<div style="${mono} font-size: 11px; color: var(--err);">✗ ${a.error}</div>`
       : a.sessions.length === 0
-        ? `<div style="${mono} font-size: 11px; color: #7e7e85;">Ładuję sesje z Automatu…</div>`
+        ? `<div style="${mono} font-size: 11px; color: var(--fg-4);">Ładuję sesje z Automatu…</div>`
         : "";
   const p = S.pendingNew;
   const pend = !p ? "" : `
-    <div style="background: #26231d; border: 1px solid #5a4a2a; border-radius: 6px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 660px; box-sizing: border-box;">
-      <div style="font-size: 12.5px; color: #e8e8ea;">Sesja <b>${p.match.name}</b> już istnieje w Automacie (${fmtDate(p.match.created_at)}, zdjęć: ${p.match.photos_count}).</div>
+    <div style="background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: 6px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 660px; box-sizing: border-box;">
+      <div style="font-size: 12.5px; color: var(--fg-0);">Sesja <b>${p.match.name}</b> już istnieje w Automacie (${fmtDate(p.match.created_at)}, zdjęć: ${p.match.photos_count}).</div>
       <div style="display: flex; gap: 8px; flex-wrap: wrap;">
         <button onclick="resolvePending(true)" style="height: 28px; padding: 0 14px; ${btnBlue} border-radius: 4px; font-size: 12px; font-weight: 600;">Podłącz do istniejącej</button>
         <button onclick="resolvePending(false)" style="${btnGray} height: 28px;">Utwórz nową</button>
@@ -222,9 +222,9 @@ function startScreen() {
       </div>
     </div>`;
   return `
-  <div style="flex: 1; display: flex; min-width: 0; background: #1d1d20;">
+  <div style="flex: 1; display: flex; min-width: 0; background: var(--bg-panel);">
 
-    <div style="flex: 0 0 216px; border-right: 1px solid #26262b; padding: 22px 12px 22px 18px; overflow-y: scroll; overflow-x: hidden;">
+    <div style="flex: 0 0 216px; border-right: 1px solid var(--line); padding: 22px 12px 22px 18px; overflow-y: scroll; overflow-x: hidden;">
       <div style="${head} padding: 0 6px 10px;">Dni zdjęciowe</div>
       ${dayRail(groups)}
     </div>
@@ -237,7 +237,7 @@ function startScreen() {
             <input id="new-session-input" placeholder="nazwa produktu…" style="flex: 1; min-width: 0; ${inp} height: 42px; font-size: 14.5px; padding: 0 14px; border-radius: 6px;" />
             <button onclick="commitNewSession()" tabindex="-1" style="flex-shrink: 0; height: 42px; padding: 0 24px; ${btnBlue} border-radius: 6px; font-size: 13.5px; font-weight: 600;">Rozpocznij sesję</button>
           </div>
-          <div style="${mono} font-size: 10.5px; color: #77777f; text-align: center;">nazwa = folder w photos/ i sesja w Automacie (dopasowanie do produktu po nazwie)</div>
+          <div style="${mono} font-size: 10.5px; color: var(--fg-4); text-align: center;">nazwa = folder w photos/ i sesja w Automacie (dopasowanie do produktu po nazwie)</div>
           ${info}
           ${pend}
         </div>

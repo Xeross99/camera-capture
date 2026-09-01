@@ -44,13 +44,13 @@ const robotIsSet = p => ((robotState().set || {})[p] !== false);
 const robotSub = p => robotIsSet(p) ? ROBOT_POSES[p].sub
   : "nieustawione — uruchom tools/roarm_teach.py";
 
-const robotTileStyle = (on, locked) => `display: flex; align-items: center; gap: 12px; padding: 12px 13px; border-radius: 8px; border: 1px solid ${on ? ACCENT : "#2c2c31"}; background: ${on ? "#232a3d" : "#1f1f22"}; opacity: ${locked ? .45 : 1};`;
+const robotTileStyle = (on, locked) => `display: flex; align-items: center; gap: 12px; padding: 12px 13px; border-radius: 8px; border: 1px solid ${on ? ACCENT : "var(--line)"}; background: ${on ? "var(--accent-bg)" : "var(--card)"}; opacity: ${locked ? .45 : 1};`;
 
 // Ikona ujęcia: kółko z kreską pod kątem patrzenia — pionową dla ujęcia
 // z góry, nachyloną o zmierzony kąt dla skosu (kreska idzie od produktu
 // w stronę kamery, więc pokazuje to samo, co tytuł kafelka).
 function robotIcon(pose, on) {
-  const c = on ? ACCENT : (robotIsSet(pose) ? "#6c6c74" : "#4a4a52");
+  const c = on ? ACCENT : (robotIsSet(pose) ? "var(--fg-5)" : "var(--fg-6)");
   const rad = ROBOT_POSES[pose].tilt * Math.PI / 180, R = 7;
   const dx = Math.round(R * Math.cos(rad) * 10) / 10, dy = Math.round(R * Math.sin(rad) * 10) / 10;
   const line = `x1="${16 + dx}" y1="${16 - dy}" x2="${16 - dx}" y2="${16 + dy}"`;
@@ -65,14 +65,14 @@ function robotIcon(pose, on) {
 // tylko wyszarzony, z powodem wprost.
 function robotStatus() {
   const r = robotState();
-  if (r.busy) return { text: r.busy + "…", color: "#d8c39a", spin: true };
+  if (r.busy) return { text: r.busy + "…", color: "var(--warn-fg-2)", spin: true };
   if (!r.connected) {
     return {
       text: r.error || "ramię rozłączone — sprawdź kabel USB i zasilanie",
-      color: "#e0b96a", spin: false,
+      color: "var(--warn)", spin: false,
     };
   }
-  return { text: "ramię gotowe", color: "#8f9a88", spin: false };
+  return { text: "ramię gotowe", color: "var(--ok-muted)", spin: false };
 }
 
 function robotPoseTile(p) {
@@ -81,10 +81,10 @@ function robotPoseTile(p) {
   <div id="robot-pose-${p}" onclick="robotPose('${p}')" style="${robotTileStyle(on, robotLocked())}">
     ${robotIcon(p, on)}
     <div style="flex: 1; min-width: 0;">
-      <div style="font-size: 13px; font-weight: 600; color: ${robotIsSet(p) ? "#eaeaee" : "#8a8a92"};">${pose.name}</div>
-      <div id="robot-sub-${p}" style="margin-top: 2px; ${mono} font-size: 11px; color: #85858e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${robotSub(p)}</div>
+      <div style="font-size: 13px; font-weight: 600; color: ${robotIsSet(p) ? "var(--fg-0)" : "var(--fg-4)"};">${pose.name}</div>
+      <div id="robot-sub-${p}" style="margin-top: 2px; ${mono} font-size: 11px; color: var(--fg-4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${robotSub(p)}</div>
     </div>
-    <div style="${mono} font-size: 11px; color: #6c6c74;">${pose.key}</div>
+    <div style="${mono} font-size: 11px; color: var(--fg-5);">${pose.key}</div>
   </div>`;
 }
 
@@ -95,7 +95,7 @@ function robotCard() {
   <div style="display: flex; flex-direction: column; gap: 8px;">
     <div style="display: flex; align-items: baseline; justify-content: space-between;">
       <div style="${head}">Robot — ustawienie ujęcia</div>
-      <div style="${mono} font-size: 10.5px; color: #6c6c74;">${robotKbd("1")} … ${robotKbd("2")}</div>
+      <div style="${mono} font-size: 10.5px; color: var(--fg-5);">${robotKbd("1")} … ${robotKbd("2")}</div>
     </div>
 
     <div id="robot-status" style="display: flex; align-items: center; gap: 7px; ${mono} font-size: 11px; color: ${st.color};">
@@ -148,7 +148,7 @@ function robotPost(payload) {
     if (res && res.ok === false) {
       S.robot.echoAt = 0;          // wracamy do prawdy z backendu przy najbliższym pollu
       const el = $("robot-status-text");
-      if (el) { el.textContent = res.error; $("robot-status").style.color = "#e0b96a"; }
+      if (el) { el.textContent = res.error; $("robot-status").style.color = "var(--warn)"; }
     }
   }).catch(() => {});
 }

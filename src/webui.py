@@ -40,6 +40,8 @@ from .config import (
     CAMERA_EDSDK_ISOLATION,
     PREVIEW_FPS,
     CLEAN_BG_GPU,
+    UI_THEME,
+    UI_THEMES,
     AUTOMAT_API_TOKEN,
     AUTOMAT_BASE_URL,
     OUTPUT_SIZE,
@@ -206,6 +208,7 @@ class WebUI:
         self.automat_url = AUTOMAT_BASE_URL
         self.automat_token = AUTOMAT_API_TOKEN or ""
         self.preview_fps = PREVIEW_FPS
+        self.ui_theme = UI_THEME
         self.keep_raw = True
         self.test_result = ""
 
@@ -1759,6 +1762,11 @@ class WebUI:
                 self.preview_fps = max(1, min(30, int(value)))
                 # do .env — wybor ma przezyc restart (patrz PREVIEW_FPS)
                 persist_env("PREVIEW_FPS", str(self.preview_fps))
+            elif key == "ui_theme":
+                theme = str(value).strip().lower()
+                if theme in UI_THEMES:
+                    self.ui_theme = theme
+                    persist_env("UI_THEME", theme)
             elif key == "keep_raw":
                 self.keep_raw = bool(value)
             elif key == "clean_bg_gpu":
@@ -1930,6 +1938,7 @@ class WebUI:
                     "automatUrl": self.automat_url,
                     "tokenMasked": ("•" * 12 + self.automat_token[-4:]) if self.automat_token else "",
                     "previewFps": self.preview_fps,
+                    "uiTheme": self.ui_theme,
                     "cleanBgGpu": self.clean_bg_gpu,
                     "keepRaw": self.keep_raw,
                     "testResult": self.test_result,

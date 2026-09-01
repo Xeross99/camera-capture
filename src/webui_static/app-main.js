@@ -10,12 +10,12 @@ function updateBanner() {
   const right = u.canApply
     ? `<button onclick="applyUpdate()" ${u.busy ? "disabled" : ""} style="height: 24px; padding: 0 12px; ${btnBlue} border-radius: 4px; font-size: 11.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 7px; ${u.busy ? "opacity: .6;" : ""}">${u.busy ? `<span class="spinner"></span>Aktualizuję…` : "Zaktualizuj i uruchom ponownie"}</button>
        <button onclick="S.updateDismissed = '${u.available}'; renderShell(true)" style="${btnGray} height: 24px; padding: 0 10px; font-size: 11.5px; opacity: .75;">Później</button>`
-    : `<span style="${mono} font-size: 11px; color: #d8c39a;">uruchomienie ze źródeł — zaktualizuj przez <b>git pull</b></span>
+    : `<span style="${mono} font-size: 11px; color: var(--warn-fg-2);">uruchomienie ze źródeł — zaktualizuj przez <b>git pull</b></span>
        <button onclick="S.updateDismissed = '${u.available}'; renderShell(true)" style="${btnGray} height: 24px; padding: 0 10px; font-size: 11.5px; opacity: .75;">Ukryj</button>`;
   return `
-  <div style="flex: 0 0 auto; background: #2e2921; border-bottom: 1px solid #4d4126; display: flex; align-items: center; gap: 12px; padding: 7px 14px;">
-    <span style="font-size: 12.5px; color: #f0e2c2;">Dostępna aktualizacja <b>${u.available}</b> <span style="${mono} font-size: 11px; color: #b9a888;">(masz ${u.current})</span></span>
-    <span id="update-progress" style="${mono} font-size: 11px; color: #b9a888;">${u.busy && u.progress ? u.progress + "%" : ""}</span>
+  <div style="flex: 0 0 auto; background: var(--warn-bg); border-bottom: 1px solid var(--warn-border); display: flex; align-items: center; gap: 12px; padding: 7px 14px;">
+    <span style="font-size: 12.5px; color: var(--warn-fg);">Dostępna aktualizacja <b>${u.available}</b> <span style="${mono} font-size: 11px; color: var(--warn-fg-2);">(masz ${u.current})</span></span>
+    <span id="update-progress" style="${mono} font-size: 11px; color: var(--warn-fg-2);">${u.busy && u.progress ? u.progress + "%" : ""}</span>
     <span style="margin-left: auto; display: flex; align-items: center; gap: 8px;">${right}</span>
   </div>`;
 }
@@ -23,28 +23,28 @@ function updateBanner() {
 function shell() {
   const st = S.state;
   const conn = st && st.connected;
-  const tab = k => S.screen === k ? "#f2f2f5" : "#9d9da3";
+  const tab = k => S.screen === k ? "var(--fg-0)" : "var(--fg-3)";
   const bar = k => S.screen === k ? ACCENT : "transparent";
   return `
-<div style="width: 100%; height: 100%; background: #232326; overflow: hidden; display: flex; flex-direction: column; font-family: -apple-system, 'Helvetica Neue', Helvetica, sans-serif; color: #e8e8ea; font-size: 13px;">
+<div style="width: 100%; height: 100%; background: var(--bg-2); overflow: hidden; display: flex; flex-direction: column; font-family: -apple-system, 'Helvetica Neue', Helvetica, sans-serif; color: var(--fg-0); font-size: 13px;">
   ${updateBanner()}
 
-  <div style="height: 34px; flex: 0 0 34px; background: #2a2a2d; border-bottom: 1px solid #17171a; display: flex; align-items: stretch; padding: 0 10px; gap: 2px;">
+  <div style="height: 34px; flex: 0 0 34px; background: var(--bg-tabs); border-bottom: 1px solid var(--line-strong); display: flex; align-items: stretch; padding: 0 10px; gap: 2px;">
     <div onclick="go('sesja')" style="display: flex; align-items: center; padding: 0 18px; font-size: 12.5px; font-weight: 500; cursor: default; color: ${tab("sesja")}; border-bottom: 2px solid ${bar("sesja")};">Sesja</div>
     <div onclick="go('ustawienia')" style="display: flex; align-items: center; padding: 0 18px; font-size: 12.5px; font-weight: 500; cursor: default; color: ${tab("ustawienia")}; border-bottom: 2px solid ${bar("ustawienia")};">Ustawienia</div>
-    <div style="margin-left: auto; display: flex; align-items: center; gap: 16px; font-size: 11.5px; color: #9d9da3;">
+    <div style="margin-left: auto; display: flex; align-items: center; gap: 16px; font-size: 11.5px; color: var(--fg-3);">
       <div style="display: flex; align-items: center; gap: 7px;">
-        <span style="display: flex; color: ${conn ? "#34c759" : "#e05a5a"};">${CAM_ICON}</span><span id="conn-label">${conn ? `Aparat połączony · ${st.fps} fps` : "Aparat rozłączony"}</span>
+        <span style="display: flex; color: ${conn ? "var(--ok-dot)" : "var(--err-dot)"};">${CAM_ICON}</span><span id="conn-label">${conn ? `Aparat połączony · ${st.fps} fps` : "Aparat rozłączony"}</span>
       </div>
       ${st && st.robot && st.robot.enabled ? `
       <div style="display: flex; align-items: center; gap: 7px;">
-        <span id="robot-dot" style="display: flex; color: ${st.robot.connected ? "#34c759" : "#e05a5a"};">${ROBOT_ICON}</span><span id="robot-conn-label">${st.robot.connected ? "Robot połączony" : "Robot rozłączony"}</span>
+        <span id="robot-dot" style="display: flex; color: ${st.robot.connected ? "var(--ok-dot)" : "var(--err-dot)"};">${ROBOT_ICON}</span><span id="robot-conn-label">${st.robot.connected ? "Robot połączony" : "Robot rozłączony"}</span>
       </div>` : ""}
     </div>
   </div>
 
   <div id="screen-sesja" style="flex: 1; display: ${S.screen === "sesja" ? "flex" : "none"}; min-height: 0;"></div>
-  <div id="screen-ustawienia" style="flex: 1; display: ${S.screen === "ustawienia" ? "grid" : "none"}; overflow: auto; background: #1d1d20; padding: 24px 28px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-content: start;"></div>
+  <div id="screen-ustawienia" style="flex: 1; display: ${S.screen === "ustawienia" ? "grid" : "none"}; overflow: auto; background: var(--bg-panel); padding: 24px 28px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-content: start;"></div>
 </div>`;
 }
 
@@ -93,7 +93,7 @@ function updateVolatile(st) {
     const rc = !!(st.robot && st.robot.connected);
     rl.textContent = rc ? "Robot połączony" : "Robot rozłączony";
     const rd = $("robot-dot");
-    if (rd) rd.style.color = rc ? "#34c759" : "#e05a5a";
+    if (rd) rd.style.color = rc ? "var(--ok-dot)" : "var(--err-dot)";
   }
   const hist = $("hist-badge");
   if (hist) {
@@ -414,6 +414,15 @@ function mergeLog(tail) {
   return logCache;
 }
 
+// Motyw to atrybut na <html> — CSS podmienia tokeny, DOM nie jest ruszany
+// (zero rebuildów, stream MJPEG żyje). Prawdą jest state.settings.uiTheme
+// z backendu (.env); klik w Ustawieniach ustawia atrybut od razu, żeby nie
+// czekać 500 ms na poll.
+function applyTheme(theme) {
+  const t = theme === "light" ? "light" : "dark";
+  if (document.documentElement.dataset.theme !== t) document.documentElement.dataset.theme = t;
+}
+
 async function tick() {
   try {
     const r = await fetch(`/api/state?since=${S.logSeq || 0}`);
@@ -424,6 +433,7 @@ async function tick() {
     S.logSeq = st.logSeq || 0;
     st.log = mergeLog(st.log);
     S.state = st;
+    applyTheme(st.settings && st.settings.uiTheme);
     if (!lastShellKey) renderShell(true);
     else renderShell(false);
   } catch (e) {

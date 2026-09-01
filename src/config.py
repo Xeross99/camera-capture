@@ -58,6 +58,13 @@ CLEAN_BG_GPU = os.environ.get("CLEAN_BG_GPU", "true").lower() in ("1", "true", "
 # persist_env, wiec przezywa restart — na maszynach z kaprysnym USB operator
 # zjezdza na 10 fps i ma to zostac na stale, nie do najblizszego zamkniecia.
 PREVIEW_FPS = max(1, min(30, int(os.environ.get("PREVIEW_FPS", "30"))))
+# Motyw UI aplikacji okienkowej: "dark" (domyslny) / "light". Trzymany w .env,
+# nie w localStorage — port backendu jest losowy per uruchomienie, wiec origin
+# (a z nim localStorage) zmienia sie przy kazdym starcie.
+UI_THEMES = ("dark", "light")
+UI_THEME = os.environ.get("UI_THEME", "dark").strip().lower()
+if UI_THEME not in UI_THEMES:
+    UI_THEME = "dark"
 CLEAN_BG_COLOR = (255, 255, 255)
 CLEAN_BG_MASK_THRESHOLD = 80
 CLEAN_BG_EDGE_BLUR = 0.6

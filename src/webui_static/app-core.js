@@ -34,13 +34,13 @@ const S = {           // stan klienta
 const $ = id => document.getElementById(id);
 const post = (payload) => fetch("/api/action", { method: "POST", body: JSON.stringify(payload) });
 const mono = "font-family: 'IBM Plex Mono', monospace;";
-const sel = `height: 24px; background: #1a1a1d; border: 1px solid #3d3d44; border-radius: 4px; color: #eaeaee; ${mono} font-size: 11.5px; padding: 0 6px;`;
-const inp = `height: 26px; background: #1a1a1d; border: 1px solid #3d3d44; border-radius: 4px; color: #eaeaee; padding: 0 8px; ${mono} font-size: 11px;`;
-const btnGray = `height: 26px; padding: 0 12px; background: linear-gradient(#3f3f45, #35353a); border: 1px solid #4c4c54; border-radius: 4px; color: #eaeaee; font-size: 12px; font-family: inherit;`;
+const sel = `height: 24px; background: var(--input-bg); border: 1px solid var(--line-3); border-radius: 4px; color: var(--fg-0); ${mono} font-size: 11.5px; padding: 0 6px;`;
+const inp = `height: 26px; background: var(--input-bg); border: 1px solid var(--line-3); border-radius: 4px; color: var(--fg-0); padding: 0 8px; ${mono} font-size: 11px;`;
+const btnGray = `height: 26px; padding: 0 12px; background: linear-gradient(var(--btn-top), var(--btn-bot)); border: 1px solid var(--btn-border); border-radius: 4px; color: var(--fg-0); font-size: 12px; font-family: inherit;`;
 const btnBlue = `background: linear-gradient(#4a8cff, #2f72e8); border: 1px solid #2a63c9; color: #fff; font-family: inherit;`;
 const chk = `accent-color: ${ACCENT}; width: 14px; height: 14px;`;
-const label = `display: flex; align-items: center; gap: 8px; color: #dcdce1;`;
-const head = `font-size: 11px; font-weight: 600; color: #8f8f97; letter-spacing: .06em; text-transform: uppercase;`;
+const label = `display: flex; align-items: center; gap: 8px; color: var(--fg-1);`;
+const head = `font-size: 11px; font-weight: 600; color: var(--fg-4); letter-spacing: .06em; text-transform: uppercase;`;
 
 // Wiersz opcji w sidebarze: checkbox, tytul i opis pod spodem, wiersze rozdzielone
 // hairline'em. Sam checkbox z jednym slowem nie mowil, co wlasciwie robi.
@@ -51,8 +51,8 @@ const optionRow = (key, checked, title, desc, extra = "") => `
     <label style="display: flex; align-items: flex-start; gap: 9px;">
       <input type="checkbox" ${checked ? "checked" : ""} onchange="toggle('${key}', this.checked)" style="${chk} margin-top: 1px; flex-shrink: 0;" />
       <span style="flex: 1; min-width: 0;">
-        <span style="display: block; font-size: 12.5px; color: #eaeaee;">${title}</span>
-        <span style="display: block; margin-top: 3px; font-size: 11.5px; line-height: 1.5; color: #85858e;">${desc}</span>
+        <span style="display: block; font-size: 12.5px; color: var(--fg-0);">${title}</span>
+        <span style="display: block; margin-top: 3px; font-size: 11.5px; line-height: 1.5; color: var(--fg-4);">${desc}</span>
       </span>
     </label>
     ${extra ? `<div style="padding-left: 23px;">${extra}</div>` : ""}
@@ -97,10 +97,10 @@ function gridBackground(cols, rows) {
 }
 
 const MARKS = {
-  ok:   { mark: "✓", color: "#9fe0a8", border: "#3a3a42" },
-  bad:  { mark: "✕", color: "#e07a7a", border: "#5a3a3a" },
+  ok:   { mark: "✓", color: "var(--ok)", border: "var(--line-3)" },
+  bad:  { mark: "✕", color: "var(--err)", border: "var(--err-border)" },
   cur:  { mark: "●", color: ACCENT,   border: ACCENT },
-  wait: { mark: "…", color: "#e0b96a", border: "#3a3a42" },
+  wait: { mark: "…", color: "var(--warn)", border: "var(--line-3)" },
 };
 
 // ---------- daty / polska odmiana ----------
@@ -159,15 +159,15 @@ function evLabel(v) {
 // ---------- log (rendering wpisów) ----------
 
 function logMark(kind) {
-  if (kind === "ok") return `<span style="color: #9fe0a8;">✓</span> `;
-  if (kind === "warn") return `<span style="color: #e0b96a;">!</span> `;
-  if (kind === "err") return `<span style="color: #e07a7a;">✗</span> `;
+  if (kind === "ok") return `<span style="color: var(--ok);">✓</span> `;
+  if (kind === "warn") return `<span style="color: var(--warn);">!</span> `;
+  if (kind === "err") return `<span style="color: var(--err);">✗</span> `;
   return "";
 }
 
 // Powtórzony wpis nie jest dopisywany drugi raz (patrz WebUI._log) — backend
 // podbija licznik, my doklejamy „×N".
-const logCount = l => (l.n > 1 ? ` <span style="color: #7e7e85;">×${l.n}</span>` : "");
+const logCount = l => (l.n > 1 ? ` <span style="color: var(--fg-4);">×${l.n}</span>` : "");
 
 // Sygnatura logu dla updateVolatile(): sama długość nie wystarczy, bo powtórki
 // rosną licznikiem w OSTATNIM wpisie, nie nowym elementem.

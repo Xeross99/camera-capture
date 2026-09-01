@@ -13,12 +13,12 @@ function sesjaScreen() {
   const histText = histLabel(st);
   const badge = `background: rgba(0,0,0,.55); border: 1px solid #3c3c44; padding: 3px 8px; ${mono} font-size: 10.5px; color: #d0d0d6;`;
   return `
-    <div style="flex: 1; display: flex; flex-direction: column; min-width: 0; background: #161618;">
+    <div style="flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--bg-live);">
       <div style="flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; position: relative; padding: 14px;">
-        <div style="height: 100%; aspect-ratio: 3 / 2; background: repeating-linear-gradient(135deg, #202024 0 10px, #26262b 10px 20px); border: 1px solid #34343a; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; position: relative;">
+        <div style="height: 100%; aspect-ratio: 3 / 2; background: repeating-linear-gradient(135deg, var(--stripe-a) 0 10px, var(--stripe-b) 10px 20px); border: 1px solid var(--line-2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; position: relative;">
           ${liveOn ? `<img id="live" src="/stream" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;" />` : ""}
-          <div style="${mono} font-size: 12px; color: ${st.connected ? "#8b8b93" : "#e07a7a"}; letter-spacing: .04em;">${st.connected ? "live view — 1024 × 683" : "aparat rozłączony"}</div>
-          <div style="${mono} font-size: 11px; color: #63636b;">${!st.connected ? "sprawdź kabel i tryb aparatu — łączę ponownie…" : st.previewOn ? "czekam na klatki z aparatu…" : "podgląd wyłączony (P)"}</div>
+          <div style="${mono} font-size: 12px; color: ${st.connected ? "var(--fg-4)" : "var(--err)"}; letter-spacing: .04em;">${st.connected ? "live view — 1024 × 683" : "aparat rozłączony"}</div>
+          <div style="${mono} font-size: 11px; color: var(--fg-5);">${!st.connected ? "sprawdź kabel i tryb aparatu — łączę ponownie…" : st.previewOn ? "czekam na klatki z aparatu…" : "podgląd wyłączony (P)"}</div>
           <div id="grid-overlay" style="position: absolute; inset: 0; display: ${grid.cols && liveOn ? "block" : "none"}; background: ${gridBackground(grid.cols, grid.rows)};"></div>
           <div style="position: absolute; left: 12px; top: 12px; display: flex; gap: 6px;">
             <div onclick="cycleGrid()" style="${badge} ${grid.cols ? "" : "opacity: .45;"}">${grid.label}</div>
@@ -29,37 +29,37 @@ function sesjaScreen() {
           </div>` : ""}
           <div id="hist-badge" title="${histTitle(st)}" style="position: absolute; right: 12px; bottom: 12px; background: rgba(0,0,0,.55); border: 1px solid #3c3c44; padding: 3px 8px; ${mono} font-size: 10.5px; color: ${bgColor};">${histText}</div>
           <div id="warmup-overlay" style="position: absolute; inset: 0; display: ${st.warmup != null ? "flex" : "none"}; align-items: center; justify-content: center; background: rgba(10,10,12,.72); z-index: 3;">
-            <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; background: #1d1d20; border: 1px solid #3c3c44; border-radius: 8px; padding: 18px 26px; max-width: 78%; text-align: center;">
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; background: var(--bg-panel); border: 1px solid var(--line-3); border-radius: 8px; padding: 18px 26px; max-width: 78%; text-align: center;">
               <span class="spinner" style="width: 18px; height: 18px;"></span>
-              <div style="font-size: 13.5px; font-weight: 600; color: #eaeaee;">Przygotowuję silnik czyszczenia tła… <span id="warmup-s">${st.warmup != null ? st.warmup : 0}</span> s</div>
-              <div style="${mono} font-size: 11px; color: #9d9da3; line-height: 1.5;">Pierwsze uruchomienie na GPU kompiluje shadery — do ~2 min.<br>Zdjęcia można robić: poczekają w kolejce i obrobią się po rozgrzewce.</div>
+              <div style="font-size: 13.5px; font-weight: 600; color: var(--fg-0);">Przygotowuję silnik czyszczenia tła… <span id="warmup-s">${st.warmup != null ? st.warmup : 0}</span> s</div>
+              <div style="${mono} font-size: 11px; color: var(--fg-3); line-height: 1.5;">Pierwsze uruchomienie na GPU kompiluje shadery — do ~2 min.<br>Zdjęcia można robić: poczekają w kolejce i obrobią się po rozgrzewce.</div>
             </div>
           </div>
           <div id="flash" style="position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 4;"></div>
         </div>
       </div>
 
-      <div style="flex: 0 0 auto; border-top: 1px solid #2c2c31; background: #1d1d20; padding: 10px 14px 12px;">
+      <div style="flex: 0 0 auto; border-top: 1px solid var(--line); background: var(--bg-panel); padding: 10px 14px 12px;">
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-          <div style="font-size: 11.5px; font-weight: 600; color: #b6b6bd; letter-spacing: .03em; text-transform: uppercase;">Zdjęcia w sesji</div>
-          <div style="display: flex; gap: 14px; ${mono} font-size: 10.5px; color: #7e7e85;">
+          <div style="font-size: 11.5px; font-weight: 600; color: var(--fg-2); letter-spacing: .03em; text-transform: uppercase;">Zdjęcia w sesji</div>
+          <div style="display: flex; gap: 14px; ${mono} font-size: 10.5px; color: var(--fg-4);">
             <div>SPACJA podgląd</div><div>← → wybór</div><div>BACKSPACE usuń</div><div>ESC zamknij</div>
           </div>
         </div>
         <div id="filmstrip" style="${stripBox}">${filmstrip()}</div>
       </div>
 
-      <div style="flex: 0 0 auto; border-top: 1px solid #2c2c31; background: #191a1c;">
-        <div onclick="S.logOpen = !S.logOpen; renderScreens()" style="display: flex; align-items: center; gap: 10px; padding: 8px 14px; ${mono} font-size: 11px; color: #a8a8af;">
-          <span style="color: #6a6a72;">${S.logOpen ? "▾" : "▸"}</span>
+      <div style="flex: 0 0 auto; border-top: 1px solid var(--line); background: var(--bg-log);">
+        <div onclick="S.logOpen = !S.logOpen; renderScreens()" style="display: flex; align-items: center; gap: 10px; padding: 8px 14px; ${mono} font-size: 11px; color: var(--fg-2);">
+          <span style="color: var(--fg-5);">${S.logOpen ? "▾" : "▸"}</span>
           <span id="log-line" style="flex: 1; display: flex; gap: 10px; align-items: center; overflow: hidden;">${lastLogLine()}</span>
-          <span style="color: #6a6a72;">log</span>
+          <span style="color: var(--fg-5);">log</span>
         </div>
-        <div id="log-panel" style="display: ${S.logOpen ? "block" : "none"}; border-top: 1px solid #2c2c31; background: #101012; padding: 10px 14px; ${mono} font-size: 11px; line-height: 1.7; color: #b9b9c0; max-height: 128px; overflow: auto;">${logLines()}</div>
+        <div id="log-panel" style="display: ${S.logOpen ? "block" : "none"}; border-top: 1px solid var(--line); background: var(--bg-0); padding: 10px 14px; ${mono} font-size: 11px; line-height: 1.7; color: var(--fg-2); max-height: 128px; overflow: auto;">${logLines()}</div>
       </div>
     </div>
 
-    <div style="flex: 0 0 380px; width: 380px; min-width: 0; max-width: 380px; overflow: hidden; background: #232326; border-left: 1px solid #17171a; display: flex; flex-direction: column; min-height: 0;">
+    <div style="flex: 0 0 380px; width: 380px; min-width: 0; max-width: 380px; overflow: hidden; background: var(--bg-2); border-left: 1px solid var(--line-strong); display: flex; flex-direction: column; min-height: 0;">
       <div style="flex: 1; min-width: 0; overflow-x: hidden; overflow-y: auto; padding: 16px 16px 8px; display: flex; flex-direction: column; gap: 18px;">
 
         <div style="display: flex; flex-direction: column; gap: 8px; min-width: 0;">
@@ -69,18 +69,18 @@ function sesjaScreen() {
                 <a href="#" class="crumb" onclick="leaveSession(); return false;" style="${mono} font-size: 11px;">Camera Capture</a>
               </li>
               <li style="display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden;">
-                <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" style="width: 15px; height: 15px; flex-shrink: 0; color: #45454d;">
+                <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" style="width: 15px; height: 15px; flex-shrink: 0; color: var(--fg-6);">
                   <path d="M5.555 17.776l8-16 .894.448-8 16-.894-.448z" />
                 </svg>
-                <span aria-current="page" title="${st.session.name}" style="${mono} font-size: 11px; color: #b4b4bb; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${st.session.name}</span>
+                <span aria-current="page" title="${st.session.name}" style="${mono} font-size: 11px; color: var(--fg-2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${st.session.name}</span>
               </li>
             </ol>
           </nav>
           <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
-            <h2 title="${st.session.name}" style="flex: 1; min-width: 0; margin: 0; font-size: 19px; font-weight: 600; color: #eaeaee; letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${st.session.name}</h2>
-            <button onclick="leaveSession()" style="flex-shrink: 0; height: 28px; padding: 0 12px; background: linear-gradient(#4a4a50, #3d3d43); border: 1px solid #55555d; border-radius: 4px; color: #eaeaee; font-size: 12px; font-family: inherit;">Wróć</button>
+            <h2 title="${st.session.name}" style="flex: 1; min-width: 0; margin: 0; font-size: 19px; font-weight: 600; color: var(--fg-0); letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${st.session.name}</h2>
+            <button onclick="leaveSession()" style="flex-shrink: 0; height: 28px; padding: 0 12px; background: linear-gradient(var(--btn-top), var(--btn-bot)); border: 1px solid var(--btn-border); border-radius: 4px; color: var(--fg-0); font-size: 12px; font-family: inherit;">Wróć</button>
           </div>
-          <div style="margin-top: 6px; border-top: 1px solid #2f2f35;"></div>
+          <div style="margin-top: 6px; border-top: 1px solid var(--line-2);"></div>
         </div>
 
         <div class="card">
@@ -89,13 +89,13 @@ function sesjaScreen() {
           <div class="card-rule"></div>
           <div class="opt-row" style="display: flex; align-items: flex-start; gap: 12px;">
             <div style="flex: 1; min-width: 0;">
-              <div style="font-size: 12.5px; color: #eaeaee;">Kompensacja ekspozycji</div>
-              <div id="ev-hint" style="margin-top: 3px; font-size: 11.5px; line-height: 1.5; color: #85858e;">${evHint(st)}</div>
+              <div style="font-size: 12.5px; color: var(--fg-0);">Kompensacja ekspozycji</div>
+              <div id="ev-hint" style="margin-top: 3px; font-size: 11.5px; line-height: 1.5; color: var(--fg-4);">${evHint(st)}</div>
             </div>
-            <div style="flex-shrink: 0; display: flex; align-items: center; background: #17171a; border: 1px solid #3d3d44; border-radius: 5px; overflow: hidden; ${mono} font-size: 12px;">
-              <span id="ev-minus" class="ev-btn${cam.ev && !S.evPending ? "" : " off"}" onclick="stepEv(-1)" style="padding: 5px 11px; color: #d0d0d6; opacity: ${cam.ev && !S.evPending ? 1 : .35};">−</span>
-              <span id="ev-value" style="position: relative; min-width: 44px; padding: 5px 0; line-height: 14px; text-align: center; color: #eaeaee; border-left: 1px solid #3d3d44; border-right: 1px solid #3d3d44;">${evValueHtml(cam.ev)}</span>
-              <span id="ev-plus" class="ev-btn${cam.ev && !S.evPending ? "" : " off"}" onclick="stepEv(1)" style="padding: 5px 11px; color: #d0d0d6; opacity: ${cam.ev && !S.evPending ? 1 : .35};">+</span>
+            <div style="flex-shrink: 0; display: flex; align-items: center; background: var(--input-bg); border: 1px solid var(--line-3); border-radius: 5px; overflow: hidden; ${mono} font-size: 12px;">
+              <span id="ev-minus" class="ev-btn${cam.ev && !S.evPending ? "" : " off"}" onclick="stepEv(-1)" style="padding: 5px 11px; color: var(--fg-1); opacity: ${cam.ev && !S.evPending ? 1 : .35};">−</span>
+              <span id="ev-value" style="position: relative; min-width: 44px; padding: 5px 0; line-height: 14px; text-align: center; color: var(--fg-0); border-left: 1px solid var(--line-3); border-right: 1px solid var(--line-3);">${evValueHtml(cam.ev)}</span>
+              <span id="ev-plus" class="ev-btn${cam.ev && !S.evPending ? "" : " off"}" onclick="stepEv(1)" style="padding: 5px 11px; color: var(--fg-1); opacity: ${cam.ev && !S.evPending ? 1 : .35};">+</span>
             </div>
           </div>
         </div>
@@ -107,7 +107,7 @@ function sesjaScreen() {
           ${optionRow("logo", post_.logo, "Nakładanie logo",
                       "Znak wodny TRIXBRIX.eu w rogu kadru.",
                       `<div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
-                         <span style="font-size: 11.5px; color: #b4b4bb;">Pozycja</span>
+                         <span style="font-size: 11.5px; color: var(--fg-2);">Pozycja</span>
                          <select onchange="post({action:'set_post', key:'logo_position', value:this.value})" style="${sel}">
                            ${post_.logoPositions.map(p => `<option value="${p}" ${p === post_.logoPosition ? "selected" : ""}>${LOGO_POS_PL[p] || p}</option>`).join("")}
                          </select>
@@ -124,7 +124,7 @@ function sesjaScreen() {
 
       </div>
 
-      <div style="flex: 0 0 auto; border-top: 1px solid #17171a; background: #26262a; padding: 12px 16px 14px;">
+      <div style="flex: 0 0 auto; border-top: 1px solid var(--line-strong); background: var(--bg-3); padding: 12px 16px 14px;">
         <button onclick="shoot()" style="width: 100%; height: 44px; ${btnBlue} border-radius: 6px; font-size: 14px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 10px;"><span id="shoot-spin" class="spinner" style="flex: 0 0 auto; border-color: rgba(255,255,255,.35); border-top-color: #fff; display: ${shootBusy(st) ? "inline-block" : "none"};"></span><span id="shoot-label">${st.busy || "Zrób zdjęcie"}</span> <span style="${mono} font-size: 11px; opacity: .75;">ENTER</span></button>
       </div>
     </div>
@@ -146,7 +146,7 @@ const BG_LABEL = {
   dark: "TŁO ZA CIEMNE · rozjaśnij w aparacie",
   unknown: "TŁO —",
 };
-const BG_COLOR = { ok: "#9fe0a8", dark: "#e0b96a", unknown: "#6c6c74" };
+const BG_COLOR = { ok: "var(--ok)", dark: "var(--warn)", unknown: "var(--fg-5)" };
 
 // Kontrolka jest widoczna ZAWSZE, tylko wyszarzona gdy nie ma czego ustawiać, a
 // powód stoi wprost pod nią. Znikająca kontrolka nie mówi operatorowi, czego
@@ -263,13 +263,13 @@ function reviewOverlay() {
   if (!shot) return "";
   const sess = encodeURIComponent(S.state.session.name);
   return `
-  <div id="review-wrap" style="position: fixed; inset: 0; z-index: 60; background: #131315; display: flex; flex-direction: column; transition: opacity .24s cubic-bezier(0.32, 0.72, 0, 1), transform .24s cubic-bezier(0.32, 0.72, 0, 1);">
+  <div id="review-wrap" style="position: fixed; inset: 0; z-index: 60; background: var(--bg-0); display: flex; flex-direction: column; transition: opacity .24s cubic-bezier(0.32, 0.72, 0, 1), transform .24s cubic-bezier(0.32, 0.72, 0, 1);">
     <div style="flex: 1; position: relative; min-height: 0;">
       <img src="/img?s=${sess}&f=${encodeURIComponent(shot.file)}" style="position: absolute; inset: 14px; width: calc(100% - 28px); height: calc(100% - 28px); object-fit: contain; animation: reviewIn .32s cubic-bezier(0.32, 0.72, 0, 1);" />
       <div id="review-label" style="position: absolute; left: 14px; bottom: 14px; background: rgba(0,0,0,.55); border: 1px solid #3c3c44; padding: 3px 8px; ${mono} font-size: 10.5px; color: #d0d0d6;">${reviewLabelText(shot)}</div>
       <div onclick="closeReview()" style="position: absolute; right: 14px; top: 14px; background: rgba(0,0,0,.55); border: 1px solid #3c3c44; padding: 3px 10px; ${mono} font-size: 10.5px; color: #d0d0d6;">ZAMKNIJ ESC</div>
     </div>
-    <div style="flex: 0 0 auto; border-top: 1px solid #2c2c31; background: #1d1d20; padding: 10px 14px 12px;">
+    <div style="flex: 0 0 auto; border-top: 1px solid var(--line); background: var(--bg-panel); padding: 10px 14px 12px;">
       <div id="review-strip" style="${stripBox}">${filmstrip()}</div>
     </div>
   </div>`;
@@ -310,9 +310,9 @@ function showLeaveConfirm() {
   // inaczej karta dziedziczy domyslny font przegladarki
   el.style.cssText = "position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.45); opacity: 0; transition: opacity .18s ease; font-family: -apple-system, 'Helvetica Neue', Helvetica, sans-serif;";
   el.innerHTML = `
-    <div id="leave-card" style="background: #232326; border: 1px solid #3c3c44; border-radius: 10px; padding: 22px 26px; max-width: 400px; display: flex; flex-direction: column; gap: 14px; transform: scale(.94) translateY(8px); transition: transform .22s cubic-bezier(0.16, 1, 0.3, 1); box-shadow: 0 18px 50px rgba(0,0,0,.5);">
-      <div style="font-size: 15px; font-weight: 600; color: #eaeaee;">Wrócić do menu głównego?</div>
-      <div style="font-size: 12.5px; line-height: 1.5; color: #9d9da3;">Sesja zostanie zamknięta. Zdjęcia są zapisane — wrócisz do listy sesji.</div>
+    <div id="leave-card" style="background: var(--bg-2); border: 1px solid var(--line-3); border-radius: 10px; padding: 22px 26px; max-width: 400px; display: flex; flex-direction: column; gap: 14px; transform: scale(.94) translateY(8px); transition: transform .22s cubic-bezier(0.16, 1, 0.3, 1); box-shadow: 0 18px 50px var(--shadow);">
+      <div style="font-size: 15px; font-weight: 600; color: var(--fg-0);">Wrócić do menu głównego?</div>
+      <div style="font-size: 12.5px; line-height: 1.5; color: var(--fg-3);">Sesja zostanie zamknięta. Zdjęcia są zapisane — wrócisz do listy sesji.</div>
       <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 2px;">
         <button onclick="hideLeaveConfirm()" style="${btnGray} height: 30px;">Zostań <span style="${mono} font-size: 10px; opacity: .7;">ESC</span></button>
         <button onclick="confirmLeave()" style="height: 30px; padding: 0 14px; ${btnBlue} border-radius: 4px; font-size: 12px; font-weight: 600;">Wróć do menu <span style="${mono} font-size: 10px; opacity: .8;">ENTER</span></button>
@@ -474,7 +474,7 @@ function flashNow() {
 const stripBox = "height: 96px; display: flex; align-items: flex-start; gap: 8px; overflow-x: auto; overflow-y: hidden;";
 
 function tileBg(sess, file) {
-  return `background: #202024 url('/img?s=${encodeURIComponent(sess)}&f=${encodeURIComponent(file)}&thumb=1') center / cover;`;
+  return `background: var(--stripe-a) url('/img?s=${encodeURIComponent(sess)}&f=${encodeURIComponent(file)}&thumb=1') center / cover;`;
 }
 
 function filmstrip() {
@@ -487,29 +487,29 @@ function filmstrip() {
         <span style="${mono} font-size: 10px; color: #fff; text-shadow: 0 1px 2px #000;">#${i + 1}</span>
         <span style="${mono} font-size: 10px; color: ${m.color}; text-shadow: 0 1px 2px #000;">${m.mark}</span>
       </div>
-      <div style="${mono} font-size: 9.5px; line-height: 12px; color: #6c6c74; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${s.file}</div>
+      <div style="${mono} font-size: 9.5px; line-height: 12px; color: var(--fg-5); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${s.file}</div>
     </div>`;
   });
   if (st.processing) {
     const m = MARKS.wait;
     items.push(`
     <div style="width: 104px; flex: 0 0 104px;">
-      <div style="height: 72px; background: repeating-linear-gradient(135deg, #23232a 0 8px, #2a2a32 8px 16px); border: 1px solid ${m.border}; display: flex; align-items: flex-end; justify-content: space-between; padding: 4px; box-sizing: border-box;">
-        <span style="${mono} font-size: 10px; color: #8b8b93;">#${st.shots.length + 1}</span>
+      <div style="height: 72px; background: repeating-linear-gradient(135deg, var(--stripe-a) 0 8px, var(--stripe-b) 8px 16px); border: 1px solid ${m.border}; display: flex; align-items: flex-end; justify-content: space-between; padding: 4px; box-sizing: border-box;">
+        <span style="${mono} font-size: 10px; color: var(--fg-4);">#${st.shots.length + 1}</span>
         <span style="${mono} font-size: 10px; color: ${m.color};">${m.mark}</span>
       </div>
-      <div style="${mono} font-size: 9.5px; line-height: 12px; color: #6c6c74; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${st.processing}</div>
+      <div style="${mono} font-size: 9.5px; line-height: 12px; color: var(--fg-5); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${st.processing}</div>
     </div>`);
   }
   // pobieranie zdjec sesji z Automatu — kafelek-skeleton az plik wyladuje na dysku
   (st.downloading || []).forEach(() => {
     items.push(`
     <div style="width: 104px; flex: 0 0 104px;">
-      <div class="skeleton" style="height: 72px; border: 1px solid #3a3a44; display: flex; align-items: flex-end; justify-content: space-between; padding: 4px; box-sizing: border-box;">
-        <span style="${mono} font-size: 10px; color: #8b8b93;">↓</span>
+      <div class="skeleton" style="height: 72px; border: 1px solid var(--line-3); display: flex; align-items: flex-end; justify-content: space-between; padding: 4px; box-sizing: border-box;">
+        <span style="${mono} font-size: 10px; color: var(--fg-4);">↓</span>
       </div>
       <div class="skeleton" style="height: 9px; margin-top: 6px;"></div>
     </div>`);
   });
-  return items.join("") || `<div style="${mono} font-size: 10.5px; color: #6c6c74; align-self: center;">(brak zdjęć w tej sesji)</div>`;
+  return items.join("") || `<div style="${mono} font-size: 10.5px; color: var(--fg-5); align-self: center;">(brak zdjęć w tej sesji)</div>`;
 }

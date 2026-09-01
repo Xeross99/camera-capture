@@ -59,25 +59,25 @@ function sesjaScreen() {
       </div>
     </div>
 
-    <div style="flex: 0 0 380px; background: #232326; border-left: 1px solid #17171a; display: flex; flex-direction: column; min-height: 0;">
-      <div style="flex: 1; overflow: auto; padding: 16px 16px 8px; display: flex; flex-direction: column; gap: 18px;">
+    <div style="flex: 0 0 380px; width: 380px; min-width: 0; max-width: 380px; overflow: hidden; background: #232326; border-left: 1px solid #17171a; display: flex; flex-direction: column; min-height: 0;">
+      <div style="flex: 1; min-width: 0; overflow-x: hidden; overflow-y: auto; padding: 16px 16px 8px; display: flex; flex-direction: column; gap: 18px;">
 
-        <div style="display: flex; flex-direction: column; gap: 8px;">
-          <nav aria-label="Breadcrumb" style="display: flex;">
-            <ol role="list" style="display: flex; align-items: center; gap: 8px; margin: 0; padding: 0; list-style: none;">
-              <li style="display: flex;">
+        <div style="display: flex; flex-direction: column; gap: 8px; min-width: 0;">
+          <nav aria-label="Breadcrumb" style="display: flex; min-width: 0; overflow: hidden;">
+            <ol role="list" style="display: flex; align-items: center; gap: 8px; margin: 0; padding: 0; list-style: none; min-width: 0; max-width: 100%;">
+              <li style="display: flex; flex-shrink: 0;">
                 <a href="#" class="crumb" onclick="leaveSession(); return false;" style="${mono} font-size: 11px;">Camera Capture</a>
               </li>
-              <li style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+              <li style="display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden;">
                 <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" style="width: 15px; height: 15px; flex-shrink: 0; color: #45454d;">
                   <path d="M5.555 17.776l8-16 .894.448-8 16-.894-.448z" />
                 </svg>
-                <span aria-current="page" style="${mono} font-size: 11px; color: #b4b4bb; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${st.session.name}</span>
+                <span aria-current="page" title="${st.session.name}" style="${mono} font-size: 11px; color: #b4b4bb; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${st.session.name}</span>
               </li>
             </ol>
           </nav>
-          <div style="display: flex; align-items: center; gap: 12px;">
-            <h2 style="flex: 1; min-width: 0; margin: 0; font-size: 19px; font-weight: 600; color: #eaeaee; letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${st.session.name}</h2>
+          <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+            <h2 title="${st.session.name}" style="flex: 1; min-width: 0; margin: 0; font-size: 19px; font-weight: 600; color: #eaeaee; letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${st.session.name}</h2>
             <button onclick="leaveSession()" style="flex-shrink: 0; height: 28px; padding: 0 12px; background: linear-gradient(#4a4a50, #3d3d43); border: 1px solid #55555d; border-radius: 4px; color: #eaeaee; font-size: 12px; font-family: inherit;">Wróć</button>
           </div>
           <div style="margin-top: 6px; border-top: 1px solid #2f2f35;"></div>

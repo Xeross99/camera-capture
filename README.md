@@ -5,7 +5,12 @@ Hit `ENTER` in the terminal: a Canon EOS M50 fires, the background is
 removed, the product is centered and watermarked, and a 3000×3000 JPEG
 lands on disk ready to upload.
 
-![Setup](assets/readme/setup.jpg)
+![Setup: camera on a tethered arm, desktop app with live preview](assets/readme/setup.jpg)
+
+The rig, driven from the desktop app (`python3 gui.py`): live view
+from the camera with a framing grid, exposure compensation and
+post-processing toggles in the sidebar, and the session filmstrip
+filling up as you shoot.
 
 ## Why I built this
 

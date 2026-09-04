@@ -123,6 +123,12 @@ Keys inside a session:
 - `ESC` leave the session (back to the session list)
 - `⌘1` / `⌘2` move the robot arm to the top-down / 3/4 shot
 
+The arm is a Waveshare RoArm-M2-S with a fifth bus servo added at the end
+of the boom to tilt the camera, so one placement of the product yields both
+the top-down and the 3/4 shot. The stock firmware only knows servos 11–15;
+`firmware/roarm_m2_ext_servo/` carries the small patch (commands 130–134)
+that drives the extra servo, with flashing instructions.
+
 Background removal is always on — there is no toggle. The raw camera
 JPEG is saved next to the processed one, so if `rembg` ever botches a
 shot you still have the untouched original.

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Zapisanie ujęć ramienia RoArm-M2-S — jedno ustawienie na ujęcie.
 
-Ujęcie to cztery kąty przegubów, nie punkt w przestrzeni. Skrypt puszcza serwa,
+Ujęcie to kąty przegubów (cztery, a z serwem pochylenia kamery pięć — patrz
+ROBOT_EXT_SERVO_ID), nie punkt w przestrzeni. Skrypt puszcza serwa,
 Ty ustawiasz ramię ręką dokładnie tak, jak ma robić zdjęcie, wciskasz ENTER —
 i tyle. Aplikacja odtworzy potem te same kąty co do stopnia, bez kinematyki
 odwrotnej, bez tolerancji w milimetrach i bez „odchyłki".
@@ -21,7 +22,11 @@ Kadr ustawiaj PATRZĄC NA PODGLĄD z aparatu. Najprościej:
     python3 tools/roarm_teach.py
 
 UWAGA: przy puszczonych serwach ramię opada pod ciężarem aparatu —
-przytrzymaj je, zanim wciśniesz ENTER.
+przytrzymaj je, zanim wciśniesz ENTER. Puszczone jest też serwo osi 5
+(broadcast na całą magistralę), więc kamera przekręci się na uchwycie.
+
+Oś 5 musi odpowiadać (firmware/roarm_m2_ext_servo + tools/roarm_ext_servo_id.py),
+inaczej odczyt kątów jest pusty i skrypt nic nie zapisze.
 """
 
 import sys
@@ -58,7 +63,7 @@ def main() -> int:
         # zwalniamy moment (aplikacja nie robi tego nawet przy zamykaniu).
         print("⚠ Za chwilę serwa zostaną puszczone i ramię opadnie pod ciężarem aparatu.")
         input("  PRZYTRZYMAJ ramię i wciśnij ENTER… ")
-        arm.arm.torque_set(0)
+        arm.set_torque(False)
         print("Serwa puszczone — ramię można ustawiać ręcznie.\n")
 
         saved = []
@@ -96,7 +101,7 @@ def main() -> int:
         # Moment WRACA zawsze, także po Ctrl+C: bez tego ramię zostaje
         # zwolnione i opada z aparatem po wyjściu ze skryptu.
         try:
-            arm.arm.torque_set(1)
+            arm.set_torque(True)
         except Exception:
             pass
         arm.close()

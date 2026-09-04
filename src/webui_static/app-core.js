@@ -30,6 +30,8 @@ const S = {           // stan klienta
   // ustawienie ujęcia ramienia — optymistyczne echo stanu z backendu
   // (state.robot); prawdą jest webui.py, patrz robotReconcile w app-robot.js
   robot: { pose: "top90", echoAt: 0 },
+  setupMsg: "",       // ostatnia odmowa backendu w karcie „Robot — ujęcia" (przeżywa rebuild karty)
+  setupPose: null,    // ujęcie wybrane w Ustawieniach → „Robot — ujęcia" (panel korekty pod kafelkiem)
 };
 const $ = id => document.getElementById(id);
 const post = (payload) => fetch("/api/action", { method: "POST", body: JSON.stringify(payload) });

@@ -107,6 +107,23 @@ ROBOT_MOVE_TIMEOUT = float(os.environ.get("ROBOT_MOVE_TIMEOUT", "20"))
 # tolerancja pozycji: cel jest zawsze ten sam kat, wiec ugiecie pod ciezarem
 # aparatu jest takie samo za kazdym razem i kadr sie nie rozjezdza.
 ROBOT_JOINT_TOL = float(os.environ.get("ROBOT_JOINT_TOL", "3"))
+# Dociaganie po dojezdzie: regulator pozycji ST3215 pod stalym obciazeniem
+# (aparat na wysiegu) zatrzymuje sie z bledem ustalonym — zawsze w te sama
+# strone, wiec kadr wychodzil „lekko nizej" niz ustawiony z reki. Po
+# `_wait_joints` ramie odczytuje katy i dosyla per os poprawiony cel
+# (cel + roznica), w maksymalnie ROBOT_SETTLE_ROUNDS rundach, az kazda os
+# jest w ROBOT_SETTLE_TOL od ujecia. Poprawka jest pamietana per ujecie na
+# czas sesji, wiec kolejny przejazd startuje juz skorygowany. 0 rund = OFF.
+# Przejazd w dwoch fazach: gdy cel jest WYZEJ, najpierw bark i lokiec
+# podnosza kamere, dopiero potem obrot podstawy, glowicy i pochylenie; gdy
+# cel jest nizej — odwrotnie. Wszystkie osie naraz oznaczaly obrot glowicy o
+# ~210 stopni, gdy aparat byl jeszcze przy blacie — obijal sie o podloge.
+# Wysokosc liczona z kinematyki ramienia (dlugosci ogniw z firmware).
+# Domyslnie OFF: operator wolal jeden plynny ruch (dwie fazy = ~2x dluzszy
+# przejazd); wlaczyc, gdy aparat znow zahacza o blat.
+ROBOT_LIFT_FIRST = os.environ.get("ROBOT_LIFT_FIRST", "false").lower() in ("1", "true", "yes", "on")
+ROBOT_SETTLE_TOL = float(os.environ.get("ROBOT_SETTLE_TOL", "0.5"))
+ROBOT_SETTLE_ROUNDS = int(os.environ.get("ROBOT_SETTLE_ROUNDS", "4"))
 
 # Predkosc i przyspieszenie ruchu (spd 1..4096, acc 1..254). Osobno dla calego
 # ramienia i dla osi 4: tam obraca sie sama glowica z kamera, wiec nie ma czego
@@ -131,14 +148,28 @@ ROBOT_WRIST_MODE = os.environ.get("ROBOT_WRIST_MODE", "true").lower() in ("1", "
 # OFF — ramie z aparatem nie ma ruszac samo zaraz po starcie aplikacji.
 ROBOT_HOME_ON_CONNECT = os.environ.get("ROBOT_HOME_ON_CONNECT", "false").lower() in ("1", "true", "yes", "on")
 
+# Piata os: dodatkowe serwo ST3215 dopiete do magistrali ramienia ZA osia 4
+# (na koncu wysiegnika), pochylajace kamere. Dzieki niemu jedno ustawienie
+# produktu daje i ujecie z gory, i skos 45 — sama os 4 obraca glowice tylko w
+# jednej plaszczyznie. Fabryczny firmware RoArm-M2-S zna wylacznie serwa
+# 11–15, wiec os 5 wymaga wgrania firmware z `firmware/roarm_m2_ext_servo/`
+# (komendy 130–134). `0` = brak piatej osi (fabryczne ramie, 4 katy w ujeciu).
+ROBOT_EXT_SERVO_ID = int(os.environ.get("ROBOT_EXT_SERVO_ID", "16") or 0)
+ROBOT_AXES = 5 if ROBOT_EXT_SERVO_ID > 0 else 4
+
 
 def _robot_joints(key: str) -> list[float] | None:
-    """Ujecie z .env: cztery katy przegubow w stopniach, "j1,j2,j3,j4".
+    """Ujecie z .env: katy przegubow w stopniach, "j1,j2,j3,j4[,j5]" —
+    tyle liczb, ile osi ma ramie (`ROBOT_AXES`).
 
-    Wypisuje je `tools/roarm_teach.py`: puszcza serwa, operator ustawia ramie
-    recznie w docelowym ujeciu, skrypt odczytuje katy. Brak wpisu = ujecie
-    nieustawione; UI mowi to wprost, zamiast wysylac ramie w przypadkowe
-    miejsce z wartosci domyslnych."""
+    Wypisuje je `tools/roarm_teach.py` (albo karta „Robot — ujęcia" w
+    Ustawieniach): puszcza serwa, operator ustawia ramie recznie w docelowym
+    ujeciu, skrypt odczytuje katy. Brak wpisu = ujecie nieustawione; UI mowi to
+    wprost, zamiast wysylac ramie w przypadkowe miejsce z wartosci domyslnych.
+
+    Ujecie z INNA liczba osi niz obecna tez jest pomijane — po dolozeniu
+    (albo zdjeciu) piatego serwa geometria konca ramienia jest inna, wiec
+    stare katy i tak nie daja tego samego kadru; trzeba ustawic ujecia od nowa."""
     raw = os.environ.get(key, "").strip()
     if not raw:
         return None
@@ -146,10 +177,11 @@ def _robot_joints(key: str) -> list[float] | None:
     try:
         nums = [float(p) for p in parts]
     except ValueError:
-        print(f"⚠ {key}='{raw}' nie jest listą czterech kątów — ujęcie pominięte")
+        print(f"⚠ {key}='{raw}' nie jest listą kątów — ujęcie pominięte")
         return None
-    if len(nums) != 4:
-        print(f"⚠ {key}='{raw}' ma {len(nums)} liczb zamiast 4 — ujęcie pominięte")
+    if len(nums) != ROBOT_AXES:
+        print(f"⚠ {key}='{raw}' ma {len(nums)} liczb zamiast {ROBOT_AXES} "
+              f"(ramię ma {ROBOT_AXES} osi) — ujęcie pominięte, ustaw je ponownie")
         return None
     return nums
 

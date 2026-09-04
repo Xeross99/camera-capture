@@ -243,7 +243,13 @@ function renderScreens(force) {
       if (lp) lp.scrollTop = lp.scrollHeight;
     }
   } else {
-    const key = JSON.stringify([st.settings, st.update]);
+    // Karta „Robot — ujęcia" pokazuje kąty na żywo, stan serw i przejazd —
+    // bez robota w kluczu zamierała na pierwszym renderze. Na tym ekranie nie
+    // ma streamu MJPEG, więc rebuild jest tani; kąty zaokrąglone do 0,1°.
+    const r = st.robot || {};
+    const robotSig = [r.connected, r.loose, r.busy, r.set, r.axes,
+                      r.joints ? r.joints.map(v => Math.round(v * 10)) : null, S.setupPose];
+    const key = JSON.stringify([st.settings, st.update, robotSig]);
     if (force || key !== lastUstawienia) {
       if (document.activeElement && document.activeElement.tagName === "INPUT") return;
       lastUstawienia = key;

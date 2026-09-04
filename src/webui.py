@@ -45,10 +45,12 @@ from .config import (
     AUTOMAT_API_TOKEN,
     AUTOMAT_BASE_URL,
     OUTPUT_SIZE,
+    ROBOT_AXES,
     ROBOT_ENABLED,
     ROBOT_HOME_ON_CONNECT,
     ROBOT_JOINTS,
     ROBOT_JOINTS_ENV,
+    ROBOT_JOINT_TOL,
     ROBOT_NUDGE_BIG,
     ROBOT_NUDGE_STEP,
     TRASH_RETENTION_DAYS,
@@ -773,7 +775,7 @@ class WebUI:
         je trzymac. Po ustawieniu ujecia lapie sie moment i dopiero wtedy da sie
         swobodnie klikac po UI (patrz sekcja „Robot" w CLAUDE.md)."""
         try:
-            self.robot.arm.torque_set(0 if on is False else 1)
+            self.robot.set_torque(on is not False)
         except Exception as e:
             self._log(f"✗ Robot: nie udało się {'puścić' if on is False else 'złapać'} serw ({e})", "err")
             return
@@ -799,6 +801,33 @@ class WebUI:
             self.robot_joints = joints
         persist_env(ROBOT_JOINTS_ENV[pose], ",".join(f"{v:.1f}" for v in joints))
         self._log(f"✓ Zapisano ujęcie {pose}: {RoArmSession.fmt_joints(joints)}", "ok")
+        # Od razu: czy silniki w ogole utrzymaja te katy? Ujecie ustawione
+        # reka przy puszczonych serwach potrafi lezec poza zasiegiem serwa
+        # (os 4: reka −115°, silnik konczy na ~−107°) — przy ⌘1 skonczyloby
+        # sie to „nie dojechalo" bez wyjasnienia, skad sie wzielo.
+        self._set_robot_busy("Sprawdzam, czy silniki utrzymają ujęcie")
+        try:
+            now = self.robot.verify_pose(joints)
+        except RobotRangeError as e:
+            self._log(f"✗ Robot: {e}", "err")
+            return
+        finally:
+            self._set_robot_busy("")
+        if now is None:
+            return
+        off = [(i, n - t) for i, (t, n) in enumerate(zip(joints, now))
+               if abs(n - t) > ROBOT_JOINT_TOL]
+        if off:
+            what = ", ".join(f"oś {i + 1} stoi na {now[i]:.0f}° zamiast {joints[i]:.0f}°"
+                             for i, _ in off)
+            self._log(f"⚠ Robot: ujęcie {pose} poza zasięgiem silników ({what}) — "
+                      "przy ⌘ nie wróci dokładnie tutaj; ustaw je bliżej środka zakresu osi",
+                      "warn")
+        else:
+            with self.lock:
+                self.robot_joints = now
+            self._log(f"Robot: silniki trzymają ujęcie {pose} "
+                      f"(największa odchyłka {max(abs(n - t) for t, n in zip(joints, now)):.1f}°)")
 
     def _do_nudge(self, joint: int, delta: float) -> None:
         """Korekta jednej osi o `delta` stopni — wykonywana w watku robota.
@@ -1604,6 +1633,10 @@ class WebUI:
         err = self._robot_ready()
         if err:
             return err
+        if self.robot_loose:
+            # serwo bez momentu nie wykona komendy pozycji — czekalibysmy
+            # pelny timeout na ramie, ktore nie ma prawa ruszyc
+            return {"ok": False, "error": "serwa są puszczone — najpierw złap pozycję"}
         with self.lock:
             self.robot_pose = pose
         self._robot_move()
@@ -1619,13 +1652,14 @@ class WebUI:
         return None
 
     def _act_robot_nudge(self, data: dict) -> dict | None:
-        """Korekta osi z przyciskow w Ustawieniach: `joint` 1-4, `delta` w stopniach."""
+        """Korekta osi z przyciskow w Ustawieniach: `joint` 1..ROBOT_AXES,
+        `delta` w stopniach."""
         try:
             joint = int(data.get("joint"))
             delta = float(data.get("delta"))
         except (TypeError, ValueError):
             return {"ok": False, "error": "brak osi albo kroku"}
-        if joint not in (1, 2, 3, 4):
+        if not 1 <= joint <= ROBOT_AXES:
             return {"ok": False, "error": "nieznana oś"}
         if not self.robot_connected:
             return {"ok": False, "error": "ramię nie jest połączone"}
@@ -1912,7 +1946,9 @@ class WebUI:
                     # .env) — panel wyszarza te, ktorych nie ma, zamiast
                     # wysylac ramie w nieznane
                     "set": {p: bool(a) for p, a in ROBOT_JOINTS.items()},
-                    # do sekcji „Robot — ujęcia" w Ustawieniach
+                    # do sekcji „Robot — ujęcia" w Ustawieniach; `axes` = ile
+                    # wierszy korekty (5 z serwem pochylenia kamery, 4 bez)
+                    "axes": ROBOT_AXES,
                     "loose": self.robot_loose,
                     "joints": self.robot_joints,
                     "nudge": [ROBOT_NUDGE_STEP, ROBOT_NUDGE_BIG],

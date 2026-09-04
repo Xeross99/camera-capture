@@ -23,24 +23,41 @@ sa dokladnie te, ktore robi SDK, inaczej ta sama liczba oznaczalaby inny kat.
 SDK jest zaleznoscia OPCJONALNA: brak paczki albo brak ramienia w porcie to
 czytelny komunikat i panel w stanie „rozlaczony", nigdy wywrocony start
 aplikacji — na macOS deweloperskim ramienia zwyczajnie nie ma.
+
+Os 5 (`ROBOT_EXT_SERVO_ID`, domyslnie serwo ID 16): dodatkowe ST3215 dopiete
+do magistrali ZA osia 4, na koncu wysiegnika, pochyla kamere. Sama os 4
+obraca glowice tylko w jednej plaszczyznie, wiec z czterema osiami ujecie
+z gory i skos 45 wymagaly przestawiania produktu; z piata osia produkt stoi
+raz, a ramie przejezdza miedzy ujeciami. Fabryczny firmware zna tylko serwa
+11–15 — os 5 gada komendami 130–134 z `firmware/roarm_m2_ext_servo/`
+(kat w stopniach, 0 = srodek zakresu serwa; spd/acc w SUROWYCH krokach, czyli
+dokladnie ROBOT_JOINT_SPEED/ACC z konfiguracji, bez podwojnego przeliczania).
+Odpowiedzi (`T:1131`, `T:1134`) czytamy sami z portu pod `arm.lock`, bo SDK
+rozumie tylko feedback 1051.
 """
 
 from .config import (
+    ROBOT_AXES,
     ROBOT_BAUD,
+    ROBOT_EXT_SERVO_ID,
     ROBOT_JOINT_ACC,
     ROBOT_JOINT_SPEED,
     ROBOT_JOINT_TOL,
     ROBOT_JOINTS,
+    ROBOT_LIFT_FIRST,
     ROBOT_MOVE_ACC,
     ROBOT_MOVE_SPEED,
     ROBOT_MOVE_TIMEOUT,
     ROBOT_PORT,
+    ROBOT_SETTLE_ROUNDS,
+    ROBOT_SETTLE_TOL,
     ROBOT_TYPE,
     ROBOT_WRIST_MODE,
 )
 
 import json
 import logging
+import math
 import sys
 import time
 
@@ -73,12 +90,46 @@ def _restore_logging(handlers: list, level: int) -> None:
 
 
 # Pozycja domowa w STOPNIACH — te same katy, ktore SDK wysyla w `move_init`
-# (radiany [0, 0, 1.5708, 0]), tylko z uzywalnym przyspieszeniem.
+# (radiany [0, 0, 1.5708, 0]), tylko z uzywalnym przyspieszeniem. Os 5 (gdy
+# jest) idzie na 0 = srodek zakresu serwa.
 HOME_ANGLES = [0.0, 0.0, 90.0, 0.0]
 
-# Plytka sterujaca RoArm-M2-S wystawia sie przez CH343 (QinHeng, VID 0x1A86).
-# Po tym VID rozpoznajemy port, gdy ROBOT_PORT nie jest ustawiony w .env.
-_ROBOT_VIDS = {0x1A86}
+# Dlugosci ogniw RoArm-M2-S (mm) z RoArm-M2_config.h firmware — do
+# wysokosci nadgarstka (`wrist_height`), nie do sterowania.
+_L2_A, _L2_B = 236.82, 30.00        # ramie: bark → lokiec (z odsadzeniem)
+_L3_A = 215.99                       # przedramie w trybie nadgarstka (EEMode 1)
+_L2 = math.hypot(_L2_A, _L2_B)
+_T2 = math.atan2(_L2_B, _L2_A)
+
+# Podzial osi na fazy przejazdu: „podnoszenie" to bark i lokiec, „obrot" to
+# podstawa, glowica i pochylenie kamery (indeksy 0-based).
+_LIFT_AXES = (1, 2)
+_TURN_AXES = (0, 3, 4)
+_LIFT_MIN_DZ = 20.0                  # mm — mniejsza roznica wysokosci = jedna faza
+_TURN_MIN_DEG = 3.0                  # obrot mniejszy niz to nie wymaga faz
+
+
+def wrist_height(j2: float, j3: float) -> float:
+    """Wysokosc nadgarstka nad osia barku (mm) — wzor z
+    `RoArmM2_computePosbyJointRad` w firmware (bez czlonu koncowki, ktory
+    zalezy od osi 4 i jest maly wobec ogniw). Sluzy tylko do decyzji
+    „cel jest wyzej czy nizej"."""
+    s = math.radians(j2)
+    e = math.radians(j3)
+    return _L2 * math.cos(s + _T2) + _L3_A * math.cos(s + e)
+
+# Komendy osi 5 z firmware/roarm_m2_ext_servo/ext_servo.h.
+_EXT_CMD_ANGLE, _EXT_CMD_FEEDBACK, _EXT_CMD_TORQUE, _EXT_CMD_SET_ID = 130, 131, 132, 134
+# Ile czekamy na odpowiedz serwa przez plytke: jeden obrot petli firmware to
+# odczyt feedbacku wszystkich serw (~10 ms), a InfoPrint=1 wypisuje wczesniej
+# echo naszej komendy.
+_EXT_REPLY_TIMEOUT_S = 0.5
+
+# Plytka sterujaca RoArm-M2-S wystawia sie przez CH343 (QinHeng, VID 0x1A86)
+# albo — zmierzone na naszym egzemplarzu — przez CP2102N (Silicon Labs,
+# VID 0x10C4). Po tym VID rozpoznajemy port, gdy ROBOT_PORT nie jest
+# ustawiony w .env; dalej jest fallback po nazwie urzadzenia.
+_ROBOT_VIDS = {0x1A86, 0x10C4}
 _PORT_HINTS = ("wchusbserial", "usbserial", "ttyUSB", "ttyACM")
 
 
@@ -133,6 +184,12 @@ class RoArmSession:
         # kanal do logu UI (wstrzykiwany przez webui, jak `on_log` w EDSDK) —
         # inaczej ostrzezenia z ustawiania osi zniknelyby w spakowanym .exe
         self.log = lambda text: None
+        # jedno ostrzezenie o niemej osi 5 na polaczenie — odczyt katow idzie
+        # co sekunde i bez tego log zalalby sie tym samym wpisem
+        self._ext_warned = False
+        # nauczona poprawka ugiecia per ujecie (stopnie, per os) — patrz
+        # `_settle`; zyje tylko w pamieci, bo zalezy od tego, co wisi na koncu
+        self._trim: dict[str, list[float]] = {}
 
     # ---------- polaczenie ----------
 
@@ -176,6 +233,21 @@ class RoArmSession:
             except Exception as e:
                 self.log(f"Robot: nie udało się przełączyć osi 4 w tryb nadgarstka ({e}) "
                          "— kamera może nie dać się obrócić")
+        self._ext_warned = False
+        if ROBOT_AXES == 5 and self.read_ext() is None:
+            # Polaczenie ZOSTAJE (plytka odpowiada, cztery osie dzialaja) —
+            # ale bez osi 5 zadne ujecie nie jest kompletne, wiec mowimy
+            # od razu, czego szukac. Najczestsze przyczyny w tej kolejnosci.
+            self._warn_ext()
+
+    def _warn_ext(self) -> None:
+        if self._ext_warned:
+            return
+        self._ext_warned = True
+        self.log(f"Robot: oś 5 (serwo ID {ROBOT_EXT_SERVO_ID}) nie odpowiada — sprawdź: "
+                 "(1) czy w ramieniu jest firmware z firmware/roarm_m2_ext_servo "
+                 "(OLED: „version: 0.84 +ext”), (2) czy serwo ma nadane ID "
+                 f"{ROBOT_EXT_SERVO_ID} (tools/roarm_ext_servo_id.py), (3) kabel magistrali")
 
     def close(self) -> None:
         arm, self.arm = self.arm, None
@@ -220,8 +292,12 @@ class RoArmSession:
             return None
 
     def read_joints(self) -> list[float] | None:
-        """[j1, j2, j3, j4] w STOPNIACH (tak jak przyjmuja komendy ruchu;
-        `feedback_get` oddaje radiany, wiec swiadomie nie tamtedy)."""
+        """[j1, j2, j3, j4(, j5)] w STOPNIACH (tak jak przyjmuja komendy ruchu;
+        `feedback_get` oddaje radiany, wiec swiadomie nie tamtedy).
+
+        Przy piecu osiach brak odczytu osi 5 = brak odczytu W OGOLE (None):
+        cztery katy bez pochylenia kamery nie opisuja ujecia, a zapisanie ich
+        jako ujecia dawaloby kadr „prawie dobry" bez sladu, czemu."""
         if self.arm is None:
             return None
         try:
@@ -231,9 +307,98 @@ class RoArmSession:
         if not joints or len(joints) < 4:
             return None
         try:
-            return [float(v) for v in joints[:4]]
+            out = [float(v) for v in joints[:4]]
         except (TypeError, ValueError):
             return None
+        if ROBOT_AXES == 5:
+            ext = self.read_ext()
+            if ext is None:
+                self._warn_ext()
+                return None
+            out.append(ext["angle"])
+        return out
+
+    # ---------- os 5: serwo poza SDK ----------
+
+    def read_ext(self, servo_id: int | None = None) -> dict | None:
+        """Odczyt dodatkowego serwa: {"angle", "pos", "load", "volt", "temp"}
+        albo None (serwo/firmware nie odpowiada)."""
+        sid = servo_id or ROBOT_EXT_SERVO_ID
+        reply = self._ext_query({"T": _EXT_CMD_FEEDBACK, "id": sid}, _EXT_CMD_FEEDBACK + 1000)
+        if not reply or not reply.get("ok"):
+            return None
+        try:
+            return {"angle": float(reply["angle"]), "pos": int(reply["pos"]),
+                    "load": reply.get("load"), "volt": reply.get("volt"),
+                    "temp": reply.get("temp")}
+        except (KeyError, TypeError, ValueError):
+            return None
+
+    def ext_torque(self, on: bool, servo_id: int | None = None) -> None:
+        """Moment jednego serwa przez komende 132 (ID 254 = wszystkie)."""
+        payload = json.dumps({"T": _EXT_CMD_TORQUE, "id": servo_id or ROBOT_EXT_SERVO_ID,
+                              "cmd": 1 if on else 0})
+        self._write(payload, "moment serw")
+
+    def set_torque(self, on: bool) -> None:
+        """Puszcza (False) albo lapie (True) WSZYSTKIE serwa — do recznego
+        ustawiania ujecia.
+
+        Z naszym firmware idzie to komenda 132 na broadcast 254, a NIE przez
+        `torque_set` z SDK (komenda 210): firmware Waveshare z 2026 przy
+        `210 cmd:0` najpierw wola `Move_to_location()` — jedzie ramieniem do
+        pozycji parkingowej i czeka w petli na dojazd kazdej osi — i dopiero
+        potem zwalnia serwa. Operator, ktory wlasnie trzyma ramie z aparatem,
+        blokuje ten dojazd, wiec firmware wisi, a serwa nigdy nie puszczaja
+        (objaw: „Puść serwa" nic nie robi). 132 to golo `EnableTorque`, bez
+        parkowania. Na fabrycznym firmware (ROBOT_AXES == 4) zostaje SDK."""
+        if self.arm is None:
+            raise RobotLinkError("ramię nie jest połączone")
+        if ROBOT_AXES == 5:
+            self.ext_torque(on, servo_id=254)
+            return
+        try:
+            self.arm.torque_set(1 if on else 0)
+        except Exception as e:
+            raise RobotLinkError(f"moment serw: {e}") from e
+
+    def ext_set_id(self, raw_id: int, new_id: int) -> bool:
+        """Nadanie ID nowemu serwu (fabrycznie 1) — komenda 134 z naszego
+        firmware, bezpieczna dla kazdego `raw` (fabryczna 501 indeksuje tablice
+        feedbacku `raw - 11`, wiec dla ID 1 pisze poza nia)."""
+        reply = self._ext_query({"T": _EXT_CMD_SET_ID, "raw": raw_id, "new": new_id},
+                                _EXT_CMD_SET_ID + 1000, timeout=2.0)
+        return bool(reply and reply.get("ok"))
+
+    def _ext_query(self, cmd: dict, reply_t: int, timeout: float = _EXT_REPLY_TIMEOUT_S) -> dict | None:
+        """Komenda z odpowiedzia. Pod `arm.lock`, bo czytamy z portu obok SDK;
+        `_write` SDK czysci bufor wejsciowy PRZED wyslaniem, wiec to, co
+        przychodzi potem, jest odpowiedzia na nas — pomijamy tylko echo komendy
+        (InfoPrint=1) i ewentualny feedback 1051 z trybu flow."""
+        if self.arm is None:
+            raise RobotLinkError("ramię nie jest połączone")
+        payload = (json.dumps(cmd) + "\n").encode()
+        try:
+            with self.arm.lock:
+                self.arm._write(payload)
+                port = self.arm._serial_port
+                deadline = time.monotonic() + timeout
+                while time.monotonic() < deadline:
+                    line = port.readline()
+                    if not line:
+                        continue
+                    line = line.strip()
+                    if not line.startswith(b"{"):
+                        continue
+                    try:
+                        data = json.loads(line)
+                    except ValueError:
+                        continue
+                    if isinstance(data, dict) and data.get("T") == reply_t:
+                        return data
+        except Exception as e:
+            raise RobotLinkError(f"oś 5: komenda nie doszła ({e})") from e
+        return None
 
     # ---------- ruch ----------
 
@@ -250,19 +415,179 @@ class RoArmSession:
             raise RobotRangeError(
                 f"ujęcie „{pose}” nie jest ustawione — uruchom tools/roarm_teach.py, "
                 "ustaw ramię ręcznie i zapisz")
-        self.move_joints(angles)
+        trim = self._trim.get(pose)
+        if trim is None or len(trim) != len(angles):
+            trim = self._trim[pose] = [0.0] * len(angles)
+        self.move_joints(angles, trim)
 
-    def move_joints(self, angles: list[float]) -> None:
-        """Przejazd na cztery zadane katy przegubow.
+    def move_joints(self, angles: list[float], trim: list[float] | None = None) -> None:
+        """Przejazd na zadane katy przegubow (4 albo 5, wg ROBOT_AXES).
+
+        `trim` (opcjonalnie, modyfikowany W MIEJSCU) to nauczona poprawka
+        ugiecia per os: komenda idzie na `angles + trim`, a po dojezdzie
+        `_settle` dociaga osie do `angles` i aktualizuje `trim`.
 
         Ramie i glowica dostaja OSOBNE komendy, mimo ze pierwsza zawiera juz
         docelowy kat osi 4: druga nadpisuje go z wlasna, wyzsza predkoscia.
         Wysieg z aparatem musi jechac wolno, bo szarpniecie przenosi sie na
         stol, ale sama glowica nie ma czego rozhustac — a `_wait_joints` czeka
-        na wszystkie osie, wiec jej spowolnienie wydluzaloby kazdy przejazd."""
-        self._send_joints(angles)
-        self._send_joint4(angles[3])
-        self._wait_joints(angles)
+        na wszystkie osie, wiec jej spowolnienie wydluzaloby kazdy przejazd.
+        Os 5 (pochylenie kamery) jedzie z ta sama predkoscia co os 4 — to tez
+        sama glowica."""
+        if len(angles) != ROBOT_AXES:
+            raise RobotRangeError(
+                f"ujęcie ma {len(angles)} kątów, a ramię {ROBOT_AXES} osi — ustaw je ponownie")
+        cmd = [a + t for a, t in zip(angles, trim)] if trim else list(angles)
+        phases = self._plan_phases(cmd)
+        if phases is None:
+            self._send_joints(cmd[:4])
+            self._send_joint4(cmd[3])
+            if ROBOT_AXES == 5:
+                self._send_joint(5, cmd[4])
+            now = self._wait_joints(cmd)
+        else:
+            now = None
+            for axes, start in phases:
+                target = list(start)
+                for i in axes:
+                    target[i] = cmd[i]
+                    self._send_joint(i + 1, cmd[i])
+                now = self._wait_joints(target)
+                if now is None:
+                    break
+        if trim is not None:
+            now = self._settle(angles, trim)
+        self._check_arrived(angles, now)
+
+    def _plan_phases(self, cmd: list[float]) -> list[tuple[tuple[int, ...], list[float]]] | None:
+        """Kolejnosc faz przejazdu albo None (= wszystko naraz).
+
+        Obrot glowicy z aparatem o ~210° w trakcie podnoszenia z ujecia
+        „z boku" konczyl sie uderzeniem aparatu o blat: wszystkie osie ruszaly
+        naraz, wiec glowica krecila sie, gdy ramie bylo jeszcze nisko. Gdy cel
+        jest wyzej — najpierw bark i lokiec (podniesienie), potem obrot
+        podstawy/glowicy/pochylenia; gdy nizej — obrot na gorze, potem
+        opuszczanie. Kazda faza to lista osi do ruszenia i katy, na ktorych
+        stoja pozostale (do czekania na dojazd)."""
+        if not ROBOT_LIFT_FIRST:
+            return None
+        now = self.read_joints()
+        if now is None or len(now) != len(cmd):
+            return None
+        turn = [i for i in _TURN_AXES if i < len(cmd) and abs(cmd[i] - now[i]) > _TURN_MIN_DEG]
+        dz = wrist_height(cmd[1], cmd[2]) - wrist_height(now[1], now[2])
+        if not turn or abs(dz) < _LIFT_MIN_DZ:
+            return None
+        lift = tuple(i for i in _LIFT_AXES if abs(cmd[i] - now[i]) > 0.5)
+        turn_t = tuple(turn)
+        if dz > 0:
+            after_lift = list(now)
+            for i in lift:
+                after_lift[i] = cmd[i]
+            return [(lift, now), (turn_t, after_lift)]
+        after_turn = list(now)
+        for i in turn_t:
+            after_turn[i] = cmd[i]
+        return [(turn_t, now), (lift, after_turn)]
+
+    def _settle(self, target: list[float], trim: list[float]) -> list[float] | None:
+        """Dociaga osie do `target` po dojezdzie. Zwraca ostatni odczyt katow.
+
+        Serwo pod stalym obciazeniem zatrzymuje sie z bledem ustalonym —
+        z aparatem na wysiegu kadr wychodzil zawsze „lekko nizej" niz ustawiony
+        z reki. Blad jest powtarzalny, wiec leczymy go jak przesuniecie:
+        os, ktora stanela o d za daleko od celu, dostaje cel + (−d) i tak w
+        kolku, maksymalnie ROBOT_SETTLE_ROUNDS razy. Nauczone przesuniecie
+        zostaje w `trim`, wiec nastepny przejazd na to ujecie od razu jedzie
+        skorygowany i zwykle konczy sie bez rund."""
+        now = self.read_joints()
+        if ROBOT_SETTLE_ROUNDS <= 0 or now is None:
+            return now
+        limit = 20.0        # bezpiecznik: poprawka wieksza niz to nie jest ugieciem
+        rounds = 0
+        stuck: set[int] = set()     # osie, ktore nie reaguja — koniec zakresu / blokada
+        for _ in range(ROBOT_SETTLE_ROUNDS):
+            if self.should_stop():
+                return now
+            err = [t - n for t, n in zip(target, now)]
+            fix = [i for i, e in enumerate(err)
+                   if abs(e) > ROBOT_SETTLE_TOL and i not in stuck]
+            if not fix:
+                break
+            rounds += 1
+            before = now
+            added: dict[int, float] = {}
+            for i in fix:
+                new_trim = max(-limit, min(limit, trim[i] + err[i]))
+                added[i] = new_trim - trim[i]
+                trim[i] = new_trim
+                self._send_joint(i + 1, target[i] + trim[i])
+            now = self._wait_still()
+            if now is None:
+                return None
+            # Os, ktora mimo DUZEJ poprawki (>= 5°) nie drgnela, stoi na koncu
+            # zakresu albo jest zablokowana — dalsze pchanie tylko zjada rundy
+            # i nabija trim, wiec oddajemy dokladnie to, co dodalismy. Mala
+            # poprawka bez ruchu to co innego: bark ma martwa strefe ~2–3° i
+            # rusza dopiero, gdy kolejna runda dolozy drugie tyle.
+            for i in fix:
+                if abs(now[i] - before[i]) < 0.3 and abs(added[i]) >= 5.0:
+                    stuck.add(i)
+                    trim[i] -= added[i]
+        resid = max(abs(t - n) for t, n in zip(target, now))
+        applied = " ".join(f"j{i + 1} {v:+.1f}°" for i, v in enumerate(trim) if abs(v) >= 0.1)
+        if rounds:
+            self.log(f"Robot: dociągnięcie w {rounds} rund. ({applied or 'bez zmian'}), "
+                     f"pozostały błąd {resid:.1f}°")
+        return now
+
+    def _check_arrived(self, target: list[float], now: list[float] | None) -> None:
+        """Po dojezdzie i dociaganiu: odchylka wieksza niz ROBOT_JOINT_TOL to
+        juz nie ugiecie, tylko blokada albo brak zasilania — mowimy, ktora os."""
+        if now is None:
+            return          # brak odczytu — lepiej to niz udawanie
+        miss = max(range(len(target)), key=lambda i: abs(now[i] - target[i]))
+        if abs(now[miss] - target[miss]) > ROBOT_JOINT_TOL:
+            raise RobotRangeError(
+                f"ramię nie dojechało: oś {miss + 1} stoi na {now[miss]:.0f}°, "
+                f"a ma być {target[miss]:.0f}° — albo to koniec zakresu tej osi "
+                "(ręką da się ją przekręcić dalej niż dojedzie silnik: ustaw ujęcie "
+                "od nowa bliżej środka zakresu), albo brak zasilania 12 V / blokada")
+
+    def _wait_still(self, timeout: float = 2.5) -> list[float] | None:
+        """Czeka, az osie przestana sie ruszac (dwa kolejne odczyty zgodne
+        do 0,2°) i zwraca ostatni odczyt. `_wait_joints` ma tolerancje
+        ROBOT_JOINT_TOL, czyli wieksza niz sama poprawka — wrocilby przed
+        ruchem. Pierwszy odczyt po krotkiej pauzie, zeby serwo zdazylo ruszyc."""
+        deadline = time.monotonic() + timeout
+        time.sleep(0.25)
+        prev = self.read_joints()
+        now = prev
+        while time.monotonic() < deadline and not self.should_stop():
+            time.sleep(0.15)
+            now = self.read_joints()
+            if now is None:
+                return None
+            if prev is not None and all(abs(a - b) <= 0.2 for a, b in zip(now, prev)):
+                return now
+            prev = now
+        return now
+
+    def verify_pose(self, angles: list[float]) -> list[float] | None:
+        """Sprawdza, czy SILNIKI utrzymaja zadane katy: dosyla je jako cel
+        (ramie juz tam stoi, wiec ruch jest znikomy), dociaga i oddaje
+        odczyt. Uzywane zaraz po zapisie ujecia: ujecie ustawione reka przy
+        puszczonych serwach potrafi lezec poza zakresem, w ktory serwo w ogole
+        dojezdza (zmierzone na osi 4: reka −115°, silnik konczy na ~−107°) —
+        lepiej uslyszec to przy zapisie niz przy pierwszym ⌘1."""
+        trim = [0.0] * len(angles)
+        cmd = list(angles)
+        self._send_joints(cmd[:4])
+        self._send_joint4(cmd[3])
+        if ROBOT_AXES == 5:
+            self._send_joint(5, cmd[4])
+        self._wait_joints(cmd)
+        return self._settle(angles, trim)
 
     def home(self) -> None:
         """Przejazd do pozycji domowej (`j1 0, j2 0, j3 90, j4 0`).
@@ -275,7 +600,7 @@ class RoArmSession:
         domowa zostala ustawiona."""
         if self.arm is None:
             raise RobotLinkError("ramię nie jest połączone")
-        self.move_joints(list(HOME_ANGLES))
+        self.move_joints(list(HOME_ANGLES) + ([0.0] if ROBOT_AXES == 5 else []))
 
     def _send_joints(self, angles: list[float]) -> None:
         """Komenda 122 (wszystkie przeguby) sklejona samodzielnie.
@@ -301,12 +626,21 @@ class RoArmSession:
         self._send_joint(4, angle)
 
     def _send_joint(self, joint: int, angle: float) -> None:
-        """Komenda 121 (jedna os) sklejona samodzielnie.
+        """Komenda 121 (jedna os) sklejona samodzielnie; os 5 idzie komenda
+        130 z naszego firmware.
 
         Odwrocenie `180 - angle` dotyczy TYLKO osi 4 — dokladnie tak samo, jak
         w `handle_joint_angle_ctrl` w SDK. Pozostale osie ida wprost.
         Predkosc tez zalezy od osi: glowica moze chodzic szybciej niz wysieg,
         ktory przenosi szarpniecie na stol."""
+        if joint == 5:
+            # spd/acc SUROWE — firmware nie przelicza ich przez stopnie, wiec
+            # nie ma tu skalowania 180/2048 jak przy 121/122
+            payload = json.dumps({"T": _EXT_CMD_ANGLE, "id": ROBOT_EXT_SERVO_ID,
+                                  "angle": round(angle, 2),
+                                  "spd": int(ROBOT_JOINT_SPEED), "acc": int(ROBOT_JOINT_ACC)})
+            self._write(payload, "ruch osi 5")
+            return
         fast = joint == 4
         spd = ROBOT_JOINT_SPEED if fast else ROBOT_MOVE_SPEED
         acc = ROBOT_JOINT_ACC if fast else ROBOT_MOVE_ACC
@@ -324,6 +658,8 @@ class RoArmSession:
         ruchu albo None, gdy ramie nie oddaje katow."""
         if self.arm is None:
             raise RobotLinkError("ramię nie jest połączone")
+        if not 1 <= joint <= ROBOT_AXES:
+            raise RobotRangeError(f"ramię nie ma osi {joint}")
         joints = self.read_joints()
         if joints is None:
             return None
@@ -356,25 +692,40 @@ class RoArmSession:
         except Exception as e:
             raise RobotLinkError(f"{what}: komenda nie doszła ({e})") from e
 
-    def _wait_joints(self, target: list[float]) -> None:
-        """Czeka, az wszystkie przeguby trafia w zadane katy.
+    def _wait_joints(self, target: list[float]) -> list[float] | None:
+        """Czeka na koniec przejazdu i zwraca ostatni odczyt katow.
 
-        Po przekroczeniu czasu mowimy wprost, ktora os nie dojechala i o ile —
-        najczestsza przyczyna to brak zasilania serw albo mechaniczna blokada,
-        a nie zla wartosc."""
+        Koniec = wszystkie osie w ROBOT_JOINT_TOL od celu ALBO ramie przestalo
+        sie ruszac (odczyty zgodne do 0,2° przez ~1 s). To drugie jest
+        potrzebne, bo serwo pod ciezarem aparatu potrafi stanac dalej niz
+        tolerancja (zmierzone: lokiec 4,4°) — wczesniej konczylo sie to pelnym
+        ROBOT_MOVE_TIMEOUT i bledem „nie dojechalo", zamiast dociaganiem.
+        O tym, czy ramie faktycznie dojechalo, decyduje `_check_arrived` po
+        dociaganiu. Po przekroczeniu czasu (ramie caly czas w ruchu — np. os
+        oscyluje) rzucamy z nazwa osi."""
         deadline = time.monotonic() + ROBOT_MOVE_TIMEOUT
         joints: list[float] | None = None
+        prev: list[float] | None = None
+        still_since: float | None = None
         while time.monotonic() < deadline:
             time.sleep(0.15)
             if self.should_stop():
-                return
+                return None
             joints = self.read_joints()
             if joints is None:
-                return      # SDK nie oddaje odczytu — lepiej to niz udawanie
+                return None     # SDK nie oddaje odczytu — lepiej to niz udawanie
             if all(abs(j - t) <= ROBOT_JOINT_TOL for j, t in zip(joints, target)):
-                return
+                return joints
+            moving = prev is None or any(abs(j - p) > 0.2 for j, p in zip(joints, prev))
+            if moving:
+                still_since = None
+            elif still_since is None:
+                still_since = time.monotonic()
+            elif time.monotonic() - still_since >= 1.0:
+                return joints   # stanelo poza tolerancja — dociaganie / _check_arrived
+            prev = joints
         now = joints or target
-        miss = max(range(4), key=lambda i: abs(now[i] - target[i]))
+        miss = max(range(len(target)), key=lambda i: abs(now[i] - target[i]))
         raise RobotRangeError(
             f"ramię nie dojechało: oś {miss + 1} jest pod {now[miss]:.0f}°, "
             f"a ma być {target[miss]:.0f}° — sprawdź zasilanie 12 V "

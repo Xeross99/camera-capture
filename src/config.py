@@ -147,6 +147,15 @@ ROBOT_WRIST_MODE = os.environ.get("ROBOT_WRIST_MODE", "true").lower() in ("1", "
 # katami nie jest do niczego potrzebny (cel jest bezwzgledny), wiec domyslnie
 # OFF — ramie z aparatem nie ma ruszac samo zaraz po starcie aplikacji.
 ROBOT_HOME_ON_CONNECT = os.environ.get("ROBOT_HOME_ON_CONNECT", "false").lower() in ("1", "true", "yes", "on")
+# Ujecie, na ktore ramie jedzie zaraz po polaczeniu — stanowisko ma byc gotowe
+# do strzalu bez klikania ⌘1. Pusto (albo `off`) = ramie zostaje tam, gdzie
+# stoi. Nazwa musi byc jednym z ujec (`ROBOT_JOINTS_ENV`); nieustawione ujecie
+# = tylko wpis w logu, zadnego przejazdu w przypadkowe miejsce. Gdy ujecie
+# startowe dziala, `ROBOT_HOME_ON_CONNECT` jest pomijany: pozycja domowa byla
+# by wtedy przystankiem po drodze, czyli przejazdem z aparatem bez powodu.
+ROBOT_POSE_ON_CONNECT = os.environ.get("ROBOT_POSE_ON_CONNECT", "top90").strip().lower()
+if ROBOT_POSE_ON_CONNECT in ("off", "none", "false", "0"):
+    ROBOT_POSE_ON_CONNECT = ""
 
 # Piata os: dodatkowe serwo ST3215 dopiete do magistrali ramienia ZA osia 4
 # (na koncu wysiegnika), pochylajace kamere. Dzieki niemu jedno ustawienie
@@ -187,6 +196,10 @@ def _robot_joints(key: str) -> list[float] | None:
 
 
 ROBOT_JOINTS_ENV = {"top90": "ROBOT_JOINTS_TOP90", "a45": "ROBOT_JOINTS_A45"}
+if ROBOT_POSE_ON_CONNECT and ROBOT_POSE_ON_CONNECT not in ROBOT_JOINTS_ENV:
+    print(f"⚠ ROBOT_POSE_ON_CONNECT='{ROBOT_POSE_ON_CONNECT}' nie jest ujęciem "
+          f"({', '.join(ROBOT_JOINTS_ENV)}) — ramię zostanie tam, gdzie stoi")
+    ROBOT_POSE_ON_CONNECT = ""
 ROBOT_JOINTS = {name: _robot_joints(key) for name, key in ROBOT_JOINTS_ENV.items()}
 
 # Wersja zapisu ujec. `1` = katy zdjete odczytem sprzed poprawki osi 4:

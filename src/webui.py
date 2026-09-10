@@ -48,6 +48,7 @@ from .config import (
     ROBOT_AXES,
     ROBOT_ENABLED,
     ROBOT_HOME_ON_CONNECT,
+    ROBOT_POSE_ON_CONNECT,
     ROBOT_JOINTS,
     ROBOT_JOINTS_ENV,
     ROBOT_JOINT_TOL,
@@ -233,7 +234,7 @@ class WebUI:
         # nie ma: ujecie to zapisane katy przegubow i nic sie w nim nie
         # reguluje (patrz komentarz na gorze robot.py).
         self.robot_connected = False
-        self.robot_pose = next(iter(ROBOT_JOINTS))
+        self.robot_pose = ROBOT_POSE_ON_CONNECT or next(iter(ROBOT_JOINTS))
         self.robot_busy = ""      # niepusty = ramie w ruchu (blokuje migawke)
         self.robot_error = ""
         # Ostatni odczytany uklad przegubow — pokazywany w logu przy polaczeniu
@@ -665,7 +666,19 @@ class WebUI:
                 self.robot_connected = True
                 self.robot_error = ""
             self._log(f"Ramię połączone: {self.robot.describe()}", "ok")
-            if ROBOT_HOME_ON_CONNECT:
+            # Ujecie startowe: stanowisko ma byc gotowe do strzalu bez ⌘1.
+            # Jedziemy na ZADANE ujecie (`robot_pose`), a nie na stale
+            # ROBOT_POSE_ON_CONNECT — przy pierwszym polaczeniu to to samo, ale
+            # reconnect w srodku sesji (zerwany link, restart plytki) wraca
+            # wtedy tam, gdzie operator ustawil ramie, zamiast zabierac mu kadr.
+            # Gdy ujecie startowe dziala, pozycja domowa nie ma sensu — bylaby
+            # przystankiem po drodze, czyli przejazdem z aparatem bez powodu.
+            want_pose = self.robot_pose if ROBOT_POSE_ON_CONNECT else ""
+            start_pose = want_pose if ROBOT_JOINTS.get(want_pose) else ""
+            if want_pose and not start_pose:
+                self._log(f"Robot: ujęcie startowe „{want_pose}” nie jest "
+                          "ustawione — ramię zostaje tam, gdzie stoi", "warn")
+            if ROBOT_HOME_ON_CONNECT and not start_pose:
                 # Blad pozycji domowej NIE moze wywrocic watku: ramie bywa
                 # przytrzymane albo bez zasilania serw, a wtedy chcemy dzialac
                 # dalej i pokazac powod, nie stracic sterowanie na cala sesje.
@@ -690,6 +703,12 @@ class WebUI:
                 with self.lock:
                     self.robot_joints = joints
                 self._log("Robot: kąty startowe " + RoArmSession.fmt_joints(joints))
+            if start_pose:
+                # Przez kolejke, a nie wprost: przejazd ma isc ta sama sciezka
+                # co ⌘1 (busy na przycisku migawki, blad tylko do logu), a gdy
+                # operator w miedzyczasie wskaze inne ujecie, `_coalesce_robot`
+                # zostawi to ostatnie zamiast odgrywac oba.
+                self._robot_q.put(("move", start_pose))
             try:
                 self._run_robot()
             except Exception as e:

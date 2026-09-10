@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Pomiar skali osi 4 (nadgarstek z kamerą) — diagnostyka, nie konfiguracja.
 
-Po co: odczyt kątów (`joints_angle_get`) NIE przechodzi w SDK przez żadną
-konwersję, ale przy zadawaniu SDK odwraca wartość osi 4 (`180 − angle`,
-`handle_joint_angle_ctrl`). Jeśli obie strony są w tej samej skali, zapisany
-odczyt trzeba wysyłać wprost; jeśli nie — z odwróceniem. Pomyłka daje objaw
-„oś 4 jest pod −51°, a ma być −13°": komenda wychodzi, ramię jej nie wykonuje.
+Po co: oś 4 przechodzi po drodze przez dwie konwersje. SDK odwraca ją i przy
+zadawaniu, i przy odczycie (`180 − angle` / `π − t`), a firmware w trybie
+nadgarstka oddaje w feedbacku POCHYLENIE końca ramienia zamiast kąta przegubu
+głowicy — przeliczamy to w `RoArmSession._eoat_from_feedback`. Pomyłka w
+którymkolwiek miejscu daje objaw „oś 4 jest pod −51°, a ma być −13°" albo
+„+ i − obracają w tę samą stronę": komenda wychodzi, ramię jedzie gdzie indziej.
 
 Skrypt wysyła oś 4 na kilka kątów w OBU konwencjach i po każdym czyta, gdzie
 faktycznie stanęła. Ta konwencja, w której odczyt zgadza się z celem, jest

@@ -55,6 +55,7 @@ from .config import (
     ROBOT_NUDGE_STEP,
     TRASH_RETENTION_DAYS,
     persist_env,
+    persist_joints,
 )
 from .image_processing import LOGO_POSITIONS, process
 from .naming import sanitize_name
@@ -799,7 +800,7 @@ class WebUI:
         ROBOT_JOINTS[pose] = joints
         with self.lock:
             self.robot_joints = joints
-        persist_env(ROBOT_JOINTS_ENV[pose], ",".join(f"{v:.1f}" for v in joints))
+        persist_joints(ROBOT_JOINTS_ENV[pose], joints)
         self._log(f"✓ Zapisano ujęcie {pose}: {RoArmSession.fmt_joints(joints)}", "ok")
         # Od razu: czy silniki w ogole utrzymaja te katy? Ujecie ustawione
         # reka przy puszczonych serwach potrafi lezec poza zasiegiem serwa

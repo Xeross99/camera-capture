@@ -310,6 +310,7 @@ class RoArmSession:
             out = [float(v) for v in joints[:4]]
         except (TypeError, ValueError):
             return None
+        out[3] = self._eoat_from_feedback(out)
         if ROBOT_AXES == 5:
             ext = self.read_ext()
             if ext is None:
@@ -317,6 +318,35 @@ class RoArmSession:
                 return None
             out.append(ext["angle"])
         return out
+
+    @staticmethod
+    def _eoat_from_feedback(joints: list[float]) -> float:
+        """Os 4 z feedbacku ramienia na kat PRZEGUBU (ten, ktory przyjmuja
+        komendy 121/122).
+
+        W trybie nadgarstka (`ROBOT_WRIST_MODE` → `gripper_mode_set(1)`,
+        `EEMode = 1` w firmware) feedback NIE niesie kata przegubu glowicy,
+        tylko POCHYLENIE konca ramienia wzgledem swiata — jedna liczbe
+        zlozona z trzech osi (`RoArmM2_computePosbyJointRad`):
+
+            t = h - (180 - s - e) + 90      (stopnie; h = kat przegubu glowicy)
+
+        SDK oddaje z tego `180 - t`, a komenda 121/122 przyjmuje `180 - h`, wiec
+        odczyt i komenda rozjezdzaja sie o `s + e - 90` — stad przeliczenie
+        ponizej. W trybie chwytaka (EEMode = 0) firmware daje `t = h` wprost i
+        nie ma czego przeliczac.
+
+        Bez tego kazda komenda na os 4 gubila ten offset: `nudge` liczy cel jako
+        „odczyt + krok", wiec ±1° dawalo w rzeczywistosci ten sam skok o
+        `90 - s - e` stopni w JEDNA strone (objaw: „+ i − obracaja tak samo"),
+        a przejazd na ujecie konczyl sie stalym bledem 7–13° na tej osi,
+        ktory `_settle` musial dociagac rundami.
+
+        Skutek uboczny wersji sprzed poprawki: odczyt osi 4 zmienial sie, gdy
+        ruszal sie bark albo lokiec, mimo ze glowica stala w miejscu."""
+        if not ROBOT_WRIST_MODE:
+            return joints[3]
+        return joints[3] + joints[1] + joints[2] - 90.0
 
     # ---------- os 5: serwo poza SDK ----------
 

@@ -34,7 +34,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.config import ROBOT_JOINTS_ENV, persist_env  # noqa: E402
+from src.config import ROBOT_JOINTS_ENV, persist_joints  # noqa: E402
 from src.robot import RoArmSession  # noqa: E402
 
 SHOTS = [
@@ -80,7 +80,7 @@ def main() -> int:
                 return 1
             line = ",".join(f"{v:.1f}" for v in joints)
             key = ROBOT_JOINTS_ENV[pose]
-            persist_env(key, line)
+            persist_joints(key, joints)
             saved.append(f"{key}={line}")
             print(f"     zapisano: {RoArmSession.fmt_joints(joints)}")
             pos = arm.read_pose()

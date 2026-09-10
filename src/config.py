@@ -189,6 +189,22 @@ def _robot_joints(key: str) -> list[float] | None:
 ROBOT_JOINTS_ENV = {"top90": "ROBOT_JOINTS_TOP90", "a45": "ROBOT_JOINTS_A45"}
 ROBOT_JOINTS = {name: _robot_joints(key) for name, key in ROBOT_JOINTS_ENV.items()}
 
+# Wersja zapisu ujec. `1` = katy zdjete odczytem sprzed poprawki osi 4:
+# w trybie nadgarstka feedback ramienia niesie POCHYLENIE konca ramienia, a nie
+# kat przegubu glowicy (szczegoly w `RoArmSession._eoat_from_feedback`), wiec
+# zapisana czwarta liczba jest o `90 - j2 - j3` obok kata, ktory przyjmuje
+# komenda ruchu. Przeliczamy ja raz i zapisujemy z markerem `2`, zeby ujec
+# ustawionych przed poprawka nie trzeba bylo zdejmowac od nowa.
+ROBOT_JOINTS_FORMAT_KEY = "ROBOT_JOINTS_FORMAT"
+ROBOT_JOINTS_FORMAT = 2
+_joints_format = int(os.environ.get(ROBOT_JOINTS_FORMAT_KEY, "1") or 1)
+_joints_migrated: dict[str, list[float]] = {}
+if _joints_format < ROBOT_JOINTS_FORMAT and ROBOT_WRIST_MODE:
+    for _name, _angles in ROBOT_JOINTS.items():
+        if _angles:
+            _angles[3] += _angles[1] + _angles[2] - 90.0
+            _joints_migrated[_name] = _angles
+
 AUTOMAT_BASE_URL = os.environ.get("AUTOMAT_URL", "http://localhost:3000")
 AUTOMAT_API_TOKEN = os.environ.get("AUTOMAT_TOKEN")
 AUTOMAT_UPLOAD_ENABLED = os.environ.get("AUTOMAT_UPLOAD_ENABLED", "true").lower() in ("1", "true", "yes", "on")
@@ -207,3 +223,26 @@ def persist_env(key: str, value: str) -> None:
     else:
         lines.append(entry)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def persist_joints(key: str, angles: list[float]) -> None:
+    """Zapisuje ujecie razem z wersja zapisu — inaczej swiezo zdjete katy
+    (juz w przestrzeni komend) wygladalyby przy nastepnym starcie jak stary
+    zapis i zostalyby przeliczone drugi raz."""
+    persist_env(key, ",".join(f"{v:.1f}" for v in angles))
+    persist_env(ROBOT_JOINTS_FORMAT_KEY, str(ROBOT_JOINTS_FORMAT))
+
+
+if _joints_format < ROBOT_JOINTS_FORMAT:
+    # Zapis jest tylko po to, zeby nie liczyc tego przy kazdym starcie —
+    # gdy .env jest niezapisywalny, przeliczone katy i tak sa juz w pamieci,
+    # a nastepny start policzy je tak samo (ponizsze nic nie nadpisalo).
+    try:
+        for _name, _angles in _joints_migrated.items():
+            persist_env(ROBOT_JOINTS_ENV[_name], ",".join(f"{v:.1f}" for v in _angles))
+            print(f"⚠ {ROBOT_JOINTS_ENV[_name]}: przeliczono oś 4 na kąt przegubu "
+                  f"(nowe: {', '.join(f'{v:.1f}' for v in _angles)}) — sprawdź kadr, "
+                  "w razie czego ustaw ujęcie od nowa")
+        persist_env(ROBOT_JOINTS_FORMAT_KEY, str(ROBOT_JOINTS_FORMAT))
+    except OSError as e:
+        print(f"⚠ Nie zapisałem przeliczonych ujęć do .env ({e})")

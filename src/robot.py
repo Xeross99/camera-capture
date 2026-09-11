@@ -125,11 +125,15 @@ _EXT_CMD_ANGLE, _EXT_CMD_FEEDBACK, _EXT_CMD_TORQUE, _EXT_CMD_SET_ID = 130, 131, 
 # echo naszej komendy.
 _EXT_REPLY_TIMEOUT_S = 0.5
 
-# Plytka sterujaca RoArm-M2-S wystawia sie przez CH343 (QinHeng, VID 0x1A86)
-# albo — zmierzone na naszym egzemplarzu — przez CP2102N (Silicon Labs,
-# VID 0x10C4). Po tym VID rozpoznajemy port, gdy ROBOT_PORT nie jest
-# ustawiony w .env; dalej jest fallback po nazwie urzadzenia.
-_ROBOT_VIDS = {0x1A86, 0x10C4}
+# Plytka sterujaca RoArm-M2-S wystawia sie przez uklad USB-serial i to, KTORY
+# to uklad, zalezy od egzemplarza: CH343 (QinHeng, 0x1A86), CP2102N (Silicon
+# Labs, 0x10C4 — nasz) albo FTDI (0x0403). Po tym VID rozpoznajemy port, gdy
+# ROBOT_PORT nie jest ustawiony w .env; dalej jest fallback po nazwie.
+_ROBOT_VIDS = {0x1A86, 0x10C4, 0x0403}
+# Fallback po nazwie urzadzenia — same nazwy uniksowe. Na Windowsie port
+# nazywa sie COM7 i zaden z tych wzorcow nie ma prawa trafic, wiec tam fallback
+# robi `_usb_com_port()`; bez tego autodetekcja na Windowsie sprowadzala sie do
+# jednej proby po VID, a nietrafiony VID konczyl sie „nie znaleziono portu".
 _PORT_HINTS = ("wchusbserial", "usbserial", "ttyUSB", "ttyACM")
 
 
@@ -151,6 +155,39 @@ def _is_data_error(e: Exception) -> bool:
     return type(e).__name__ == "RoarmDataException"
 
 
+def _usb_com_port(p) -> bool:
+    """Windows: port COM nalezacy do urzadzenia USB.
+
+    Filtr po VID jest tu istotny: wirtualne porty Bluetooth i plytowe COM1/COM2
+    tez nazywaja sie COM, a otwarcie takiego portu to rozmowa z czyms zupelnie
+    innym niz ramie. Brak VID = nie USB = pomijamy."""
+    return (sys.platform == "win32"
+            and p.device.upper().startswith("COM")
+            and getattr(p, "vid", None) is not None)
+
+
+def describe_ports() -> str:
+    """Widoczne porty szeregowe z VID/PID — do komunikatu bledu.
+
+    Bez tego „nie znaleziono portu ramienia" nie odroznia dwoch zupelnie roznych
+    sytuacji: systemu, ktory w ogole nie widzi plytki (brak sterownika
+    CH343/CP210x — na Windowsie to najczestsza przyczyna), od portu, ktory jest,
+    ale zostal przez nas odrzucony (VID spoza `_ROBOT_VIDS`)."""
+    try:
+        from serial.tools import list_ports
+    except ImportError:
+        return "brak pakietu pyserial"
+    ports = list(list_ports.comports())
+    if not ports:
+        return "system nie widzi ŻADNEGO portu szeregowego"
+    out = []
+    for p in ports:
+        vid, pid = getattr(p, "vid", None), getattr(p, "pid", None)
+        ids = f" VID:PID {vid:04X}:{pid:04X}" if vid is not None and pid is not None else ""
+        out.append(f"{p.device}{ids} ({p.description})")
+    return ", ".join(out)
+
+
 def find_robot_port() -> str | None:
     """Port ramienia: najpierw po VID plytki, potem po nazwie urzadzenia.
 
@@ -165,7 +202,7 @@ def find_robot_port() -> str | None:
         if getattr(p, "vid", None) in _ROBOT_VIDS:
             return p.device
     for p in ports:
-        if any(h in p.device for h in _PORT_HINTS):
+        if any(h in p.device for h in _PORT_HINTS) or _usb_com_port(p):
             return p.device
     return None
 
@@ -205,8 +242,9 @@ class RoArmSession:
         port = ROBOT_PORT or find_robot_port()
         if not port:
             raise RobotLinkError(
-                "nie znaleziono portu ramienia — sprawdź kabel USB-C i zasilanie "
-                "(port można wskazać ręcznie: ROBOT_PORT w .env)")
+                "nie znaleziono portu ramienia — sprawdź kabel USB-C, zasilanie "
+                "i sterownik płytki (Windows: CH343/CP210x; port można wskazać "
+                f"ręcznie: ROBOT_PORT w .env). Widoczne porty: {describe_ports()}")
         root = logging.getLogger()
         handlers, level = list(root.handlers), root.level
         try:

@@ -23,7 +23,7 @@ jobs:
   # i katalog tests/ nie trafiaja do .exe — build ich nie instaluje, a paczka
   # bierze wylacznie to, co importuje gui.py.
   test:
-    name: 1. Testy · ${{ matrix.label }}
+    name: 1. Tests · ${{ matrix.label }}
     strategy:
       fail-fast: false
       matrix:
@@ -127,7 +127,7 @@ jobs:
   # Wydanie dopiero po zielonym buildzie, i tylko z main — reczny run na innej
   # galezi to same testy + build. Paczka przychodzi z artefaktu buildu.
   release:
-    name: 3. Wydanie na GitHubie
+    name: 3. Release on GitHub
     needs: [build-windows, build-macos]
     if: github.ref == 'refs/heads/main'
     runs-on: windows-latest

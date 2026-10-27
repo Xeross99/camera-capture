@@ -9,7 +9,7 @@ function sesjaScreen() {
   // — status mówiłby „rozłączony" nad żywo wyglądającym podglądem.
   const liveOn = st.previewOn && st.connected;
   const grid = GRIDS[S.grid % GRIDS.length];
-  const evActive = cam.ev && !S.evPending;
+  const evActive = !!(st.connected && cam.ev);
   const match = sessionMatch(st);
   // Pasek zdjęć i log idą pod CAŁYM oknem (pod live view i panelem), tak samo
   // jak w podglądzie zdjęcia — przy wejściu w podgląd nie zmieniają ani
@@ -66,17 +66,18 @@ function sesjaScreen() {
 
         <section class="side-card">
           <h2 class="eyebrow" style="margin-bottom: 12px;">Aparat</h2>
-          <div style="display: flex; align-items: center; gap: 12px;">
+          <div id="ev-row" style="display: ${evActive ? "flex" : "none"}; align-items: center; gap: 12px;">
             <div style="flex: 1; min-width: 0;">
               <div class="row-title">Kompensacja ekspozycji</div>
-              <div id="ev-hint" class="row-desc">${evHint(st)}</div>
+              <div id="ev-hint" class="row-desc">Jaśniej, gdy tło wychodzi szare.</div>
             </div>
-            <div style="flex-shrink: 0; display: flex; align-items: center; border: 1px solid var(--border-strong); border-radius: 9px; overflow: hidden;">
-              <span id="ev-minus" class="ev-btn${evActive ? "" : " off"}" role="button" aria-label="Ciemniej" onclick="stepEv(-1)" style="width: 36px; line-height: 36px; text-align: center; font-size: 16px; color: var(--text-2); cursor: pointer; opacity: ${evActive ? 1 : .35};">−</span>
-              <span id="ev-value" class="mono" style="position: relative; width: 58px; line-height: 36px; text-align: center; font-size: 13px; font-weight: 500; color: var(--text); border-left: 1px solid var(--border); border-right: 1px solid var(--border);">${evValueHtml(cam.ev)}</span>
-              <span id="ev-plus" class="ev-btn${evActive ? "" : " off"}" role="button" aria-label="Jaśniej" onclick="stepEv(1)" style="width: 36px; line-height: 36px; text-align: center; font-size: 16px; color: var(--text-2); cursor: pointer; opacity: ${evActive ? 1 : .35};">+</span>
+            <div class="ev-stepper">
+              <button type="button" class="ev-step" aria-label="Ciemniej" onclick="stepEv(-1)">−</button>
+              <span id="ev-value" class="mono">${evValueHtml(cam.ev)}</span>
+              <button type="button" class="ev-step" aria-label="Jaśniej" onclick="stepEv(1)">+</button>
             </div>
           </div>
+          <div id="ev-off" class="cam-off" style="display: ${evActive ? "none" : "flex"};">${camOffHtml(st)}</div>
         </section>
 
         <section class="side-card" style="padding: 4px 14px;">
@@ -133,47 +134,65 @@ const BG_LABEL = {
 };
 const BG_DOT = { ok: "ok", dark: "warn", unknown: "" };
 
-// Kontrolka jest widoczna ZAWSZE, tylko wyszarzona gdy nie ma czego ustawiać, a
-// powód stoi wprost pod nią. Znikająca kontrolka nie mówi operatorowi, czego
-// szukać ani dlaczego jej nie ma — a tooltip trzeba najpierw znaleźć myszą.
-function evHint(st) {
-  if (!st.connected) return "Aparat rozłączony.";
-  if (!(st.camera && st.camera.ev))
-    return "Niedostępna w tym trybie aparatu. Ustaw pokrętło na P, Av albo Tv.";
-  return "Jaśniej, gdy tło wychodzi szare.";
+// Stan, w którym nie ma czego ustawiać: rozłączony aparat albo tryb bez
+// kompensacji (M). Zamiast wyszarzonych −/+ mówi wprost, co się dzieje.
+function camOffHtml(st) {
+  if (!st.connected) return `<span class="dot err"></span><span><b>Aparat rozłączony.</b> Kompensacja wróci po połączeniu.</span>`;
+  return `<span class="dot warn"></span><span><b>Kompensacja niedostępna</b> w tym trybie. Ustaw pokrętło aparatu na P, Av albo Tv.</span>`;
+}
+
+// Kompensacja z debounce: każdy klik od razu przesuwa WARTOŚĆ DOCELOWĄ
+// (S.evTarget) i ją pokazuje, a do aparatu idzie jedna komenda z końcową
+// wartością, gdy operator przestanie klikać na EV_DEBOUNCE_MS. Wcześniej każdy
+// krok czekał na potwierdzenie z aparatu, więc „trzy w dół" = trzy razy
+// klik i czekanie. Przyciski są klikalne cały czas, także w trakcie wysyłki.
+const EV_DEBOUNCE_MS = 400;
+let evTimer = 0;
+
+function evOptions(ev) {
+  return (ev && ev.choices || [])
+    .map(c => ({ c, n: evNumber(c) }))
+    .filter(o => o.n !== null)
+    .sort((a, b) => a.n - b.n);   // nie ufamy kolejności z aparatu — bywa malejąca
 }
 
 function stepEv(dir) {
-  const ev = S.state.camera && S.state.camera.ev;
-  if (S.evPending || !ev || !ev.choices || !ev.choices.length) return;
-  // sortujemy po wartości, nie ufamy kolejności listy z aparatu — bywa malejąca
-  const opts = ev.choices
-    .map(c => ({ c, n: evNumber(c) }))
-    .filter(o => o.n !== null)
-    .sort((a, b) => a.n - b.n);
+  const ev = S.state.connected && S.state.camera && S.state.camera.ev;
+  const opts = evOptions(ev);
   if (!opts.length) return;
-  const cur = evNumber(ev.current);
+  // krok liczymy od wartości docelowej, jeśli trwa klikanie albo wysyłka
+  const base = S.evTarget ? S.evTarget.n : (S.evPending ? S.evPending.target : evNumber(ev.current));
   const eps = 1e-6;
   let hit;
-  if (cur === null) hit = opts.find(o => Math.abs(o.n) < eps) || opts[0];
-  else if (dir > 0) hit = opts.find(o => o.n > cur + eps) || opts[opts.length - 1];
-  else hit = [...opts].reverse().find(o => o.n < cur - eps) || opts[0];
-  const next = hit && hit.c;
-  if (!next || next === ev.current) return;
-  // Docelowa wartość jest widoczna od razu (przygaszona, ze spinnerem NAD nią),
-  // a przyciski są zablokowane, aż aparat ODDA nową wartość (poll EV co 2 s).
-  // Źródłem prawdy jest aparat — gdy odrzuci wartość, timeout w evReconcile()
-  // przywraca kontrolkę ze starą (powód ląduje w logu z _do_set_ev).
-  S.evPending = { target: hit.n, label: next, since: performance.now() };
+  if (base === null) hit = opts.find(o => Math.abs(o.n) < eps) || opts[0];
+  else if (dir > 0) hit = opts.find(o => o.n > base + eps) || opts[opts.length - 1];
+  else hit = [...opts].reverse().find(o => o.n < base - eps) || opts[0];
+  if (!hit) return;
+  S.evTarget = { n: hit.n, label: hit.c };
   evReconcile(S.state);
-  post({ action: "set_ev", value: next });
+  clearTimeout(evTimer);
+  evTimer = setTimeout(sendEv, EV_DEBOUNCE_MS);
 }
 
-// Zawartość celi z wartością EV. W trakcie czekania na aparat: docelowa
-// wartość przygaszona + spinner POZYCJONOWANY ABSOLUTNIE nad nią (`.ev-spin`)
-// — spinner w miejscu tekstu był wyższy niż linijka tekstu i cała karta
-// podskakiwała o 2 px na czas ładowania.
+function sendEv() {
+  const t = S.evTarget;
+  S.evTarget = null;
+  if (!t) return;
+  const ev = S.state.camera && S.state.camera.ev;
+  const cur = ev ? evNumber(ev.current) : null;
+  if (cur !== null && Math.abs(cur - t.n) < 0.2) { S.evPending = null; evReconcile(S.state); return; }
+  // Źródłem prawdy jest aparat — gdy odrzuci wartość, limit w evReconcile()
+  // przywraca kontrolkę z wartością z aparatu (powód ląduje w logu z _do_set_ev).
+  S.evPending = { target: t.n, label: t.label, since: performance.now() };
+  evReconcile(S.state);
+  post({ action: "set_ev", value: t.label });
+}
+
+// Zawartość celi z wartością EV: docelowa (klikanie albo wysyłka) przygaszona,
+// a w trakcie wysyłki ze spinnerem POZYCJONOWANYM ABSOLUTNIE nad nią
+// (`.ev-spin`) — spinner w miejscu tekstu podnosił całą kartę o 2 px.
 function evValueHtml(ev) {
+  if (S.evTarget) return `<span style="color: var(--accent-fg);">${evLabel(S.evTarget.label)}</span>`;
   if (S.evPending)
     return `<span style="opacity: .3;">${evLabel(S.evPending.label)}</span><span class="spinner ev-spin"></span>`;
   return ev ? evLabel(ev.current) : "—";
@@ -199,25 +218,21 @@ function evReconcile(st) {
     const expired = !ev || performance.now() - S.evPending.since > EV_PENDING_MAX_MS;
     if (done || expired) S.evPending = null;
   }
-  if (S.evPending) {
-    if (!val.querySelector(".spinner")) val.innerHTML = evValueHtml(ev);
-  } else {
-    val.textContent = ev ? evLabel(ev.current) : "—";
+  if (!ev) { S.evTarget = null; clearTimeout(evTimer); }
+  const html = evValueHtml(ev);
+  if (val.dataset.html !== html) { val.innerHTML = html; val.dataset.html = html; }
+  const row = $("ev-row"), off = $("ev-off");
+  if (row) row.style.display = ev ? "flex" : "none";
+  if (off) {
+    off.style.display = ev ? "none" : "flex";
+    const offHtml = camOffHtml(st);
+    if (!ev && off.dataset.html !== offHtml) { off.innerHTML = offHtml; off.dataset.html = offHtml; }
   }
-  const hint = $("ev-hint");
-  if (hint) hint.textContent = evHint(st);
   const ov = $("ev-overlay");
   if (ov) {
     ov.style.display = ev ? "flex" : "none";
-    if (ev) ov.textContent = `EV ${evLabel(ev.current)}`;
+    if (ev) ov.textContent = `EV ${evLabel(S.evTarget ? S.evTarget.label : S.evPending ? S.evPending.label : ev.current)}`;
   }
-  const active = !!ev && !S.evPending;
-  ["ev-minus", "ev-plus"].forEach(id => {
-    const b = $(id);
-    if (!b) return;
-    b.style.opacity = active ? 1 : .35;
-    b.classList.toggle("off", !active);
-  });
 }
 
 // Spinner w przycisku migawki: krecy sie przez caly czas, gdy przycisk nie

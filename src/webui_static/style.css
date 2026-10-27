@@ -399,3 +399,13 @@ html[data-theme="dark"] .theme-light, html:not([data-theme]) .theme-light { disp
 .modal-root.closing .modal-panel { transition: opacity .12s ease-in, transform .12s ease-in; }
 .modal-icon { width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--accent-soft); color: var(--accent); }
 .modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 24px; background: var(--surface-2); border-top: 1px solid var(--hair); }
+
+/* Kompensacja ekspozycji: −/+ zawsze klikalne (debounce w stepEv) */
+.ev-stepper { flex-shrink: 0; display: flex; align-items: center; border: 1px solid var(--border-strong); border-radius: 9px; overflow: hidden; }
+.ev-step { width: 36px; height: 36px; padding: 0; border: none; background: var(--surface); color: var(--text-2); font-size: 16px; cursor: pointer; user-select: none; }
+.ev-step:hover { background: var(--seg); color: var(--text); }
+.ev-step:active:not(:disabled) { transform: none; filter: none; background: var(--accent-soft); color: var(--accent-fg); }
+#ev-value { position: relative; width: 58px; line-height: 36px; text-align: center; font-size: 13px; font-weight: 500; color: var(--text); border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
+.cam-off { align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); border: 1px dashed var(--border-strong); font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+.cam-off .dot { margin-top: 5px; }
+.cam-off b { color: var(--text); font-weight: 600; }

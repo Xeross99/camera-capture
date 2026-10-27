@@ -480,6 +480,8 @@ html[data-theme="dark"] .theme-light, html:not([data-theme]) .theme-light { disp
 .af-box.fail { border-color: #f87171; animation: afMiss .45s cubic-bezier(.34, 1.56, .64, 1); }
 /* znikanie: skala w dół i fade */
 .af-box.out { animation: afOut .22s ease-in forwards; }
+/* zapamiętany punkt ostrości: cienki, półprzezroczysty, bez animacji ruchu */
+.af-box.set { border-width: 1.5px; border-color: rgba(255, 255, 255, .85); opacity: .75; transition: border-color .4s ease, opacity .4s ease, left .25s ease, top .25s ease; }
 @keyframes afIn { from { transform: scale(1.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 @keyframes afBreathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(.9); } }
 @keyframes afLock { 0% { transform: scale(1); } 45% { transform: scale(.8); } 100% { transform: scale(1); } }

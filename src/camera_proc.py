@@ -51,7 +51,7 @@ from .config import PROJECT_DIR
 # (~40 s z awaryjnym pobraniem z karty) + sciagniecie 24 MP.
 _TIMEOUTS = {"open": 60.0, "preview": 12.0, "capture": 120.0,
              "get_setting": 10.0, "set_setting": 10.0,
-             "get_settings": 10.0, "close": 5.0}
+             "get_settings": 10.0, "close": 5.0, "focus_at": 15.0}
 # Drugi, ostrzejszy limit: CISZA od dziecka. W trakcie strzalu dziecko nadaje
 # co sekunde (status „Czekam na plik…", wpisy logu), wiec 15 s bez zadnej ramki
 # oznacza zawieszke w DLL-u — nie ma po co czekac pelnych 120 s calkowitego
@@ -219,12 +219,15 @@ class EdsdkProxy:
             raise CameraProcError(f"proces EDSDK nie przyjął komendy ({e})") from e
         import time as _time
         started = _time.monotonic()
-        quiet = _QUIET_LIMITS.get(op, _TIMEOUTS[op])
+        # komenda bez wpisu w _TIMEOUTS dostaje 30 s — brak wpisu nie może
+        # wywracać wywołania KeyErrorem (tak padało focus_at w 2.2.0)
+        total = _TIMEOUTS.get(op, 30.0)
+        quiet = _QUIET_LIMITS.get(op, total)
         last_frame = started
         while True:
             now = _time.monotonic()
             timeout = min(quiet - (now - last_frame),
-                          _TIMEOUTS[op] - (now - started))
+                          total - (now - started))
             frame = None
             if timeout > 0:
                 try:

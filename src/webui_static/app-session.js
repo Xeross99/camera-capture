@@ -24,7 +24,7 @@ function sesjaScreen() {
           <!-- obraz PO karcie: pierwsza klatka zawsze ją przykrywa (przed nią
                <img> MJPEG jest przezroczysty i karta jest widoczna) -->
           ${liveOn ? `<img id="live" src="/stream" alt="Podgląd na żywo" ${st.focusSupported ? `class="live-focusable" title="Kliknij, żeby ustawić ostrość w tym miejscu" onclick="focusAt(event)"` : ""} style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;" />` : ""}
-          <span id="af-box" class="af-box" hidden></span>
+          ${afBoxHtml(st)}
           <div id="grid-overlay" style="position: absolute; inset: 0; pointer-events: none; display: ${grid.cols && liveOn ? "block" : "none"}; background: ${gridBackground(grid.cols, grid.rows)};"></div>
 
           <div id="grid-seg" class="overlay-seg" role="group" aria-label="Siatka kadrowania" style="left: 14px; top: 14px;">
@@ -230,21 +230,41 @@ function focusAt(ev) {
   }).catch(() => afResult(false));
 }
 
-function afResult(ok) {
+// Ostatni punkt, w którym aparat złapał ostrość — zostaje na podglądzie jako
+// cienki znacznik (.set). Pozycja żyje w backendzie (state.focus.at), więc
+// wraca po każdej przebudowie ekranu; po nieudanej próbie znacznik wraca
+// na poprzedni dobry punkt.
+let afLast = null;
+function afBoxHtml(st) {
+  const f = st.focus;
+  if (f && f.ok && f.at) afLast = f.at;
+  if (!afLast || !st.previewOn || !st.connected) return `<span id="af-box" class="af-box" hidden></span>`;
+  return `<span id="af-box" class="af-box set" style="left: ${afLast[0] * 100}%; top: ${afLast[1] * 100}%;"></span>`;
+}
+
+function afResult(ok, at) {
   const box = $("af-box");
   if (!box || box.hidden) return;
+  if (ok && at) afLast = at;
   box.className = `af-box ${ok ? "ok" : "fail"}`;
   clearTimeout(box._t);
   box._t = setTimeout(() => {
-    box.className = `af-box ${ok ? "ok" : "fail"} out`;
+    if (ok || afLast) {
+      // zielona ramka uspokaja się do znacznika; po porażce znacznik wraca
+      // na ostatni dobry punkt
+      if (!ok) { box.style.left = `${afLast[0] * 100}%`; box.style.top = `${afLast[1] * 100}%`; }
+      box.className = "af-box set";
+      return;
+    }
+    box.className = "af-box fail out";
     box._t = setTimeout(() => { box.hidden = true; }, 230);
-  }, ok ? 1200 : 1800);
+  }, ok ? 900 : 1600);
 }
 
 // Z pollu: wynik dla ostatniego kliknięcia (seq), gdy już przyszedł.
 function afReconcile(st) {
   const f = st.focus;
-  if (afSeq && f && f.seq === afSeq) { afSeq = 0; afResult(f.ok); }
+  if (afSeq && f && f.seq === afSeq) { afSeq = 0; afResult(f.ok, f.at); }
 }
 
 // Sesja Automatu o tej nazwie (z listy sesji) — stad dopasowany produkt.

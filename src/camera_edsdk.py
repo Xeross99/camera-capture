@@ -208,6 +208,7 @@ class EdsdkSession:
         self._seen_events = []        # kody zdarzen obiektowych — diagnostyka
         self._downloaded = set()      # nazwy juz sciagnietych plikow (anty-duplikat)
         self._evf_out = _EVF_OUTPUT_PC  # przyjete przez aparat wyjscie live view
+        self._evf_coords: tuple[int, int] | None = None  # Evf_CoordinateSystem z ostatniej klatki
         self.on_status = None         # opcjonalny kanal do paska stanu w UI
         self.on_log = None            # opcjonalny kanal do logu w UI
 
@@ -496,6 +497,13 @@ class EdsdkSession:
             self._check(self._sdk.EdsDownloadEvfImage(self._camera, evf),
                         "EdsDownloadEvfImage")
             data = self._stream_bytes(stream)
+            # Układ współrzędnych live view (do ostrości w punkcie) jest
+            # właściwością KLATKI, nie aparatu — aparat odpowiada na to 0x50.
+            size = _EdsSize()
+            if self._sdk.EdsGetPropertyData(evf, _PROP_EVF_COORDINATE_SYSTEM, 0,
+                                            ctypes.sizeof(size), ctypes.byref(size)) == _EDS_ERR_OK \
+                    and size.width > 0 and size.height > 0:
+                self._evf_coords = (size.width, size.height)
         finally:
             if evf.value:
                 self._sdk.EdsRelease(evf)
@@ -510,26 +518,30 @@ class EdsdkSession:
         a na starszym SDK Evf_ZoomPosition), potem półwciśnięcie przez
         DoEvfAf ON → OFF. Działa tylko w trybie AF z wybieranym punktem —
         w trybie twarz+śledzenie albo przy MF aparat to ignoruje."""
-        size = _EdsSize()
-        code = self._sdk.EdsGetPropertyData(self._camera, _PROP_EVF_COORDINATE_SYSTEM,
-                                            0, ctypes.sizeof(size), ctypes.byref(size))
-        self._check(code, "Evf_CoordinateSystem")
-        x = int(max(0.0, min(1.0, fx)) * size.width)
-        y = int(max(0.0, min(1.0, fy)) * size.height)
+        if not self._evf_coords:
+            raise RuntimeError("podgląd jeszcze nie podał układu współrzędnych — "
+                               "kliknij ponownie za chwilę")
+        w, h = self._evf_coords
+        x = int(max(0.0, min(1.0, fx)) * w)
+        y = int(max(0.0, min(1.0, fy)) * h)
         pt = _EdsPoint(x, y)
-        if hasattr(self._sdk, "EdsSetFramePoint"):
-            self._check(self._sdk.EdsSetFramePoint(self._camera, pt, False), "EdsSetFramePoint")
-        else:
-            self._check(self._sdk.EdsSetPropertyData(self._camera, _PROP_EVF_ZOOM_POSITION, 0,
-                                                     ctypes.sizeof(pt), ctypes.byref(pt)),
-                        "Evf_ZoomPosition")
+        # EdsSetFramePoint (SDK 13.18+) ustawia ramkę wprost; gdy aparat go nie
+        # przyjmie, starsza droga — właściwość Evf_ZoomPosition
+        code = (self._sdk.EdsSetFramePoint(self._camera, pt, False)
+                if hasattr(self._sdk, "EdsSetFramePoint") else None)
+        if code != _EDS_ERR_OK:
+            zp = self._sdk.EdsSetPropertyData(self._camera, _PROP_EVF_ZOOM_POSITION, 0,
+                                              ctypes.sizeof(pt), ctypes.byref(pt))
+            if zp != _EDS_ERR_OK:
+                self._check(code if code is not None else zp,
+                            "EdsSetFramePoint" if code is not None else "Evf_ZoomPosition")
         self._check(self._sdk.EdsSendCommand(self._camera, _CMD_DO_EVF_AF, 1), "DoEvfAf ON")
         t0 = time.monotonic()
         while time.monotonic() - t0 < 1.2:   # aparat ostrzy; zdarzenia muszą płynąć
             self._pump()
             time.sleep(0.03)
         self._sdk.EdsSendCommand(self._camera, _CMD_DO_EVF_AF, 0)
-        return f"{x},{y} z {size.width}×{size.height}"
+        return f"{x},{y} z {w}×{h}"
 
     def capture_to(self, workdir: Path) -> Path:
         try:

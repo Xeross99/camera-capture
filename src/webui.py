@@ -607,8 +607,13 @@ class WebUI:
             ok = True
         except Exception as e:
             note = str(e)
-            self._log(f"✗ Ostrość w punkcie: {e}. Ustaw w aparacie AF z wybieranym "
-                      "punktem (1-punktowy albo strefa) i przełącznik obiektywu na AF.", "err")
+            # podpowiedź o trybie AF tylko przy błędach z samego ostrzenia/ramki
+            # (EDSDK: DoEvfAf, EdsSetFramePoint, Evf_ZoomPosition, AF NG) — przy
+            # innych (proces sterownika, połączenie) tylko myliła
+            af_related = any(k in note for k in ("DoEvfAf", "FramePoint", "ZoomPosition", "0x8D01", "AF"))
+            hint = (" Ustaw w aparacie AF z wybieranym punktem (1-punktowy albo strefa) "
+                    "i przełącznik obiektywu na AF.") if af_related else ""
+            self._log(f"✗ Ostrość w punkcie: {e}.{hint}", "err")
         with self.lock:
             self.focus_result = {"ok": ok, "at": [fx, fy], "seq": self.focus_seq, "note": note}
 

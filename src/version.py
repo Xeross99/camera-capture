@@ -9,7 +9,7 @@ Bez importow — spec PyInstallera czyta ten plik zanim cokolwiek innego
 zdazy sie zaimportowac.
 """
 
-APP_VERSION = "2.2.0"
+APP_VERSION = "2.2.1"
 
 GITHUB_REPO = "trixbrix/CameraCapture"
 

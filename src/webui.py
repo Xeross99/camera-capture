@@ -1962,8 +1962,6 @@ class WebUI:
         with self.lock:
             if key == "photos_dir":
                 self.base_output = Path(str(value)).expanduser()
-            elif key == "logo_path":
-                self.logo_path = Path(str(value)).expanduser()
             elif key == "name_pattern":
                 self.name_pattern = str(value) or DEFAULT_NAME_PATTERN
             elif key == "automat_url":
@@ -2169,7 +2167,6 @@ class WebUI:
                 },
                 "settings": {
                     "photosDir": str(self.base_output),
-                    "logoPath": str(self.logo_path),
                     "namePattern": self.name_pattern,
                     "automatUrl": self.automat_url,
                     "tokenMasked": ("•" * 12 + self.automat_token[-4:]) if self.automat_token else "",

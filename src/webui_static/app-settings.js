@@ -93,8 +93,8 @@ function ustawieniaScreen() {
       ${nav}
       <div style="flex: 1;"></div>
       <div class="brand-line">
-        <span class="brand-item"><img class="theme-light" src="/favicon.png" alt="" /><img class="theme-dark" src="/logo-cc-dark.png" alt="" />Camera Capture <span class="mono" style="color: var(--text-2);">${u.current}</span></span>
         <span class="brand-item"><span class="tbx-mark" aria-hidden="true"></span>Trixbrix</span>
+        <span class="brand-item"><img class="theme-light" src="/favicon.png" alt="" /><img class="theme-dark" src="/logo-cc-dark.png" alt="" />Camera Capture <span class="mono" style="color: var(--text-2);">${u.current}</span></span>
       </div>
       <button type="button" class="author" onclick="post({action:'open_url', url: 'https://github.com/Xeross99'})" title="Profil autora na GitHubie">
         <img src="/author" alt="" />
@@ -167,8 +167,6 @@ function ustawieniaScreen() {
             ${field("set-photos", "Katalog zdjęć", cfg.photosDir, "post({action:'set_app', key:'photos_dir', value:this.value})")}
             ${field("set-pattern", "Nazwa pliku", cfg.namePattern, "post({action:'set_app', key:'name_pattern', value:this.value})",
               `<div class="row-desc" style="margin: 0;">Pola: <span class="mono">{data}</span>, <span class="mono">{godzina}</span></div>`)}
-            ${field("set-logo", "Własny plik logo", cfg.logoPath, "post({action:'set_app', key:'logo_path', value:this.value})",
-              `<div class="row-desc" style="margin: 0;">Zwykle niepotrzebne: logo wybiera się w sesji.</div>`)}
           </div>
           <div class="row" style="padding: 14px 20px 18px;">
             <div style="flex: 1;">

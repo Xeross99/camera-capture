@@ -409,3 +409,32 @@ html[data-theme="dark"] .theme-light, html:not([data-theme]) .theme-light { disp
 .cam-off { align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); border: 1px dashed var(--border-strong); font-size: 12.5px; line-height: 1.45; color: var(--muted); }
 .cam-off .dot { margin-top: 5px; }
 .cam-off b { color: var(--text); font-weight: 600; }
+
+/* Plansza w ramce podglądu bez obrazu z aparatu */
+.live-empty { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 360px; padding: 26px 30px 22px; text-align: center; border-radius: 16px; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 10px 30px rgba(0, 0, 0, .08); animation: liveEmptyIn .45s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.live-empty-icon { position: relative; width: 60px; height: 60px; margin-bottom: 8px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--seg); color: var(--muted); }
+.live-empty-icon svg { position: relative; z-index: 1; }
+.live-empty-title { font-size: 15px; font-weight: 700; color: var(--text); }
+.live-empty-text { font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+.live-empty-foot { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 5px 11px; border-radius: 14px; background: var(--seg); font-size: 12px; color: var(--text-2); }
+.live-empty .ring { position: absolute; inset: 0; border-radius: 50%; border: 2px solid currentColor; opacity: 0; }
+/* rozłączony: aparat i wtyczka USB, która próbuje się wpiąć i odskakuje */
+.live-empty-art { margin-bottom: 6px; color: var(--muted); }
+.unplugged .unplug-plug { color: var(--err-fg); animation: unplugTry 2.4s cubic-bezier(0.45, 0, 0.25, 1) infinite; }
+.unplugged .unplug-sparks { color: var(--err-fg); opacity: 0; animation: unplugSpark 2.4s ease-out infinite; }
+.unplugged .unplug-led { color: var(--err-fg); animation: unplugLed 1.2s steps(1) infinite; }
+@keyframes unplugTry {
+  0%, 100% { transform: translateX(0); }
+  38% { transform: translateX(-10px); }   /* dojeżdża do gniazda… */
+  46% { transform: translateX(-7px); }    /* …i odbija */
+  52% { transform: translateX(-9px); }
+  70% { transform: translateX(0); }
+}
+@keyframes unplugSpark { 0%, 36% { opacity: 0; } 42% { opacity: 1; } 60%, 100% { opacity: 0; } }
+@keyframes unplugLed { 0% { opacity: 1; } 50% { opacity: .15; } }
+/* czekanie na klatki: niebieska, delikatnie oddycha */
+.live-empty.wait .live-empty-icon { background: var(--accent-soft); color: var(--accent); animation: liveBreathe 1.6s ease-in-out infinite; }
+@keyframes liveEmptyIn { from { opacity: 0; transform: translateY(8px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes liveRing { 0% { opacity: .55; transform: scale(1); } 100% { opacity: 0; transform: scale(1.9); } }
+@keyframes liveNudge { 0%, 70%, 100% { transform: rotate(0); } 76% { transform: rotate(-8deg); } 82% { transform: rotate(7deg); } 88% { transform: rotate(-4deg); } 94% { transform: rotate(2deg); } }
+@keyframes liveBreathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }

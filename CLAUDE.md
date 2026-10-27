@@ -318,7 +318,7 @@ Aplikowane na obrazie ŹRÓDŁOWYM przed paste, dzięki czemu po `canvas.paste(i
 Domyślnie prawy dolny róg (`image_processing.py:overlay_logo`).
 - `LOGO_ENABLED=True` — nakładanie logo w ogóle; CLI `--no-logo` wyłącza na czas uruchomienia.
 - `LOGO_POSITION="bottom-right"` — róg logo (`bottom-right`/`bottom-left`/`top-right`/`top-left`, walidacja w `LOGO_POSITIONS`; nieznana wartość → fallback bottom-right z warningiem); CLI `--logo-position`.
-- `LOGO_HEIGHT_RATIO=0.06` — wysokość logo / wysokość kadru dla pliku spoza `LOGOS` (własny plik z Ustawień, `--logo`).
+- `LOGO_HEIGHT_RATIO=0.06` — wysokość logo / wysokość kadru dla pliku spoza `LOGOS` (tylko `--logo` w CLI; w GUI logo wybiera się z `LOGOS`).
 - `LOGO_MARGIN_RATIO=0.04` — margines od krawędzi / szerokość kadru.
 - `LOGO_OPACITY=0.5` — stałe krycie watermarku dla pliku spoza `LOGOS`. Suwak „Krycie" w GUI usunięty ŚWIADOMIE — wartość nie jest zmienialna z UI.
 

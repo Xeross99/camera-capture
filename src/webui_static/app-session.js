@@ -21,8 +21,7 @@ function sesjaScreen() {
       <section aria-label="Podgląd z aparatu" style="flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 16px; background: var(--live-bg);">
         <div style="position: relative; height: 100%; max-width: 100%; aspect-ratio: 3 / 2; border-radius: 12px; overflow: hidden; background: repeating-linear-gradient(135deg, var(--stripe-a) 0 10px, var(--stripe-b) 10px 20px); box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 0 0 1px var(--border); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">
           ${liveOn ? `<img id="live" src="/stream" alt="Podgląd na żywo" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;" />` : ""}
-          <div style="font-size: 14px; font-weight: 600; color: ${st.connected ? "var(--muted)" : "var(--err-fg)"};">${st.connected ? "Podgląd na żywo" : "Aparat rozłączony"}</div>
-          <div style="font-size: 12.5px; color: var(--muted-2);">${!st.connected ? "Sprawdź kabel i tryb aparatu. Łączę ponownie…" : st.previewOn ? "Czekam na klatki z aparatu…" : "Podgląd wyłączony, włącz klawiszem P"}</div>
+          ${liveEmptyHtml(st)}
           <div id="grid-overlay" style="position: absolute; inset: 0; display: ${grid.cols && liveOn ? "block" : "none"}; background: ${gridBackground(grid.cols, grid.rows)};"></div>
 
           <div id="grid-seg" class="overlay-seg" role="group" aria-label="Siatka kadrowania" style="left: 14px; top: 14px;">
@@ -107,6 +106,50 @@ function sesjaScreen() {
     </div>
 
     <div id="review-slot">${reviewOverlay()}</div>`;
+}
+
+// Plansza w ramce podglądu, gdy nie ma obrazu z aparatu: rozłączony (czerwony,
+// pulsujące fale i „łączę ponownie"), podgląd wyłączony (P) albo czekanie na
+// pierwsze klatki. Obraz z /stream przykrywa ją, gdy tylko przyjdzie.
+// Aparat z odłączonym kablem USB: wtyczka próbuje się wpiąć i odskakuje,
+// w szczelinie przy gnieździe mrugają iskierki. Rysunek własny (aplikacja
+// działa offline), kolor z currentColor, ruch w CSS (.unplug-*).
+const UNPLUGGED_SVG = `
+  <svg class="unplugged" viewBox="0 0 132 72" width="132" height="72" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <g class="unplug-camera">
+      <rect x="22" y="9" width="20" height="9" rx="3"/>
+      <rect x="6" y="16" width="62" height="44" rx="9"/>
+      <circle cx="37" cy="38" r="13"/>
+      <circle cx="37" cy="38" r="6"/>
+      <circle cx="58" cy="26" r="1.6" fill="currentColor" stroke="none" class="unplug-led"/>
+      <rect x="68" y="34" width="4" height="10" rx="1"/>
+    </g>
+    <g class="unplug-sparks">
+      <path d="M77 31 l3 -4"/><path d="M78 39 h4"/><path d="M77 47 l3 4"/>
+    </g>
+    <g class="unplug-plug">
+      <rect x="86" y="35" width="5" height="8" rx="1"/>
+      <rect x="91" y="32" width="15" height="14" rx="3"/>
+      <path d="M106 39 C 116 39, 118 56, 128 58"/>
+    </g>
+  </svg>`;
+
+function liveEmptyHtml(st) {
+  const v = !st.connected
+    ? { cls: "err", ic: "cameraOff", title: "Aparat rozłączony", text: "Sprawdź kabel USB i czy aparat jest włączony.", foot: `<span class="live-empty-foot"><span class="spinner"></span>Łączę ponownie…</span>` }
+    : st.previewOn
+      ? { cls: "wait", ic: "camera", title: "Czekam na obraz z aparatu", text: "Pierwsze klatki podglądu za chwilę.", foot: `<span class="live-empty-foot"><span class="spinner"></span>Uruchamiam podgląd…</span>` }
+      : { cls: "off", ic: "eyeSlash", title: "Podgląd wyłączony", text: "Zdjęcia dalej można robić klawiszem ENTER.", foot: `<span class="live-empty-foot">Włącz klawiszem <span class="hint-key">P</span></span>` };
+  const art = v.cls === "err"
+    ? `<div class="live-empty-art">${UNPLUGGED_SVG}</div>`
+    : `<div class="live-empty-icon"><span class="ring"></span><span class="ring r2"></span>${icon(v.ic, 26, 1.6)}</div>`;
+  return `
+    <div class="live-empty ${v.cls}">
+      ${art}
+      <div class="live-empty-title">${v.title}</div>
+      <div class="live-empty-text">${v.text}</div>
+      ${v.foot}
+    </div>`;
 }
 
 // Sesja Automatu o tej nazwie (z listy sesji) — stad dopasowany produkt.
@@ -591,7 +634,6 @@ const cap = t => t ? t[0].toUpperCase() + t.slice(1) : t;
 function logoPicker(post_) {
   return `
     ${logoTiles(post_.logos, post_.logoChoice, "pickLogo")}
-    ${post_.logoChoice ? "" : `<div class="row-desc">Teraz: własny plik logo z Ustawień.</div>`}
     ${cornerRow(post_.logoPositions, post_.logoPosition, "setLogoPos")}`;
 }
 

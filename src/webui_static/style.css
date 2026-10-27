@@ -480,4 +480,5 @@ html[data-theme="dark"] .theme-light, html:not([data-theme]) .theme-light { disp
 @keyframes afMiss { 0% { transform: scale(1); } 40% { transform: scale(1.18); } 100% { transform: scale(1); } }
 @keyframes afOut { to { transform: scale(.6); opacity: 0; } }
 /* favicon serwera API w plakietce „API połączono" (syncApiChip) */
+#automat-fav-slot { display: contents; }
 .chip-fav { width: 14px; height: 14px; border-radius: 3px; object-fit: contain; flex-shrink: 0; display: none; }

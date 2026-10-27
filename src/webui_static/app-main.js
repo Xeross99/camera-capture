@@ -43,8 +43,15 @@ function automatStatus(st) {
 // Plakietka API w pasku: po połączeniu favicon serwera w miejscu kropki
 // (ten sam /api-favicon co w karcie API), w każdym innym stanie — i gdy serwer
 // ikony nie ma — kolorowa kropka stanu (brak tokenu, błąd, wysyłanie).
+// Obrazek wstawiany dopiero po połączeniu: bez API /api-favicon to 404
+// i czerwony wpis w konsoli przy każdym starcie.
 function syncApiChip(au) {
-  const ad = $("automat-dot"), af = $("automat-fav");
+  const ad = $("automat-dot"), slot = $("automat-fav-slot");
+  if (au.cls === "ok" && !S.apiFavBroken && slot && !$("automat-fav")) {
+    const url = (S.state.settings && S.state.settings.automatUrl) || "";
+    slot.innerHTML = `<img id="automat-fav" class="chip-fav" src="/api-favicon?u=${encodeURIComponent(url)}" alt="" onerror="S.apiFavBroken = true; this.remove(); syncApiChip(automatStatus(S.state));" />`;
+  }
+  const af = $("automat-fav");
   const fav = au.cls === "ok" && !S.apiFavBroken && !!af;
   if (ad) { ad.className = `dot ${au.cls}`; ad.style.display = fav ? "none" : ""; }
   if (af) af.style.display = fav ? "block" : "none";
@@ -72,7 +79,7 @@ function shell() {
     </nav>` : ""}
     <div style="flex: 1;"></div>
     <div class="chip"><span class="dot ${conn ? "ok" : "err"}"></span><span id="conn-label">${conn ? "Aparat połączony" : "Aparat rozłączony"}</span>${conn ? `<span id="conn-fps" class="fps">${st.fps} fps</span>` : ""}</div>
-    <div class="chip"><span id="automat-dot" class="dot ${au.cls}"></span><img id="automat-fav" class="chip-fav" src="/api-favicon?u=${encodeURIComponent((st.settings && st.settings.automatUrl) || "")}" alt="" onerror="S.apiFavBroken = true; this.remove(); syncApiChip(automatStatus(S.state));" />API<span id="automat-text" class="sub">${au.text}</span></div>
+    <div class="chip"><span id="automat-dot" class="dot ${au.cls}"></span><span id="automat-fav-slot"></span>API<span id="automat-text" class="sub">${au.text}</span></div>
     <button type="button" id="theme-toggle" class="icon-btn" onclick="toggleTheme()" title="${themeToggleTitle()}" aria-label="${themeToggleTitle()}">${themeToggleIcon()}</button>
   </header>
 

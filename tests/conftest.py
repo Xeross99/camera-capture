@@ -24,6 +24,9 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 os.environ.update({
     "AUTOMAT_TOKEN": "",
+    # nieosiagalny adres: domyslny localhost:3000 bywa zajety przez inny serwer
+    # deweloperski i test zalezalby od tego, co akurat tam dziala
+    "AUTOMAT_URL": "http://127.0.0.1:9",
     "AUTOMAT_UPLOAD_ENABLED": "false",
     "CAMERA_EDSDK_ISOLATION": "false",
     "CLEAN_BG_GPU": "false",

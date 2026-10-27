@@ -415,7 +415,9 @@ function shoot() {
 
 // Napis wraca sam: `updateVolatile()` przepisuje etykietę przy każdym pollu
 // (500 ms), więc trzymamy błąd chwilę dłużej, żeby dało się go przeczytać.
-let shootErrAt = 0;
+// -Infinity, nie 0: performance.now() liczy od załadowania strony, więc z zerem
+// przez pierwsze 4 s po otwarciu okna etykieta w ogóle nie była odświeżana
+let shootErrAt = -Infinity;
 function shootError(text) {
   const el = $("shoot-label");
   if (!el) return;

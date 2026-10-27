@@ -246,3 +246,15 @@ def test_api_favicon_needs_http_address(app, monkeypatch):
     monkeypatch.setattr(webui, "_fetch_favicon", lambda base: pytest.fail("nie powinno pobierać"))
     app.automat_url = "automat.local"
     assert app.api_favicon() is None
+
+
+def test_raw_retention_setting_is_saved_and_purges(app, env_store, monkeypatch):
+    from src import webui
+    calls = []
+    monkeypatch.setattr(webui, "purge_originals", lambda base, days: calls.append(days) or 0)
+    app.action({"action": "set_app", "key": "raw_retention_days", "value": 30})
+    assert app.state()["settings"]["rawRetentionDays"] == 30
+    assert env_store["RAW_RETENTION_DAYS"] == "30"
+    wait_for(lambda: 30 in calls, 10, "kasowanie starych oryginałów po zmianie")
+    app.action({"action": "set_app", "key": "raw_retention_days", "value": 13})
+    assert app.state()["settings"]["rawRetentionDays"] == 30, "tylko 7/30/90/0"

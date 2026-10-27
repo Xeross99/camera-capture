@@ -100,6 +100,14 @@ SHARPEN_PERCENT = 120
 # od razu, tylko po tylu dniach. 0 = kasowanie natychmiastowe (bez kosza).
 TRASH_RETENTION_DAYS = int(os.environ.get("TRASH_RETENTION_DAYS", "30"))
 
+# Oryginaly z aparatu (photos/<sesja>/raw) starsze niz tyle dni sa kasowane
+# razem z kopia bez logo (.nologo) — potem logo na tym zdjeciu juz sie nie
+# zmieni. 0 = trzymane zawsze. Zmiana w Ustawieniach zapisuje sie tutaj.
+RAW_RETENTION_CHOICES = (7, 30, 90, 0)
+RAW_RETENTION_DAYS = int(os.environ.get("RAW_RETENTION_DAYS", "0") or 0)
+if RAW_RETENTION_DAYS not in RAW_RETENTION_CHOICES:
+    RAW_RETENTION_DAYS = 0
+
 AUTOMAT_BASE_URL = os.environ.get("AUTOMAT_URL", "http://localhost:3000")
 AUTOMAT_API_TOKEN = os.environ.get("AUTOMAT_TOKEN")
 AUTOMAT_UPLOAD_ENABLED = os.environ.get("AUTOMAT_UPLOAD_ENABLED", "true").lower() in ("1", "true", "yes", "on")

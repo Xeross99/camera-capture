@@ -83,6 +83,10 @@ Panel z boku podglądu zdjęcia: bez logo / TRIXBRIX.eu / KIDS i róg kadru (`ed
 
 Każda udana rozgrzewka (`_job_warmup`) dopisuje swój czas do `.warmup.json` obok `.exe` (`WARMUP_FILE`, ostatnie `WARMUP_KEEP` = 10; obok `.env`, więc przeżywa aktualizacje). `_warmup_estimate()` = mediana ostatnich 5 (jedna anomalia — antywirus, pierwsza kompilacja po aktualizacji sterownika — nie psuje szacunku), liczona przy kolejkowaniu rozgrzewki i wysyłana jako `state.warmupEta`. Karta na podglądzie (`warmup-overlay`) pokazuje z niej „zwykle ok. X s na tym komputerze · zostało ok. Y s" i pasek postępu (zatrzymany na 95%, gdy trwa dłużej); bez historii zakłada 2 minuty (`WARMUP_DEFAULT_S` w `app-session.js`). Zapis atomowy, a katalog tylko do odczytu po prostu nie buduje historii.
 
+## Stare oryginały (`RAW_RETENTION_DAYS`, Ustawienia → Pliki)
+
+`purge_originals()` (`session_store.py`, job `purge_originals` przy starcie i po zmianie ustawienia) kasuje `raw/*_raw.jpg` starsze niż N dni (po mtime) RAZEM z kopią `.nologo/<plik>` — inaczej edycja logo dalej by działała i opis w Ustawieniach kłamałby. Po tym `shot_entries` daje `edit: ""`, panel edycji mówi, że logo się nie zmieni. Gotowe zdjęcia zostają. Wybór 7/30/90/0 (0 = nigdy, domyślnie), zapis do `.env`.
+
 ## Kosz (`photos/.trash`, retencja `TRASH_RETENTION_DAYS`)
 
 Nic, co aplikacja usuwa lokalnie, nie znika od razu — pliki lądują w `photos/.trash/<data>-<godzina>_<sesja>/` i dopiero `_job_purge_trash` (raz przy starcie, `purge_trash()` z `src/session_store.py`) kasuje wpisy starsze niż `TRASH_RETENTION_DAYS` (domyślnie 30). Odzyskanie = przeniesienie plików z powrotem do `photos/<sesja>/` (raw wraca obok finału, nie do `raw/` — kosz jest płaski).

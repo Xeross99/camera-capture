@@ -31,6 +31,7 @@ os.environ.update({
     "CAMERA_EDSDK_ISOLATION": "false",
     "CLEAN_BG_GPU": "false",
     "TRASH_RETENTION_DAYS": "30",
+    "RAW_RETENTION_DAYS": "0",
     "LOGO": "kids",
     "UI_THEME": "light",
     "PREVIEW_FPS": "10",

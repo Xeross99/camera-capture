@@ -14,7 +14,7 @@ from src import config
 from src.image_processing import LOGO_POSITIONS, overlay_logo, process
 from src.naming import sanitize_name
 from src.session_store import (TRASH_STAMP, edit_base, finals, find_raw, load_review,
-                               purge_trash, remote_filename, save_review, shot_entries)
+                               purge_originals, purge_trash, remote_filename, save_review, shot_entries)
 from src.version import parse_version
 from src.webui import _ev_number
 
@@ -191,3 +191,24 @@ def test_purge_trash_respects_retention(tmp_path):
     assert purge_trash(tmp_path, days=30) == 1
     assert not old.exists() and fresh.exists()
     assert purge_trash(tmp_path, days=0) == 0, "0 dni = kosz wylaczony, nic nie kasuje"
+
+
+def test_purge_originals_drops_old_raw_and_nologo_only(tmp_path):
+    sess = tmp_path / "sesja"
+    (sess / "raw").mkdir(parents=True)
+    (sess / ".nologo").mkdir()
+    old_t = time.time() - 40 * 86400
+    for name, t in (("old", old_t), ("new", time.time())):
+        Image.new("RGB", (10, 10)).save(sess / f"{name}.jpg")
+        Image.new("RGB", (10, 10)).save(sess / ".nologo" / f"{name}.jpg")
+        raw = sess / "raw" / f"{name}_raw.jpg"
+        Image.new("RGB", (10, 10)).save(raw)
+        os.utime(raw, (t, t))
+    assert purge_originals(tmp_path, days=0) == 0, "0 = oryginały zostają zawsze"
+    assert purge_originals(tmp_path, days=30) == 1
+    assert not (sess / "raw" / "old_raw.jpg").exists() and not (sess / ".nologo" / "old.jpg").exists()
+    assert (sess / "old.jpg").exists(), "gotowe zdjęcie zostaje"
+    assert (sess / "raw" / "new_raw.jpg").exists() and (sess / ".nologo" / "new.jpg").exists()
+    entries = {e["file"]: e for e in shot_entries(sess, load_review(sess))}
+    assert entries["old.jpg"]["edit"] == "", "bez oryginału i kopii bez logo edycji logo nie ma"
+    assert entries["new.jpg"]["edit"] == "ready"

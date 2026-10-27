@@ -187,6 +187,34 @@ def purge_trash(base_output: Path, days: int = TRASH_RETENTION_DAYS) -> int:
     return removed
 
 
+# ---------- stare oryginaly (photos/<sesja>/raw) ----------
+
+
+def purge_originals(base_output: Path, days: int) -> int:
+    """Kasuje oryginaly z aparatu starsze niz `days` dni (po mtime pliku)
+    razem z kopia bez logo z `.nologo/` — bez obu edycja logo tego zdjecia
+    nie ma juz z czego pracowac (`shot_entries` daje wtedy edit=""). Gotowe
+    zdjecia zostaja. Zwraca liczbe skasowanych oryginalow; 0 dni = nic."""
+    if days <= 0 or not base_output.is_dir():
+        return 0
+    cutoff = (datetime.now() - timedelta(days=days)).timestamp()
+    removed = 0
+    for session in base_output.iterdir():
+        if not session.is_dir() or session.name.startswith("."):
+            continue
+        for raw in [*session.glob("raw/*_raw.jpg"), *session.glob("*_raw.jpg")]:
+            try:
+                if raw.stat().st_mtime >= cutoff:
+                    continue
+                raw.unlink()
+            except OSError:
+                continue
+            removed += 1
+            final = raw.name[: -len("_raw.jpg")] + ".jpg"
+            (session / NOLOGO_DIR / final).unlink(missing_ok=True)
+    return removed
+
+
 # ---------- okladki sesji (photos/.covers) ----------
 
 

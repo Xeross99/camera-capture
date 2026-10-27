@@ -48,6 +48,8 @@ from .config import (
     AUTOMAT_BASE_URL,
     OUTPUT_SIZE,
     LOGOS,
+    RAW_RETENTION_CHOICES,
+    RAW_RETENTION_DAYS,
     TRASH_RETENTION_DAYS,
     persist_env,
 )
@@ -62,6 +64,7 @@ from .session_store import (
     load_review,
     make_cover,
     move_into,
+    purge_originals,
     purge_trash,
     remote_filename,
     retry_locked,
@@ -298,6 +301,7 @@ class WebUI:
         self.preview_fps = PREVIEW_FPS
         self.ui_theme = UI_THEME
         self.keep_raw = True
+        self.raw_retention_days = RAW_RETENTION_DAYS   # 0 = oryginaly zostaja zawsze
         self.test_result = ""
 
         # runtime
@@ -1181,6 +1185,20 @@ class WebUI:
             self._log(f"Kosz: skasowano {n} wpis(ów) starszych niż "
                       f"{TRASH_RETENTION_DAYS} dni.")
 
+    def _job_purge_originals(self) -> None:
+        """Oryginaly starsze niz `raw_retention_days` (Ustawienia → Pliki).
+        Przy starcie i po kazdej zmianie tego ustawienia."""
+        days = self.raw_retention_days
+        try:
+            n = purge_originals(self.base_output, days)
+        except Exception as e:
+            self._log(f"✗ Kasowanie starych oryginałów: {e}", "err")
+            return
+        if n:
+            self._shots_cache = None
+            self._log(f"Skasowano {n} {_photos_word(n)} oryginalnych z aparatu starszych "
+                      f"niż {days} dni — logo na tych zdjęciach już się nie zmieni.")
+
     def _job_cleanup_update(self) -> None:
         """Po restarcie w nowa wersje: kasuje katalog roboczy aktualizatora i
         wypisuje blad, jesli poprzednia proba nie doszla do skutku (inaczej
@@ -1490,6 +1508,7 @@ class WebUI:
         "apply_update": _job_apply_update,
         "cleanup_update": _job_cleanup_update,
         "purge_trash": _job_purge_trash,
+        "purge_originals": _job_purge_originals,
     }
 
     # ---------- akcje z frontu ----------
@@ -1752,6 +1771,12 @@ class WebUI:
                     persist_env("UI_THEME", theme)
             elif key == "keep_raw":
                 self.keep_raw = bool(value)
+            elif key == "raw_retention_days":
+                days = int(value)
+                if days in RAW_RETENTION_CHOICES:
+                    self.raw_retention_days = days
+                    persist_env("RAW_RETENTION_DAYS", str(days))
+                    self._jobs.put(("purge_originals",))
             elif key == "clean_bg_gpu":
                 on = bool(value)
                 self.clean_bg_gpu = on
@@ -1924,6 +1949,7 @@ class WebUI:
                     "uiTheme": self.ui_theme,
                     "cleanBgGpu": self.clean_bg_gpu,
                     "keepRaw": self.keep_raw,
+                    "rawRetentionDays": self.raw_retention_days,
                     "testResult": self.test_result,
                 },
                 "update": self._update_state(),
@@ -2049,6 +2075,7 @@ class WebUI:
         self._jobs.put(("cleanup_update",))
         self._jobs.put(("check_update",))
         self._jobs.put(("purge_trash",))
+        self._jobs.put(("purge_originals",))
         # ostatnia w kolejce startowej — szybkie joby wyżej nie mogą czekać
         # dziesiątek sekund za kompilacją shaderów DirectML; w trybie CPU
         # nie jest kolejkowana wcale

@@ -321,6 +321,7 @@ function renderScreens(force) {
       $("screen-ustawienia").innerHTML = ustawieniaScreen();
       if ($("settings-scroll")) $("settings-scroll").scrollTop = sc;
       placeSegPill($("fps-seg"), true);
+      placeSegPill($("raw-seg"), true);
     }
   }
 }
@@ -340,7 +341,7 @@ function go(screen) {
   placeTabBar(true);
   lastSesja = lastUstawienia = "";
   renderScreens(true);
-  ["period-seg", "fps-seg", "grid-seg"].forEach(id => placeSegPill($(id), false));
+  ["period-seg", "fps-seg", "raw-seg", "grid-seg"].forEach(id => placeSegPill($(id), false));
   playScreenIn(`screen-${screen}`);
 }
 

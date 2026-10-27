@@ -81,7 +81,7 @@ Starsze robi się z oryginału z aparatu (`/raw`), jeśli został zachowany.
 
 ### Ustawienia
 
-Aktualizacje z GitHub Releases, połączenie z API (wraz z listą endpointów), pliki, podgląd i obróbka oraz skróty klawiszowe.
+Aktualizacje z GitHub Releases, połączenie z API (wraz z listą endpointów), pliki (w tym po ilu dniach kasować oryginały z aparatu), podgląd i obróbka oraz skróty klawiszowe.
 Motyw jasny albo ciemny przełącza się ikoną w prawym górnym rogu.
 
 <img src="assets/readme/settings.jpg" width="100%" alt="Ustawienia: aktualizacje, API z endpointami, pliki">

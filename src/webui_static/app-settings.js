@@ -91,7 +91,7 @@ function ustawieniaScreen() {
       ${nav}
       <div style="flex: 1;"></div>
       <div class="brand-line">
-        <span class="brand-item"><img class="theme-light" src="/favicon.png" alt="" /><img class="theme-dark" src="/logo-cc-dark.png" alt="" />Camera Capture <span class="mono" style="color: var(--text-2);">${u.current}</span></span>
+        <span class="brand-item"><img class="theme-light" src="/favicon.png?v=${u.current}" alt="" /><img class="theme-dark" src="/logo-cc-dark.png?v=${u.current}" alt="" />Camera Capture <span class="mono" style="color: var(--text-2);">${u.current}</span></span>
       </div>
       <button type="button" class="author" onclick="post({action:'open_url', url: 'https://github.com/Xeross99'})" title="Profil autora na GitHubie">
         <img src="/author" alt="" />
@@ -168,10 +168,17 @@ function ustawieniaScreen() {
           <div class="row" style="padding: 14px 20px 18px;">
             <div style="flex: 1;">
               <div class="row-title">Zachowaj oryginały z aparatu</div>
-              <div class="row-desc">Surowe zdjęcie zostaje obok gotowego, w podkatalogu /raw. Bez nich nie da się zmienić logo na starszych zdjęciach.</div>
+              <div class="row-desc">Surowe zdjęcie zostaje obok gotowego, w podkatalogu /raw.</div>
             </div>
             ${switchHtml(cfg.keepRaw, "post({action:'set_app', key:'keep_raw', value: switchOn(this)})", "Zachowaj oryginały z aparatu")}
           </div>
+          ${cfg.keepRaw ? `<div class="row" style="padding: 0 20px 18px; border-top: none;">
+            <div style="flex: 1;">
+              <div class="row-title">Kasuj oryginały po</div>
+              <div class="row-desc">Starsze oryginały znikają z dysku razem z kopią bez logo. Po skasowaniu oryginału logo na tym zdjęciu nie da się już zmienić w panelu edycji zdjęcia. Gotowe zdjęcia zostają.</div>
+            </div>
+            <div id="raw-seg" class="seg seg-sm has-pill" role="group" aria-label="Kasuj oryginały po"><span class="seg-pill"></span>${[[7, "7 dni"], [30, "30 dni"], [90, "90 dni"], [0, "nigdy"]].map(([d, l]) => `<button type="button" class="seg-btn${d === cfg.rawRetentionDays ? " on" : ""}" aria-pressed="${d === cfg.rawRetentionDays}" onclick="segClick(this); setRawRetention(${d})">${l}</button>`).join("")}</div>
+          </div>` : ""}
         </section>
 
         <section id="sec-obrobka" class="panel" style="overflow: hidden;">
@@ -285,6 +292,12 @@ function settingsScrolled() {
 function setFps(f) {
   if (S.state && S.state.settings) S.state.settings.previewFps = f;
   post({ action: "set_app", key: "preview_fps", value: String(f) });
+}
+
+// Echo od razu w stanie, jak setFps — poll nie przestawi pigułki z powrotem.
+function setRawRetention(d) {
+  if (S.state && S.state.settings) S.state.settings.rawRetentionDays = d;
+  post({ action: "set_app", key: "raw_retention_days", value: d });
 }
 
 function checkUpdate() {

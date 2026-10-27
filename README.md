@@ -11,6 +11,10 @@ Aplikacja do zdjęć produktowych. Aparat stoi na statywie i jest podłączony p
 naciska ENTER. Zdjęcie dostaje białe tło, produkt ląduje na środku kadru, w rogu pojawia się logo, a gotowy
 JPEG 3000 × 3000 trafia do sesji w API.
 
+## Efekt
+
+Te same produkty prosto z aparatu i po obróbce w aplikacji, bez żadnej ręcznej poprawki.
+
 <table>
   <tr><th width="50%">Prosto z aparatu</th><th width="50%">Po obróbce</th></tr>
   <tr>
@@ -27,12 +31,6 @@ JPEG 3000 × 3000 trafia do sesji w API.
   </tr>
 </table>
 
-Jedno zdjęcie od migawki do pliku na dysku trwa kilka sekund. Między strzałami wystarczy obrócić produkt i
-nacisnąć ENTER jeszcze raz.
-
-<img src="assets/readme/session.jpg" width="100%" alt="Sesja: podgląd z aparatu z siatką kadrowania, ustawienia obróbki i pasek zdjęć">
-<sub>Zrzut zrobiony bez podłączonego aparatu: w miejscu podglądu na żywo jest jedno ze zdjęć sesji.</sub>
-
 ## Jak to działa
 
 1. **Zdjęcie.** Aplikacja sama wyzwala migawkę i pobiera plik po USB przez Canon EDSDK, na Windowsie i na
@@ -44,6 +42,9 @@ nacisnąć ENTER jeszcze raz.
    - **Logo:** TRIXBRIX.eu albo TRIXBRIX.eu KIDS, w wybranym rogu kadru.
 3. **Zapis i wysyłka.** Gotowy plik leży w `photos/<sesja>/`, obok niego surowy oryginał z aparatu, a
    przetworzone zdjęcie idzie do sesji w API. Surowy oryginał zostaje tylko na dysku.
+
+Jedno zdjęcie od migawki do pliku na dysku trwa kilka sekund. Między strzałami wystarczy obrócić produkt i
+nacisnąć ENTER jeszcze raz.
 
 ## Aplikacja
 
@@ -61,6 +62,9 @@ Podgląd na żywo z aparatu z siatką kadrowania jak w aparacie (3×3 albo 6×4)
 wystarczająco jasne, i kompensacją ekspozycji. Po prawej kroki obróbki i wybór logo z rogiem kadru, na dole
 pasek zdjęć sesji (zielona kropka: zdjęcie jest już w API, pomarańczowa: czeka na wysyłkę). Zdjęcia
 zrobione na innym komputerze dociągają się z API same.
+
+<img src="assets/readme/session.jpg" width="100%" alt="Sesja: podgląd z aparatu z siatką kadrowania, ustawienia obróbki i pasek zdjęć">
+<sub>Zrzut zrobiony bez podłączonego aparatu: w miejscu podglądu na żywo jest jedno ze zdjęć sesji.</sub>
 
 ### Podgląd i edycja zdjęcia
 

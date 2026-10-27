@@ -1,21 +1,35 @@
-MIT License
+Camera Capture
+Copyright (c) 2026 Michał Krzysteczko. Wszelkie prawa zastrzeżone.
 
-Copyright (c) 2026 Michał Krzysteczko
+Kod źródłowy, grafiki i dokumentacja tego repozytorium są udostępnione wyłącznie
+do wglądu. Bez uprzedniej pisemnej zgody autora nie wolno ich kopiować,
+modyfikować, łączyć z innym oprogramowaniem, publikować, rozpowszechniać,
+sublicencjonować, sprzedawać ani używać, w całości ani w części. Udostępnienie
+repozytorium na GitHubie nie udziela żadnej licencji poza prawem do oglądania
+kodu w serwisie GitHub, wynikającym z jego regulaminu.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Wersje opublikowane wcześniej na licencji MIT (do 2.3.14 włącznie) pozostają na
+tamtej licencji dla osób, które je uzyskały. Ta licencja obowiązuje od wersji
+2.3.15.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+Kontakt w sprawie zgody: https://github.com/Xeross99
+
+----------------------------------------------------------------------------
+
+Copyright (c) 2026 Michał Krzysteczko. All rights reserved.
+
+The source code, graphics and documentation in this repository are made
+available for viewing only. Without the author's prior written permission you
+may not copy, modify, merge, publish, distribute, sublicense, sell or use them,
+in whole or in part. Publishing this repository on GitHub grants no license
+other than the right to view the code on GitHub under GitHub's Terms of Service.
+
+Versions previously published under the MIT License (up to and including 2.3.14)
+remain under that license for those who obtained them. This license applies
+from version 2.3.15 onward.
+
+Contact for permission: https://github.com/Xeross99
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+IMPLIED. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY ARISING FROM THE SOFTWARE OR ITS USE.

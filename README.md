@@ -186,4 +186,4 @@ konfiguracja w `.env`, jest opisane w [CLAUDE.md](CLAUDE.md).
 
 ## Licencja
 
-MIT, szczegóły w [LICENSE](LICENSE).
+Wszelkie prawa zastrzeżone. Kod jest udostępniony do wglądu; kopiowanie, zmiany i używanie wymagają pisemnej zgody autora. Szczegóły w [LICENSE](LICENSE).

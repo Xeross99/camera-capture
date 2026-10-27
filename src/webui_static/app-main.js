@@ -62,7 +62,7 @@ function shell() {
     </nav>` : ""}
     <div style="flex: 1;"></div>
     <div class="chip"><span class="dot ${conn ? "ok" : "err"}"></span><span id="conn-label">${conn ? "Aparat połączony" : "Aparat rozłączony"}</span>${conn ? `<span id="conn-fps" class="fps">${st.fps} fps</span>` : ""}</div>
-    <div class="chip"><span id="automat-dot" class="dot ${au.cls}"></span>Automat<span id="automat-text" class="sub">${au.text}</span></div>
+    <div class="chip"><span id="automat-dot" class="dot ${au.cls}"></span>API<span id="automat-text" class="sub">${au.text}</span></div>
     <button type="button" id="theme-toggle" class="icon-btn" onclick="toggleTheme()" title="${themeToggleTitle()}" aria-label="${themeToggleTitle()}">${themeToggleIcon()}</button>
   </header>
 

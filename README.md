@@ -1,15 +1,15 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/icons/camera_capture_dark_anim.svg">
-    <img src="assets/icons/camera_capture_anim.svg" width="128" alt="Camera Capture">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/hero_dark.svg">
+    <img src="assets/readme/hero.svg" width="540" alt="Camera Capture: Enter na laptopie, aparat robi zdjęcie, laptop wybiela tło">
   </picture>
 </p>
 
 <h1 align="center">Camera Capture</h1>
 
-Aplikacja do zdjęć produktowych Trixbrix. Aparat stoi na statywie i jest podłączony przez USB, a operator
+Aplikacja do zdjęć produktowych. Aparat stoi na statywie i jest podłączony przez USB, a operator
 naciska ENTER. Zdjęcie dostaje białe tło, produkt ląduje na środku kadru, w rogu pojawia się logo, a gotowy
-JPEG 3000 × 3000 trafia do sesji w Automacie.
+JPEG 3000 × 3000 trafia do sesji w API.
 
 Jedno zdjęcie od migawki do pliku na dysku trwa kilka sekund. Między strzałami wystarczy obrócić produkt i
 nacisnąć ENTER jeszcze raz.
@@ -27,13 +27,13 @@ nacisnąć ENTER jeszcze raz.
      wypadł na stole. Zdjęcie pod kątem zostaje pod kątem: niczego nie prostujemy.
    - **Logo:** TRIXBRIX.eu albo TRIXBRIX.eu KIDS, w wybranym rogu kadru.
 3. **Zapis i wysyłka.** Gotowy plik leży w `photos/<sesja>/`, obok niego surowy oryginał z aparatu, a
-   przetworzone zdjęcie idzie do sesji w Automacie. Surowy oryginał zostaje tylko na dysku.
+   przetworzone zdjęcie idzie do sesji w API. Surowy oryginał zostaje tylko na dysku.
 
 ## Aplikacja
 
 ### Lista sesji
 
-Ekran startowy pokazuje wszystkie sesje z Automatu, pogrupowane po dniach, z okładką, dopasowanym produktem
+Ekran startowy pokazuje wszystkie sesje z API, pogrupowane po dniach, z okładką, dopasowanym produktem
 i liczbą zdjęć. U góry zakłada się nową sesję: nazwa produktu i ENTER. Listę da się przeszukać, zawęzić do
 dnia, tygodnia albo miesiąca i do liczby zdjęć, a strzałkami chodzi się po kafelkach.
 
@@ -43,14 +43,14 @@ dnia, tygodnia albo miesiąca i do liczby zdjęć, a strzałkami chodzi się po 
 
 Podgląd na żywo z aparatu z siatką kadrowania jak w aparacie (3×3 albo 6×4), znaczkiem, czy tło jest
 wystarczająco jasne, i kompensacją ekspozycji. Po prawej kroki obróbki i wybór logo z rogiem kadru, na dole
-pasek zdjęć sesji (zielona kropka: zdjęcie jest już w Automacie, pomarańczowa: czeka na wysyłkę). Zdjęcia
-zrobione na innym komputerze dociągają się z Automatu same.
+pasek zdjęć sesji (zielona kropka: zdjęcie jest już w API, pomarańczowa: czeka na wysyłkę). Zdjęcia
+zrobione na innym komputerze dociągają się z API same.
 
 ### Podgląd i edycja zdjęcia
 
 SPACJA otwiera zdjęcie na całe okno, strzałki przechodzą między zdjęciami, BACKSPACE usuwa (do kosza na
-dysku i z Automatu). „Edytuj” (klawisz E) pozwala zdjąć, dodać albo przestawić logo na gotowym zdjęciu.
-Podgląd obok pokazuje dokładnie to, co zostanie zapisane, a zmiana podmienia też to samo zdjęcie w Automacie.
+dysku i z API). „Edytuj” (klawisz E) pozwala zdjąć, dodać albo przestawić logo na gotowym zdjęciu.
+Podgląd obok pokazuje dokładnie to, co zostanie zapisane, a zmiana podmienia też to samo zdjęcie w API.
 
 <img src="assets/readme/review.jpg" width="100%" alt="Podgląd zdjęcia na całe okno">
 
@@ -61,10 +61,10 @@ Starsze robi się z oryginału z aparatu (`/raw`), jeśli został zachowany.
 
 ### Ustawienia
 
-Aktualizacje z GitHub Releases, połączenie z Automatem, pliki, podgląd i obróbka oraz skróty klawiszowe.
+Aktualizacje z GitHub Releases, połączenie z API (wraz z listą endpointów), pliki, podgląd i obróbka oraz skróty klawiszowe.
 Motyw jasny albo ciemny przełącza się ikoną w prawym górnym rogu.
 
-<img src="assets/readme/settings.jpg" width="100%" alt="Ustawienia: aktualizacje, Automat, pliki">
+<img src="assets/readme/settings.jpg" width="100%" alt="Ustawienia: aktualizacje, API z endpointami, pliki">
 
 <img src="assets/readme/session-dark.jpg" width="100%" alt="Sesja w ciemnym motywie, aparat rozłączony">
 
@@ -78,20 +78,47 @@ Motyw jasny albo ciemny przełącza się ikoną w prawym górnym rogu.
 | **SPACJA** | otwiera podgląd zdjęć na całe okno |
 | **← →** | przechodzi między zdjęciami |
 | **E** | edytuje logo na oglądanym zdjęciu |
-| **BACKSPACE** | usuwa zdjęcie: trafia do kosza na dysku i znika z Automatu |
+| **BACKSPACE** | usuwa zdjęcie: trafia do kosza na dysku i znika z API |
 | **ESC** | zamyka podgląd albo wychodzi z sesji |
 | **P** | włącza i wyłącza podgląd z aparatu |
 | **⌘F / Ctrl+F** | szuka sesji |
 | **⌘N / Ctrl+N** | zakłada nową sesję |
+
+## API
+
+Aplikacja rozmawia z serwerem przez `/api/photo_studio` (adres i token w Ustawieniach albo w `.env`: `AUTOMAT_URL`, `AUTOMAT_TOKEN`):
+
+| Metoda | Endpoint | Do czego |
+|---|---|---|
+| `GET` | `/sessions` | lista sesji na ekranie startowym |
+| `POST` | `/sessions` | nowa sesja (albo istniejąca o tej nazwie) |
+| `GET` | `/sessions/:id` | zdjęcia sesji do pobrania przy wejściu |
+| `GET` | `/sessions/:id/photos/:photo_id/file` | pobranie zdjęcia na dysk |
+| `POST` | `/sessions/:id/photos` | zapowiedź zdjęcia zaraz po migawce, potem plik |
+| `PUT` | `/sessions/:id/photos/:photo_id` | gotowy JPEG do zapowiedzianego zdjęcia |
+| `DELETE` | `/sessions/:id/photos/:photo_id` | usunięcie zdjęcia (BACKSPACE) |
 
 ## Instalacja na Windowsie
 
 1. Pobierz `CameraCapture-windows-vX.Y.Z.zip` z ostatniego wydania i rozpakuj w dowolnym katalogu.
 2. Dołóż obok `.exe` pliki `EDSDK.dll` i `EdsImage.dll` (x64) z Canon EDSDK. Nie ma ich w repozytorium,
    bo nie pozwala na to licencja Canona.
-3. Skopiuj `.env.example` jako `.env` i wpisz token Automatu (`AUTOMAT_TOKEN`).
+3. Skopiuj `.env.example` jako `.env` i wpisz token API (`AUTOMAT_TOKEN`).
 
 Szczegóły, w tym ustawienia aparatu i rozwiązywanie problemów: [WINDOWS.md](WINDOWS.md).
+
+## Instalacja na macOS
+
+1. Pobierz `CameraCapture-macos-vX.Y.Z.zip` z ostatniego wydania (Mac z procesorem Apple, M1 i nowsze)
+   i rozpakuj. Powstanie katalog `Camera Capture` z aplikacją `Camera Capture.app`.
+2. Dołóż do tego katalogu, obok `Camera Capture.app`, `EDSDK.framework` z Canon EDSDK dla macOS.
+3. Skopiuj `.env.example` jako `.env` i wpisz token API (`AUTOMAT_TOKEN`). Zdjęcia trafią do `photos/`
+   w tym samym katalogu.
+4. Aplikacja nie jest podpisana przez Apple, więc przy pierwszym uruchomieniu kliknij ją prawym przyciskiem
+   i wybierz **Otwórz** albo zdejmij kwarantannę:
+   `xattr -dr com.apple.quarantine "Camera Capture.app" EDSDK.framework`.
+
+Na macOS aplikacja tylko informuje o nowej wersji. Nową paczkę rozpakowuje się ręcznie w miejsce starej `Camera Capture.app`.
 
 ## Aktualizacje
 
@@ -133,7 +160,7 @@ konfiguracja w `.env`, jest opisane w [CLAUDE.md](CLAUDE.md).
 ## Autor
 
 <a href="https://github.com/Xeross99"><img src="assets/readme/author.png" width="48" alt="" align="left"></a>
-**Michał Krzysteczko** dla Trixbrix<br>
+**Michał Krzysteczko**<br>
 [@Xeross99](https://github.com/Xeross99)
 <br clear="left">
 

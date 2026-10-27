@@ -358,8 +358,6 @@ select.field { padding: 0 8px; }
 .brand-line { display: flex; flex-direction: column; gap: 6px; padding: 12px 10px 10px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted-2); }
 .brand-item { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .brand-line img { width: 18px; height: 18px; flex-shrink: 0; }
-/* znak Trixbrix (biały PNG z przezroczystością) jako maska — kolor tekstu w obu motywach */
-.tbx-mark { width: 18px; height: 15px; flex-shrink: 0; background: var(--text-2); -webkit-mask: url(/brand-mark) center / contain no-repeat; mask: url(/brand-mark) center / contain no-repeat; }
 .theme-dark { display: none; }
 html[data-theme="dark"] .theme-dark, html:not([data-theme]) .theme-dark { display: block; }
 html[data-theme="dark"] .theme-light, html:not([data-theme]) .theme-light { display: none; }
@@ -444,8 +442,6 @@ html[data-theme="dark"] .theme-light, html:not([data-theme]) .theme-light { disp
 .sdk-steps { display: flex; flex-direction: column; gap: 7px; margin-top: 6px; padding: 12px 14px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--hair); font-size: 12.5px; line-height: 1.45; color: var(--text-2); }
 .sdk-steps > div { display: flex; gap: 10px; align-items: flex-start; }
 .sdk-n { width: 18px; height: 18px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--accent-soft); color: var(--accent-fg); font-size: 11px; font-weight: 700; }
-.sdk-person { display: inline-flex; align-items: center; gap: 5px; vertical-align: -4px; }
-.sdk-person img { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; box-shadow: 0 0 0 1px var(--border); }
 
 /* Rozgrzewka silnika czyszczenia tła */
 .warmup-overlay { position: absolute; inset: 0; z-index: 3; align-items: center; justify-content: center; background: rgba(20, 20, 24, .28); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }

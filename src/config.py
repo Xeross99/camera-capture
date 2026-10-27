@@ -9,6 +9,12 @@ if getattr(sys, "frozen", False):
     # PyInstaller: __file__ wskazuje na rozpakowane _internal/_MEIPASS —
     # .env i photos/ maja zyc obok .exe, nie w katalogu tymczasowym.
     PROJECT_DIR = Path(sys.executable).resolve().parent
+    # macOS: plik wykonywalny siedzi w „Camera Capture.app/Contents/MacOS".
+    # Do wnetrza paczki .app nie wolno pisac (i nikt tam nie zajrzy), wiec
+    # .env, photos/ i EDSDK.framework leza OBOK Camera Capture.app.
+    if sys.platform == "darwin" and PROJECT_DIR.name == "MacOS" \
+            and PROJECT_DIR.parent.parent.suffix == ".app":
+        PROJECT_DIR = PROJECT_DIR.parent.parent.parent
 else:
     PROJECT_DIR = Path(__file__).resolve().parent.parent
 

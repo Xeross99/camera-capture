@@ -5,7 +5,7 @@
 // idzie za przewijaniem (settingsScrolled).
 const SETTINGS_SECTIONS = [
   { id: "aktualizacje", label: "Aktualizacje", icon: "download" },
-  { id: "automat", label: "Automat", icon: "cloud" },
+  { id: "automat", label: "API", icon: "cloud" },
   { id: "pliki", label: "Pliki", icon: "folder" },
   { id: "obrobka", label: "Podgląd i obróbka", icon: "sparkles" },
   { id: "skroty", label: "Skróty klawiszowe", icon: "terminal" },
@@ -91,7 +91,6 @@ function ustawieniaScreen() {
       ${nav}
       <div style="flex: 1;"></div>
       <div class="brand-line">
-        <span class="brand-item"><span class="tbx-mark" aria-hidden="true"></span>Trixbrix</span>
         <span class="brand-item"><img class="theme-light" src="/favicon.png" alt="" /><img class="theme-dark" src="/logo-cc-dark.png" alt="" />Camera Capture <span class="mono" style="color: var(--text-2);">${u.current}</span></span>
       </div>
       <button type="button" class="author" onclick="post({action:'open_url', url: 'https://github.com/Xeross99'})" title="Profil autora na GitHubie">
@@ -110,8 +109,7 @@ function ustawieniaScreen() {
         <section id="sec-aktualizacje" class="panel" style="overflow: hidden;">
           ${cardHead(GITHUB_MARK, "background: #1d1d1f; color: #fff;", "Aktualizacje",
             `z GitHub Releases
-             <button type="button" class="mono" onclick="post({action:'open_url', url: 'https://github.com/${u.repo}'})" style="padding: 0; border: none; background: none; font-size: 12.5px; color: var(--text); cursor: pointer;">${(u.repo || "").replace("/", "/<b style='font-weight: 600;'>")}</b></button>
-             ${u.private ? `<span style="display: flex; align-items: center; gap: 4px; padding: 1px 7px; border: 1px solid var(--border-strong); border-radius: 10px; font-size: 11px; color: var(--muted);">${icon("lock", 11, 2)}prywatne</span>` : ""}`,
+             <button type="button" class="mono" onclick="post({action:'open_url', url: 'https://github.com/${u.repo}'})" style="padding: 0; border: none; background: none; font-size: 12.5px; color: var(--text); cursor: pointer;">${(u.repo || "").replace("/", "/<b style='font-weight: 600;'>")}</b></button>`,
             statusChip(uv, uv.spin))}
           <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--hair);">
             <div style="padding: 14px 20px; border-right: 1px solid var(--hair);">
@@ -142,7 +140,7 @@ function ustawieniaScreen() {
         </section>
 
         <section id="sec-automat" class="panel" style="overflow: hidden;">
-          ${cardHead(`<img src="/brand-mark" alt="" style="width: 24px; height: 24px; display: block;" />`, "background: #131a33;", "Automat",
+          ${cardHead(icon("cloud", 22), "background: rgba(37, 99, 235, .14); color: #2563eb;", "API",
             `Sesje i wysyłka zdjęć · <span class="mono" style="font-size: 12.5px; color: var(--text);">${(cfg.automatUrl || "").replace(/^https?:\/\//, "")}</span>`,
             statusChip(av))}
           <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 14px 20px 18px; border-top: 1px solid var(--hair);">
@@ -157,6 +155,7 @@ function ustawieniaScreen() {
             ${cfg.testResult ? `<div class="row-desc" style="grid-column: 1 / -1; margin: 0; color: ${cfg.testResult.startsWith("✓") ? "var(--ok-fg)" : "var(--warn-fg-3)"};">${cfg.testResult}</div>` : ""}
             ${a_noToken(st)}
           </div>
+          ${apiEndpoints()}
         </section>
 
         <section id="sec-pliki" class="panel" style="overflow: hidden;">
@@ -206,7 +205,39 @@ function ustawieniaScreen() {
 }
 
 const a_noToken = st => (st.automat && !st.automat.hasToken)
-  ? `<div class="row-desc" style="grid-column: 1 / -1; margin: 0;">Bez tokenu nie widać sesji z Automatu i zdjęcia się nie wysyłają. Token jest w Automacie, w ustawieniach konta.</div>` : "";
+  ? `<div class="row-desc" style="grid-column: 1 / -1; margin: 0;">Bez tokenu nie widać sesji z API i zdjęcia się nie wysyłają. Token wygenerujesz w ustawieniach konta po stronie API.</div>` : "";
+
+// Endpointy API, z których korzysta aplikacja (src/automat_uploader.py).
+// Lista statyczna — zmiana klienta HTTP = zmiana tej tabeli.
+const API_ENDPOINTS = [
+  ["GET", "/sessions", "Lista sesji na ekranie startowym"],
+  ["POST", "/sessions", "Nowa sesja (albo istniejąca o tej nazwie)"],
+  ["GET", "/sessions/:id", "Zdjęcia sesji do pobrania przy wejściu"],
+  ["GET", "/sessions/:id/photos/:photo_id/file", "Pobranie zdjęcia na dysk"],
+  ["POST", "/sessions/:id/photos", "Zapowiedź zdjęcia zaraz po migawce, potem plik"],
+  ["PUT", "/sessions/:id/photos/:photo_id", "Gotowy JPEG do zapowiedzianego zdjęcia"],
+  ["DELETE", "/sessions/:id/photos/:photo_id", "Usunięcie zdjęcia (BACKSPACE)"],
+];
+const API_METHOD_STYLE = {
+  GET: "color: var(--ok-fg); background: var(--ok-soft, rgba(34, 197, 94, .14));",
+  POST: "color: #2563eb; background: rgba(37, 99, 235, .14);",
+  PUT: "color: #a855f7; background: rgba(168, 85, 247, .14);",
+  DELETE: "color: var(--err); background: rgba(239, 68, 68, .14);",
+};
+
+function apiEndpoints() {
+  const rows = API_ENDPOINTS.map(([m, path, what]) => `
+    <div style="display: contents;">
+      <span class="mono" style="justify-self: start; padding: 2px 7px; border-radius: 5px; font-size: 10.5px; font-weight: 600; letter-spacing: .03em; ${API_METHOD_STYLE[m]}">${m}</span>
+      <span class="mono" style="font-size: 12px; color: var(--text); overflow-wrap: anywhere;">${path}</span>
+      <span style="font-size: 12.5px; color: var(--muted);">${what}</span>
+    </div>`).join("");
+  return `
+    <div style="padding: 14px 20px 18px; border-top: 1px solid var(--hair); display: flex; flex-direction: column; gap: 10px;">
+      <div class="row-title">Endpointy <span class="mono" style="font-weight: 400; font-size: 12px; color: var(--muted);">/api/photo_studio</span></div>
+      <div style="display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.1fr); gap: 8px 14px; align-items: center;">${rows}</div>
+    </div>`;
+}
 
 function settingsGo(id) {
   S.settingsSection = id;

@@ -142,18 +142,18 @@ const UNPLUGGED_SVG = `
 function edsdkMissingHtml(st) {
   const mac = st.platform === "darwin";
   const files = mac ? `<span class="mono">EDSDK.framework</span>` : `<span class="mono">EDSDK.dll</span> i <span class="mono">EdsImage.dll</span>`;
-  const where = mac ? `Połóż <span class="mono">EDSDK.framework</span> w katalogu aplikacji.` : `Połóż oba pliki obok <span class="mono">Trixbrix - Camera Capture.exe</span>.`;
+  const where = mac ? `Dodaj <span class="mono">EDSDK.framework</span> do katalogu aplikacji, obok <span class="mono">Camera Capture.app</span>.` : `Dodaj oba pliki do katalogu aplikacji, obok pliku <span class="mono">.exe</span>.`;
   return `
     <div class="live-empty sdk">
       <div class="live-empty-icon">${icon("puzzle", 26, 1.6)}</div>
       <div class="live-empty-title">Brak sterownika aparatu Canon</div>
       <div class="live-empty-text">Aplikacja steruje aparatem przez Canon EDSDK: robi zdjęcia, pobiera je po USB i pokazuje podgląd na żywo. ${mac ? "Framework" : "Pliki"} ${files} ${mac ? "wymaga" : "wymagają"} licencji Canona, dlatego nie ma ${mac ? "go" : "ich"} w paczce aplikacji.</div>
       <div class="sdk-steps">
-        <div><span class="sdk-n">1</span><span>Poproś o pliki: <span class="sdk-person"><img src="/author" alt="" /><b>Michał Krzysteczko</b></span>, ma licencję na Canon EDSDK.</span></div>
+        <div><span class="sdk-n">1</span><span>Pobierz Canon EDSDK ${mac ? "dla macOS" : "dla Windows (x64)"} z programu deweloperskiego Canona (darmowe konto).</span></div>
         <div><span class="sdk-n">2</span><span>${where}</span></div>
         <div><span class="sdk-n">3</span><span>Uruchom aplikację ponownie.</span></div>
       </div>
-      <button type="button" class="btn btn-sm" onclick="post({action:'open_url', url: 'https://github.com/Xeross99'})">${GITHUB_MARK.replace("width: 24px; height: 24px", "width: 14px; height: 14px")}Kontakt: Xeross99${icon("external", 13, 1.8)}</button>
+      <button type="button" class="btn btn-sm" onclick="post({action:'open_url', url: 'https://developercommunity.usa.canon.com/s/'})">Program deweloperski Canona${icon("external", 13, 1.8)}</button>
     </div>`;
 }
 
@@ -418,7 +418,7 @@ function reviewShot() {
 // Stan zdjęcia w Automacie (chip w pasku podglądu i kropka na kafelku).
 function shotState(shot) {
   if (shot.status === "rejected") return { cls: "err", text: "odrzucone" };
-  if (shot.uploaded) return { cls: "ok", text: "w Automacie" };
+  if (shot.uploaded) return { cls: "ok", text: "w API" };
   if (S.state.automat && S.state.automat.hasToken) return { cls: "warn", text: "czeka na wysyłkę" };
   return { cls: "", text: "" };
 }
@@ -565,7 +565,7 @@ function editPanelHtml() {
       <button type="button" class="btn" onclick="closeEdit()" style="flex: 1;">Anuluj</button>
       <button type="button" class="btn btn-primary" onclick="saveEdit()" style="flex: 2;">Zapisz zdjęcie</button>
     </div>
-    <div class="row-desc" style="text-align: center;">Zmiana trafi też do Automatu.</div>`;
+    <div class="row-desc" style="text-align: center;">Zmiana trafi też do API.</div>`;
 }
 
 function renderEditPanel() {
@@ -695,7 +695,7 @@ function stripLegend() {
   const rej = shots.filter(s => s.status === "rejected").length;
   const item = (cls, text) => `<span class="legend"><span class="dot ${cls}"></span>${text}</span>`;
   return `<h2 style="margin: 0; font-size: 13px; font-weight: 700; color: var(--text);">Zdjęcia w sesji <span style="font-weight: 500; color: var(--muted-2);">· ${shots.length}</span></h2>
-    ${up ? item("ok", `w Automacie ${up}`) : ""}
+    ${up ? item("ok", `w API ${up}`) : ""}
     ${wait ? item("warn", `wysyłanie ${wait}`) : ""}
     ${rej ? item("err", `odrzucone ${rej}`) : ""}
     ${st.processing ? `<span class="legend"><span class="dot" style="background: var(--accent);"></span>obróbka 1</span>` : ""}`;

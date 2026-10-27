@@ -242,16 +242,16 @@ function startScreen() {
         ? `<div style="font-size: 13px; color: var(--muted-2);">Żadna sesja nie pasuje do filtrów.</div>`
         : "");
   const info = !a.hasToken
-    ? `<div style="font-size: 12.5px; color: var(--warn-fg-3);">Brak tokenu Automatu (.env albo Ustawienia). Sesje z Automatu są niedostępne, możesz utworzyć lokalną.</div>`
+    ? `<div style="font-size: 12.5px; color: var(--warn-fg-3);">Brak tokenu API (.env albo Ustawienia). Sesje z API są niedostępne, możesz utworzyć lokalną.</div>`
     : a.error
       ? `<div style="font-size: 12.5px; color: var(--err-fg);">✗ ${a.error}</div>`
       : a.sessions.length === 0
-        ? `<div style="font-size: 12.5px; color: var(--muted-2);">Ładuję sesje z Automatu…</div>`
+        ? `<div style="font-size: 12.5px; color: var(--muted-2);">Ładuję sesje z API…</div>`
         : "";
   const p = S.pendingNew;
   const pend = !p ? "" : `
     <div style="background: var(--warn-soft); border: 1px solid var(--warn-border); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;">
-      <div style="font-size: 13px; color: var(--text);">Sesja <b>${p.match.name}</b> już istnieje w Automacie (${fmtDate(p.match.created_at)}, zdjęć: ${p.match.photos_count}).</div>
+      <div style="font-size: 13px; color: var(--text);">Sesja <b>${p.match.name}</b> już istnieje w API (${fmtDate(p.match.created_at)}, zdjęć: ${p.match.photos_count}).</div>
       <div style="display: flex; gap: 8px; flex-wrap: wrap;">
         <button type="button" class="btn btn-primary btn-sm" onclick="resolvePending(true)">Podłącz do istniejącej</button>
         <button type="button" class="btn btn-sm" onclick="resolvePending(false)">Utwórz nową</button>
@@ -274,7 +274,7 @@ function startScreen() {
           <div style="display: flex; align-items: flex-end; gap: 20px;">
             <div style="display: flex; flex-direction: column; gap: 4px; width: 210px; flex-shrink: 0; align-self: center;">
               <div style="font-size: 17px; font-weight: 700; letter-spacing: -.01em; color: var(--text);">Nowa sesja</div>
-              <div style="font-size: 12.5px; line-height: 1.45; color: var(--muted);">Nazwa trafia do folderu i do Automatu. Produkt dopasuje się sam.</div>
+              <div style="font-size: 12.5px; line-height: 1.45; color: var(--muted);">Nazwa trafia do folderu i do API. Produkt dopasuje się sam.</div>
             </div>
             <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px;">
               <label for="new-session-input" style="font-size: 12px; font-weight: 500; color: var(--text-2);">Nazwa produktu</label>
@@ -303,7 +303,7 @@ function startScreen() {
           </div>
           <div style="flex: 1;"></div>
           <span style="font-size: 12px; color: var(--muted-2);">${visible.length} ${plForm(visible.length, "sesja", "sesje", "sesji")} · ${plPhotos(total)}</span>
-          <button type="button" id="refresh-btn" class="icon-btn" onclick="refreshSessions()" tabindex="-1" aria-label="Odśwież listę z Automatu" title="Odśwież listę z Automatu" data-busy="${refreshingNow(S.state) ? "1" : ""}" style="width: 36px; height: 36px; border-color: var(--border-strong); border-radius: 9px;">${refreshBtnHtml()}</button>
+          <button type="button" id="refresh-btn" class="icon-btn" onclick="refreshSessions()" tabindex="-1" aria-label="Odśwież listę z API" title="Odśwież listę z API" data-busy="${refreshingNow(S.state) ? "1" : ""}" style="width: 36px; height: 36px; border-color: var(--border-strong); border-radius: 9px;">${refreshBtnHtml()}</button>
         </div>
 
         ${feed}

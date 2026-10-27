@@ -1,8 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
-# Build .exe (uruchamiac NA Windowsie — PyInstaller nie cross-kompiluje):
-#   build_windows.bat        (albo recznie: pyinstaller --noconfirm CameraCapture.spec)
-# Wynik: dist/CameraCapture/CameraCapture.exe (onedir; .env i photos/ zyja
-# obok .exe — patrz PROJECT_DIR w src/config.py).
+# Build (PyInstaller nie cross-kompiluje — budowac na docelowym systemie):
+#   Windows: build_windows.bat  (albo: pyinstaller --noconfirm CameraCapture.spec)
+#            -> dist/CameraCapture/Trixbrix - Camera Capture.exe (onedir)
+#   macOS:   pyinstaller --noconfirm CameraCapture.spec
+#            -> dist/Camera Capture.app
+# .env, photos/ i EDSDK obok .exe / obok .app — patrz PROJECT_DIR w src/config.py.
 
 import os
 import sys
@@ -56,10 +58,11 @@ datas = [
     ("assets/icons", "assets/icons"),
 ]
 binaries = []
-hiddenimports = [
+IS_MAC = sys.platform == "darwin"
+hiddenimports = (["webview.platforms.cocoa"] if IS_MAC else [
     "webview.platforms.winforms",
     "webview.platforms.edgechromium",
-]
+])
 
 # rembg/onnxruntime maja natywne DLL-e i dane poza importami — collect_all
 # jest najpewniejsze; webview dla platform backends; pymatting czyta wlasna
@@ -98,8 +101,9 @@ exe = EXE(
     strip=False,
     upx=False,
     console=False,
-    icon="assets/icons/camera_capture.ico",
-    version=version_res,
+    icon="assets/icons/camera_capture.icns" if IS_MAC else "assets/icons/camera_capture.ico",
+    # zasob VS_VERSION_INFO istnieje tylko w plikach .exe
+    version=None if IS_MAC else version_res,
 )
 coll = COLLECT(
     exe,
@@ -109,3 +113,20 @@ coll = COLLECT(
     upx=False,
     name="CameraCapture",
 )
+
+if IS_MAC:
+    # Paczka .app dla macOS. Bez podpisu Apple — pierwsze uruchomienie przez
+    # prawy klik → Otwórz albo `xattr -dr com.apple.quarantine "Camera Capture.app"`.
+    app = BUNDLE(
+        coll,
+        name="Camera Capture.app",
+        icon="assets/icons/camera_capture.icns",
+        bundle_identifier="com.xeross99.camera-capture",
+        info_plist={
+            "CFBundleDisplayName": "Camera Capture",
+            "CFBundleShortVersionString": APP_VERSION,
+            "CFBundleVersion": APP_VERSION,
+            "NSHighResolutionCapable": True,
+            "LSMinimumSystemVersion": "12.0",
+        },
+    )

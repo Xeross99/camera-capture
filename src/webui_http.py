@@ -22,10 +22,9 @@ STATIC_TYPES = {
 }
 
 
-# Obrazki interfejsu z assets/icons: adres -> plik. Biały znak Trixbrix (karta
-# Automat w Ustawieniach) i zdjęcie autora (stopka nawigacji Ustawień).
+# Obrazki interfejsu z assets/icons: adres -> plik. Zdjęcie autora (stopka
+# nawigacji Ustawień) i ikona aplikacji.
 ICONS = {
-    "/brand-mark": "trixbrix_mark.png",
     "/author": "author.jpg",
     "/favicon.png": "camera_capture.png",
     "/logo-cc-dark.png": "camera_capture_dark.png",

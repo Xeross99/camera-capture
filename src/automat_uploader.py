@@ -27,7 +27,7 @@ def describe_opened_session(uploader: "AutomatUploader", name: str) -> tuple[str
         if uploader.reattached
         else ""
     )
-    base = f"↑ Automat: sesja {uploader.session_id} ({name})"
+    base = f"↑ API: sesja {uploader.session_id} ({name})"
     if uploader.product_found:
         return f"{base}{suffix}", "ok"
     return f"{base} — produkt nie znaleziony, sesja luźna{suffix}", "warn"
@@ -74,7 +74,7 @@ class AutomatUploader:
         # lapia jak dotad) — wolajacy musi umiec odroznic "znikneło po drugiej
         # stronie" od zwyklego bledu HTTP, np. zeby sprzatnac lokalna sesje.
         cls = AutomatNotFound if r.status_code == 404 else RuntimeError
-        return cls(f"Automat {kind} {r.status_code} {r.reason} — {self._strip_body(r)}")
+        return cls(f"API {kind} {r.status_code} {r.reason} — {self._strip_body(r)}")
 
     def list_sessions(self) -> list[dict]:
         """GET wszystkich sesji photo_studio: [{id, name, product, created_at,

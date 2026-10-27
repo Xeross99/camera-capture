@@ -76,6 +76,8 @@ from .webui_http import Handler
 THUMB_SIZE = 360
 VIEW_SIZE = 1800   # podgląd na całe okno — ostry na ekranie, lekki do dekodowania
 AUTHOR_URL = "https://github.com/Xeross99"
+# program deweloperski Canona — stad pobiera sie EDSDK (karta „Brak sterownika")
+CANON_SDK_URL = "https://developercommunity.usa.canon.com/s/"
 DEFAULT_NAME_PATTERN = "photo_{data}_{godzina}.jpg"
 
 
@@ -701,7 +703,7 @@ class WebUI:
             else:
                 u.open_session(name)
         except Exception as e:
-            self._log(f"✗ Nie udało się otworzyć sesji w Automacie: {e}", "err")
+            self._log(f"✗ Nie udało się otworzyć sesji w API: {e}", "err")
             return
         self._log(*describe_opened_session(u, name))
         self.uploader = u
@@ -757,10 +759,10 @@ class WebUI:
                 outdir.rmdir()
             else:
                 shutil.rmtree(outdir, ignore_errors=True)
-            self._log(f"Sesja {name} nie istnieje już w Automacie — "
+            self._log(f"Sesja {name} nie istnieje już w API — "
                       f"lokalny folder {_trash_note()}.", "warn")
         else:
-            self._log(f"Sesja {name} nie istnieje już w Automacie.", "warn")
+            self._log(f"Sesja {name} nie istnieje już w API.", "warn")
         with self.lock:
             if self.name == name:
                 self.name = None
@@ -788,7 +790,7 @@ class WebUI:
             review = load_review(outdir)
             self._discard_files(session, stale, review)
             save_review(outdir, review)
-        self._log(f"Zdjęcia nieobecne w Automacie: {len(stale)} {_trash_note()}.",
+        self._log(f"Zdjęcia nieobecne w API: {len(stale)} {_trash_note()}.",
                   "warn")
         return len(stale)
 
@@ -838,7 +840,7 @@ class WebUI:
             self._trash_session(name)
             return
         except Exception as e:
-            self._log(f"✗ Lista zdjęć sesji z Automatu: {e}", "err")
+            self._log(f"✗ Lista zdjęć sesji z API: {e}", "err")
             return
         outdir = self.base_output / name
         have = set(finals(outdir))
@@ -863,7 +865,7 @@ class WebUI:
         if not missing:
             return
         self._log(f"↓ Pobieram {len(missing)} {_photos_word(len(missing))} "
-                  "sesji z Automatu…")
+                  "sesji z API…")
         outdir.mkdir(parents=True, exist_ok=True)
         ok = 0
         with self.lock:
@@ -879,7 +881,7 @@ class WebUI:
                 try:
                     u.download_photo(pid, outdir / fname, session_id=sid)
                 except Exception as e:
-                    self._log(f"✗ Pobranie {fname} z Automatu nie wyszło: {e}", "err")
+                    self._log(f"✗ Pobranie {fname} z API nie wyszło: {e}", "err")
                     continue
                 finally:
                     # skeleton znika razem z proba, nie dopiero z sukcesem —
@@ -900,7 +902,7 @@ class WebUI:
             with self.lock:
                 self.syncing = []
         if ok:
-            self._log(f"↓ Pobrano {ok} {_photos_word(ok)} z Automatu do {name}.", "ok")
+            self._log(f"↓ Pobrano {ok} {_photos_word(ok)} z API do {name}.", "ok")
 
     def _job_photo(self, job: dict) -> None:
         filename = job["filename"]
@@ -923,7 +925,7 @@ class WebUI:
                 announced_id = self.uploader.announce_photo(filename)
                 steps.append(f"announce {time.perf_counter() - t0:.1f} s")
             except Exception as e:
-                self._log(f"✗ Announce do Automatu nie wyszedł: {e}", "err")
+                self._log(f"✗ Announce do API nie wyszedł: {e}", "err")
         t0 = time.perf_counter()
         try:
             with contextlib.redirect_stdout(_LogPipe(self)):
@@ -991,7 +993,7 @@ class WebUI:
         try:
             resp = job["uploader"].upload_processed(out, photo_id=job["photo_id"])
         except Exception as e:
-            self._log(f"✗ Upload do Automatu nie wyszedł: {e}", "err")
+            self._log(f"✗ Upload do API nie wyszedł: {e}", "err")
             return
         with self._review_lock:
             review = load_review(job["outdir"])
@@ -1001,7 +1003,7 @@ class WebUI:
             if pid:
                 review["automat"][out.name] = int(pid)
             save_review(job["outdir"], review)
-        self._log(f"↑ {out.name} w Automacie ({time.perf_counter() - t0:.1f} s).", "ok")
+        self._log(f"↑ {out.name} w API ({time.perf_counter() - t0:.1f} s).", "ok")
 
     def _job_delete(self, session: str, files: list[str]) -> None:
         """Świadome kasowanie (BACKSPACE / „Odrzuć"): lokalnie do kosza
@@ -1019,14 +1021,14 @@ class WebUI:
         if self.uploader is None:
             self._job_open_session(session)
         if self.uploader is None:
-            self._log("✗ Nie usunięto zdjęć z Automatu (brak połączenia).", "err")
+            self._log("✗ Nie usunięto zdjęć z API (brak połączenia).", "err")
             return
         for f, pid in automat_ids:
             try:
                 self.uploader.delete_photo(pid)
-                self._log(f"Usunięto {f} także z Automatu.", "warn")
+                self._log(f"Usunięto {f} także z API.", "warn")
             except Exception as e:
-                self._log(f"✗ Usuwanie {f} z Automatu nie wyszło: {e}", "err")
+                self._log(f"✗ Usuwanie {f} z API nie wyszło: {e}", "err")
 
     def _job_list_sessions(self) -> None:
         try:
@@ -1035,7 +1037,7 @@ class WebUI:
             with self.lock:
                 self.automat_sessions_error = str(e)
                 self.sessions_refreshing = False
-            self._log(f"✗ Lista sesji z Automatu: {e}", "err")
+            self._log(f"✗ Lista sesji z API: {e}", "err")
             return
         for s in sessions:
             s["cover"] = cover_path(self.base_output, s.get("id") or 0).exists()
@@ -1252,10 +1254,10 @@ class WebUI:
             r = requests.get(self.automat_url, timeout=5)
             ms = int((time.monotonic() - t0) * 1000)
             self.test_result = f"✓ {r.status_code} {r.reason} · {ms} ms"
-            self._log(f"Test Automatu: {self.test_result}", "ok")
+            self._log(f"Test API: {self.test_result}", "ok")
         except Exception as e:
             self.test_result = f"✗ {e.__class__.__name__}"
-            self._log(f"Test Automatu nie wyszedł: {e}", "err")
+            self._log(f"Test API nie wyszedł: {e}", "err")
 
     def _job_warmup(self) -> None:
         """Rozgrzewka rembg przy starcie: pierwsza inferencja płaci jednorazowe
@@ -1628,10 +1630,10 @@ class WebUI:
     def _act_open_url(self, data: dict) -> dict | None:
         """Strona repozytorium/wydania albo profil autora w systemowej
         przegladarce (pywebview otworzylby ja w oknie aplikacji). Tylko adresy
-        repo aktualizacji i AUTHOR_URL."""
+        repo aktualizacji, AUTHOR_URL i CANON_SDK_URL."""
         from . import updater
         url = str(data.get("url") or "")
-        if not (url.startswith(f"https://github.com/{updater.GITHUB_REPO}") or url == AUTHOR_URL):
+        if not (url.startswith(f"https://github.com/{updater.GITHUB_REPO}") or url in (AUTHOR_URL, CANON_SDK_URL)):
             return {"ok": False, "error": "niedozwolony adres"}
         import webbrowser
         webbrowser.open(url)
@@ -1682,14 +1684,14 @@ class WebUI:
                 self.automat_url = str(value).rstrip("/")
                 self.uploader = None
                 persist_env("AUTOMAT_URL", self.automat_url)
-                self._log("Adres Automatu zapisany w .env", "ok")
+                self._log("Adres API zapisany w .env", "ok")
             elif key == "automat_token":
                 if not str(value).startswith("•"):
                     self.automat_token = str(value)
                     self.uploader = None
                     self.upload_enabled = bool(self.automat_token)
                     persist_env("AUTOMAT_TOKEN", self.automat_token)
-                    self._log("Token Automatu zapisany w .env", "ok")
+                    self._log("Token API zapisany w .env", "ok")
                     if self.upload_enabled and self.name:
                         self._jobs.put(("open_session", self.name))
             elif key == "preview_fps":
@@ -1738,7 +1740,6 @@ class WebUI:
             "progress": self.update_progress,
             "status": self.update_status,
             "repo": updater.GITHUB_REPO,
-            "private": bool(updater.UPDATE_TOKEN),
             "latest": (self.update_latest or {}).get("version", ""),
             "latestDate": (self.update_latest or {}).get("published", ""),
             "latestPage": (self.update_latest or {}).get("page", ""),

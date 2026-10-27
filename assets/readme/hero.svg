@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 220" width="540" height="220" role="img" aria-label="Camera Capture: Enter na laptopie, aparat robi zdjęcie, laptop usuwa tło">
+  <title>Camera Capture</title>
+  <style>
+    /* Jedna pętla 6 s. Klatka 0% i 100% są identyczne (podgląd na żywo
+       w laptopie), więc nie widać, gdzie animacja się zaczyna i kończy:
+       Enter → migawka → zdjęcie leci kablem do laptopa → tło się wybiela
+       → „gotowe" → powrót do podglądu. */
+    * { transform-box: view-box; }
+    .enter   { transform-origin: 475px 172px; animation: enter 6s ease-in-out infinite; }
+    .enterHi { animation: enterHi 6s ease-in-out infinite; }
+    .ripple  { transform-origin: 475px 172px; animation: ripple 6s ease-out infinite; }
+    .iris    { transform-origin: 110px 126px; animation: iris 6s cubic-bezier(.34,1.56,.64,1) infinite; }
+    .flash   { animation: flash 6s ease-out infinite; }
+    .led     { animation: led 6s steps(1) infinite; }
+    .body    { transform-origin: 110px 174px; animation: press 6s ease-out infinite; }
+    .data    { animation: data 6s linear infinite; }
+    .card    { transform-origin: 0 0; animation: card 6s cubic-bezier(.45,0,.25,1) infinite; }
+    .snap    { animation: snap 6s ease-out infinite; }
+    .wipe    { transform-origin: 308px 99px; animation: wipe 6s cubic-bezier(.65,0,.35,1) infinite; }
+    .scan    { animation: scan 6s cubic-bezier(.65,0,.35,1) infinite; }
+    .shadowRaw { animation: shadowRaw 6s ease-in-out infinite; }
+    .check   { transform-origin: 452px 66px; animation: check 6s cubic-bezier(.34,1.56,.64,1) infinite; }
+    .rec     { animation: rec 6s steps(1) infinite; }
+
+    @keyframes enter   { 0%, 11%, 17%, 100% { transform: translateY(0); } 13%, 15% { transform: translateY(1.6px); } }
+    @keyframes enterHi { 0%, 11%, 19%, 100% { opacity: 0; } 13%, 16% { opacity: 1; } }
+    @keyframes ripple  { 0%, 13% { transform: scale(.4); opacity: 0; } 14% { opacity: .55; } 22%, 100% { transform: scale(2.6); opacity: 0; } }
+    @keyframes iris    { 0%, 16%, 100% { transform: scale(1); } 18.5% { transform: scale(.5); } 23% { transform: scale(1.06); } 26% { transform: scale(1); } }
+    @keyframes flash   { 0%, 17% { opacity: 0; } 18.5% { opacity: .95; } 25%, 100% { opacity: 0; } }
+    @keyframes led     { 0%, 16% { opacity: 1; } 17% { opacity: .2; } 19% { opacity: 1; } 21% { opacity: .2; } 23%, 100% { opacity: 1; } }
+    @keyframes press   { 0%, 16%, 100% { transform: scale(1); } 18% { transform: scale(.985, .97); } 22% { transform: scale(1); } }
+    @keyframes data    { 0%, 20% { stroke-dashoffset: 0; opacity: 0; } 22% { opacity: 1; } 40% { stroke-dashoffset: -60; opacity: 1; } 43%, 100% { stroke-dashoffset: -66; opacity: 0; } }
+    @keyframes card {
+      0%, 19%  { transform: translate(110px, 126px) scale(.15); opacity: 0; }
+      22%      { transform: translate(110px, 126px) scale(.42); opacity: 1; }
+      31%      { transform: translate(240px, 30px) scale(.72); opacity: 1; }
+      40%      { transform: translate(390px, 99px) scale(1); opacity: 1; }
+      43%      { transform: translate(390px, 99px) scale(1.02); opacity: 0; }
+      44%, 100% { transform: translate(110px, 126px) scale(.15); opacity: 0; }
+    }
+    @keyframes snap    { 0%, 39% { opacity: 0; } 41% { opacity: .5; } 46%, 100% { opacity: 0; } }
+    @keyframes wipe    { 0%, 45% { transform: scaleX(0); opacity: 1; } 62% { transform: scaleX(1); opacity: 1; } 86% { transform: scaleX(1); opacity: 1; } 97%, 100% { transform: scaleX(1); opacity: 0; } }
+    @keyframes scan    { 0%, 45% { transform: translateX(0); opacity: 0; } 46% { opacity: 1; } 61% { opacity: 1; } 62% { transform: translateX(164px); opacity: 0; } 100% { transform: translateX(164px); opacity: 0; } }
+    @keyframes shadowRaw { 0%, 45% { opacity: 1; } 60%, 88% { opacity: 0; } 97%, 100% { opacity: 1; } }
+    @keyframes check   { 0%, 62% { transform: scale(0); opacity: 0; } 65% { transform: scale(1.18); opacity: 1; } 68%, 86% { transform: scale(1); opacity: 1; } 93%, 100% { transform: scale(.6); opacity: 0; } }
+    @keyframes rec     { 0%, 10% { opacity: 1; } 10.01%, 92% { opacity: 0; } 92.01%, 100% { opacity: 1; } }
+  </style>
+  <defs>
+    <radialGradient id="rawBg" cx="50%" cy="45%" r="70%">
+      <stop offset="0" stop-color="#d3d8e1"/>
+      <stop offset="1" stop-color="#9aa3b2"/>
+    </radialGradient>
+    <clipPath id="screenClip"><rect x="308" y="48" width="164" height="102" rx="3"/></clipPath>
+    <g id="product">
+      <!-- neutralny produkt: klocek-tor widziany z góry pod kątem -->
+      <rect x="-26" y="-17" width="52" height="34" rx="6" fill="#475569"/>
+      <rect x="-26" y="-17" width="52" height="12" rx="6" fill="#64748b"/>
+      <rect x="-14" y="-3" width="28" height="6" rx="3" fill="#334155"/>
+    </g>
+  </defs>
+
+  <!-- kabel USB aparat → laptop, po nim „płyną" dane -->
+  <path d="M150 176 C 200 214, 250 210, 284 184" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round"/>
+  <path class="data" d="M150 176 C 200 214, 250 210, 284 184" fill="none" stroke="#2563eb" stroke-width="3" stroke-linecap="round" stroke-dasharray="6 14"/>
+
+  <!-- aparat (jak ikona aplikacji, bez znaku w obiektywie) -->
+  <g class="body">
+    <rect x="83" y="62" width="53" height="25" rx="8" fill="#131a33"/>
+    <rect x="42" y="77" width="136" height="97" rx="22" fill="#131a33"/>
+    <circle class="led" cx="154" cy="95" r="5" fill="#ef4444"/>
+    <circle cx="110" cy="126" r="39" fill="#2563eb"/>
+    <circle cx="110" cy="126" r="31.5" fill="#ffffff"/>
+    <g class="iris">
+      <circle cx="110" cy="126" r="19" fill="#131a33"/>
+      <circle cx="102" cy="118" r="5" fill="#ffffff" opacity=".9"/>
+    </g>
+    <circle class="flash" cx="110" cy="126" r="31.5" fill="#ffffff"/>
+  </g>
+
+  <!-- laptop -->
+  <rect x="300" y="40" width="180" height="118" rx="9" fill="#131a33"/>
+  <g clip-path="url(#screenClip)">
+    <rect x="308" y="48" width="164" height="102" fill="url(#rawBg)"/>
+    <rect class="wipe" x="308" y="48" width="164" height="102" fill="#ffffff"/>
+    <ellipse class="shadowRaw" cx="390" cy="124" rx="34" ry="5" fill="#6b7280" opacity=".55"/>
+    <use href="#product" x="390" y="103"/>
+    <rect class="scan" x="307" y="48" width="2.5" height="102" fill="#2563eb"/>
+    <rect class="snap" x="308" y="48" width="164" height="102" fill="#ffffff"/>
+    <circle class="rec" cx="318" cy="57" r="3.5" fill="#ef4444"/>
+  </g>
+  <g class="check">
+    <circle cx="452" cy="66" r="11" fill="#22c55e"/>
+    <path d="M446.5 66.5 l3.8 3.8 l7.2 -7.6" fill="none" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <polygon points="288,160 492,160 512,186 268,186" fill="#131a33"/>
+  <g fill="#2a3352">
+    <rect x="300" y="164" width="150" height="5" rx="1.5"/>
+    <rect x="296" y="171" width="150" height="5" rx="1.5"/>
+    <rect x="292" y="178" width="160" height="5" rx="1.5"/>
+  </g>
+  <circle class="ripple" cx="475" cy="172" r="10" fill="none" stroke="#2563eb" stroke-width="2"/>
+  <g class="enter">
+    <rect x="458" y="164" width="34" height="14" rx="2.5" fill="#2a3352"/>
+    <rect class="enterHi" x="458" y="164" width="34" height="14" rx="2.5" fill="#2563eb"/>
+    <path d="M482 168 v4 h-11 m3 -3 l-3 3 l3 3" fill="none" stroke="#e6e9f2" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- latające zdjęcie (rysowane wokół 0,0, pozycję daje animacja) -->
+  <g class="card">
+    <rect x="-41" y="-31" width="82" height="62" rx="4" fill="#ffffff"/>
+    <rect x="-37" y="-27" width="74" height="54" rx="2" fill="url(#rawBg)"/>
+    <use href="#product" transform="scale(.62)"/>
+  </g>
+</svg>

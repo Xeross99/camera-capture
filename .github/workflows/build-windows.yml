@@ -23,7 +23,14 @@ jobs:
   # i katalog tests/ nie trafiaja do .exe — build ich nie instaluje, a paczka
   # bierze wylacznie to, co importuje gui.py.
   test:
-    runs-on: windows-latest
+    name: test (${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { label: windows, os: windows-latest, reqs: requirements-windows.txt }
+          - { label: macos, os: macos-latest, reqs: requirements.txt }
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
 
@@ -34,7 +41,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r requirements-windows.txt -r requirements-dev.txt
+          pip install -r ${{ matrix.reqs }} -r requirements-dev.txt
           python -m playwright install chromium
 
       # model rembg (~4,5 MB) pobierany przy pierwszej obrobce — cache miedzy runami
@@ -46,7 +53,7 @@ jobs:
       - name: Run tests
         run: python -m pytest -q
 
-  build:
+  build-windows:
     needs: test
     runs-on: windows-latest
     steps:
@@ -82,10 +89,43 @@ jobs:
           # bez tego .env.example (dotfile) wypada z paczki
           include-hidden-files: true
 
+  # Camera Capture.app dla macOS (Apple Silicon — runner macos-latest to arm64).
+  # Bez podpisu Apple. W zipie katalog „Camera Capture" z .app i .env.example:
+  # EDSDK.framework, .env i photos/ kladzie sie obok .app (src/config.py).
+  # Pakowane `ditto`, bo zwykly zip gubi symlinki frameworkow w .app.
+  build-macos:
+    needs: test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Build with PyInstaller
+        run: pyinstaller --noconfirm CameraCapture.spec
+
+      - name: Package
+        run: |
+          mkdir -p "pkg/Camera Capture"
+          mv "dist/Camera Capture.app" "pkg/Camera Capture/"
+          cp .env.example "pkg/Camera Capture/.env.example"
+          ditto -c -k --keepParent "pkg/Camera Capture" CameraCapture-macos.zip
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: CameraCapture-macos
+          path: CameraCapture-macos.zip
+
   # Wydanie dopiero po zielonym buildzie, i tylko z main — reczny run na innej
   # galezi to same testy + build. Paczka przychodzi z artefaktu buildu.
   release:
-    needs: build
+    needs: [build-windows, build-macos]
     if: github.ref == 'refs/heads/main'
     runs-on: windows-latest
     steps:
@@ -95,6 +135,11 @@ jobs:
         with:
           name: CameraCapture-windows
           path: dist/CameraCapture
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: CameraCapture-macos
+          path: dist-macos
 
       # Wydanie leci SAMO z pushu na main: bierzemy APP_VERSION i publikujemy
       # v<APP_VERSION>, o ile takiego release'a jeszcze nie ma. Dzieki temu
@@ -123,7 +168,10 @@ jobs:
           }
           $zip = "CameraCapture-windows-$tag.zip"
           Compress-Archive -Path dist\CameraCapture\* -DestinationPath $zip
-          gh release create $tag $zip --title "Camera Capture $tag" --generate-notes --target $env:GITHUB_SHA
+          # nazwa bez „windows" — updater .exe szuka zalacznika z „windows" w nazwie
+          $mac = "CameraCapture-macos-$tag.zip"
+          Move-Item dist-macos\CameraCapture-macos.zip $mac
+          gh release create $tag $zip $mac --title "Camera Capture $tag" --generate-notes --target $env:GITHUB_SHA
           Write-Host "Opublikowano $tag"
 
       # Zostaje tylko wydanie biezacej wersji: starsze (z paczkami po ~150 MB)

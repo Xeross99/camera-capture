@@ -39,7 +39,8 @@ The same products straight from the camera and after processing in the app, with
    - **White background:** the background is pushed to pure white and the shadows under the product fade out.
    - **Zoom and centring:** the frame closes in on the product and puts it in the centre instead of wherever
      it happened to land on the table. A photo taken at an angle stays at that angle: nothing is straightened.
-   - **Logo:** TRIXBRIX.eu or TRIXBRIX.eu KIDS, in the chosen corner of the frame.
+   - **Logo:** one of two logo variants (or none), in the chosen corner of the frame. The README images use
+     a sample "ACME.studio" logo.
 3. **Saving and upload.** The finished file is stored in `photos/<session>/` with the raw camera original
    next to it, and the processed photo goes to the session in the API. The raw original stays on disk only.
 

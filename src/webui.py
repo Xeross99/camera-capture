@@ -45,6 +45,7 @@ from .config import (
     AUTOMAT_API_TOKEN,
     AUTOMAT_BASE_URL,
     OUTPUT_SIZE,
+    LOGOS,
     ROBOT_AXES,
     ROBOT_ENABLED,
     ROBOT_HOME_ON_CONNECT,
@@ -58,11 +59,13 @@ from .config import (
     persist_env,
     persist_joints,
 )
-from .image_processing import LOGO_POSITIONS, process
+from .image_processing import LOGO_POSITIONS, overlay_logo, process, save_jpeg_atomic
 from .naming import sanitize_name
 from .robot import RoArmSession, RobotRangeError
 from .session_store import (
+    NOLOGO_DIR,
     cover_path,
+    edit_base,
     finals,
     find_raw,
     load_review,
@@ -79,6 +82,7 @@ from .version import APP_VERSION
 from .webui_http import Handler
 
 THUMB_SIZE = 360
+AUTHOR_URL = "https://github.com/Xeross99"
 DEFAULT_NAME_PATTERN = "photo_{data}_{godzina}.jpg"
 
 
@@ -265,6 +269,8 @@ class WebUI:
         # Osobno od `busy`, ktore obejmuje takze obrobke (patrz _robot_ready).
         self.capturing = False
         self.syncing: list[str] = []  # nazwy zdjec pobieranych wlasnie z Automatu (skeletony w filmstripie)
+        self.edit_preparing: str | None = None  # zdjecie, ktoremu edycja robi wersje bez logo z oryginalu
+        self.edit_saving: str | None = None     # zdjecie zapisywane z edycji (nowe logo)
         self.automat_sessions: list[dict] = []
         self.automat_sessions_error = ""
         self.sessions_refreshing = False  # trwa odswiezanie listy (spinner w UI)
@@ -273,6 +279,8 @@ class WebUI:
         self.update_info: dict | None = None   # {"version", "url", "notes", "page", "size"}
         self.update_status = ""                # tekst dla UI (zakładka Ustawienia)
         self.update_checking = False           # trwa odpytanie GitHuba (spinner w UI)
+        self.update_latest: dict | None = None # najnowsze wydanie na GitHubie, także gdy nie jest nowsze
+        self.update_checked = 0.0              # kiedy ostatnio udało się zapytać GitHuba (epoch)
         self.update_busy = False
         self.update_progress = 0
         self.log: deque[dict] = deque(maxlen=500)
@@ -942,6 +950,7 @@ class WebUI:
         automat_ids = {}
         for f in files:
             (outdir / ".thumbs" / f).unlink(missing_ok=True)
+            (outdir / NOLOGO_DIR / f).unlink(missing_ok=True)
             for p in ((outdir / f), find_raw(outdir, f)):
                 if p is None or not p.exists():
                     continue
@@ -1142,11 +1151,12 @@ class WebUI:
         try:
             with contextlib.redirect_stdout(_LogPipe(self)):
                 out = process(
-                    job["captured"], self.logo_path, outdir,
+                    job["captured"], job["logo_path"], outdir,
                     clean_bg=job["clean_bg"], add_logo=job["add_logo"],
                     logo_position=job["logo_position"],
                     auto_center=job["auto_center"], auto_zoom=job["auto_zoom"],
                     out_name=filename,
+                    base_out=outdir / NOLOGO_DIR / filename,
                 )
         except Exception as e:
             self._log(f"✗ Obróbka nie wyszła: {e}", "err")
@@ -1208,7 +1218,8 @@ class WebUI:
             return
         with self._review_lock:
             review = load_review(job["outdir"])
-            review["uploaded"].append(out.name)
+            if out.name not in review["uploaded"]:
+                review["uploaded"].append(out.name)
             pid = resp.get("id") or job["photo_id"]
             if pid:
                 review["automat"][out.name] = int(pid)
@@ -1364,7 +1375,8 @@ class WebUI:
             self.update_checking = True
             self.update_status = "Sprawdzam…"
         try:
-            info = updater.check_for_update()
+            latest = updater.latest_release()
+            info = latest if latest and updater.is_newer(latest["version"]) else None
         except Exception as e:
             with self.lock:
                 self.update_status = f"✗ {e}"
@@ -1376,6 +1388,8 @@ class WebUI:
                 self.update_checking = False
         with self.lock:
             self.update_info = info
+            self.update_latest = latest
+            self.update_checked = time.time()
             self.update_status = (f"Dostępna wersja {info['version']}" if info
                                   else f"Masz najnowszą wersję ({APP_VERSION})")
         if info is None:
@@ -1523,7 +1537,118 @@ class WebUI:
         self._jobs.put(("warmup",))
         return True
 
+    # ---------- edycja logo na gotowym zdjeciu (podglad zdjecia) ----------
+
+    def _session_file(self, session: str, filename: str) -> tuple[Path, Path] | None:
+        """(katalog sesji, plik) albo None, gdy nazwa ucieka poza katalog zdjec."""
+        base = self.base_output.resolve()
+        outdir = (base / sanitize_name(session)).resolve()
+        path = (outdir / Path(filename).name).resolve()
+        if not str(path).startswith(str(base)) or not path.exists():
+            return None
+        return outdir, path
+
+    def _job_edit_base(self, session: str, filename: str) -> None:
+        """Wersja bez logo dla zdjecia sprzed edycji: obrobka oryginalu z
+        aparatu (raw/) z biezacymi ustawieniami, wynik do `.nologo/`."""
+        found = self._session_file(session, filename)
+        try:
+            if found is None:
+                return
+            outdir, _ = found
+            raw = find_raw(outdir, filename)
+            if raw is None:
+                self._log(f"✗ {filename}: brak oryginału z aparatu, nie da się zmienić logo.", "err")
+                return
+            with tempfile.TemporaryDirectory() as tmp:
+                with contextlib.redirect_stdout(_LogPipe(self)):
+                    out = process(raw, self.logo_path, Path(tmp),
+                                  clean_bg=self.clean_bg, add_logo=False,
+                                  auto_center=self.auto_center, auto_zoom=self.auto_zoom,
+                                  out_name=filename)
+                (outdir / NOLOGO_DIR).mkdir(exist_ok=True)
+                os.replace(out, outdir / NOLOGO_DIR / filename)
+            self._shots_cache = None
+        except Exception as e:
+            self._log(f"✗ Przygotowanie {filename} do edycji: {e}", "err")
+        finally:
+            with self.lock:
+                self.edit_preparing = None
+
+    def _job_edit_logo(self, session: str, filename: str, logo: str, position: str) -> None:
+        """Nowe logo (albo zadne) na zdjeciu: wersja bez logo + overlay,
+        podmiana pliku w miejscu i ponowny upload do TEGO SAMEGO rekordu
+        w Automacie (PUT po id), zeby nie przybylo zdjecie-duplikat."""
+        found = self._session_file(session, filename)
+        try:
+            if found is None:
+                return
+            outdir, path = found
+            with self._review_lock:
+                review = load_review(outdir)
+            base = edit_base(outdir, filename, review)
+            if base is None:
+                self._log(f"✗ {filename}: brak wersji bez logo, nie da się zmienić logo.", "err")
+                return
+            if base == path:
+                # zdjecie bez logo jest samo swoja baza — kopia, zanim plik
+                # dostanie logo, inaczej nie bylo by go jak zdjac
+                (outdir / NOLOGO_DIR).mkdir(exist_ok=True)
+                shutil.copy2(path, outdir / NOLOGO_DIR / filename)
+                base = outdir / NOLOGO_DIR / filename
+            image = Image.open(base)
+            image.load()
+            if logo:
+                image = overlay_logo(image, LOGOS[logo]["file"], position)
+            save_jpeg_atomic(image, path)
+            with self._review_lock:
+                review = load_review(outdir)
+                bits = [b for b in review["meta"].get(filename, "").split(" · ") if b and b != "logo"]
+                review["meta"][filename] = " · ".join((["logo"] if logo else []) + bits)
+                if filename in review["uploaded"]:
+                    review["uploaded"].remove(filename)
+                pid = review["automat"].get(filename)
+                save_review(outdir, review)
+            what = f"logo {LOGOS[logo]['label']}, {position}" if logo else "bez logo"
+            self._log(f"Zmieniono {filename}: {what}.", "ok")
+            if pid and self.uploader is not None and self.name == outdir.name:
+                self._jobs.put(("upload_photo", {
+                    "outdir": outdir, "out": path,
+                    "photo_id": int(pid), "uploader": self.uploader,
+                }))
+        except Exception as e:
+            self._log(f"✗ Zmiana logo {filename}: {e}", "err")
+        finally:
+            with self.lock:
+                self.edit_saving = None
+
+    def edit_preview_bytes(self, session: str, filename: str, logo: str, position: str) -> bytes | None:
+        """Podglad edycji przed zapisem: wersja bez logo zmniejszona do 1400 px
+        z nowym logo. Liczony na zadanie, nic nie zapisuje."""
+        found = self._session_file(session, filename)
+        if found is None:
+            return None
+        outdir, _ = found
+        with self._review_lock:
+            review = load_review(outdir)
+        base = edit_base(outdir, filename, review)
+        if base is None:
+            return None
+        try:
+            image = Image.open(base)
+            image.thumbnail((1400, 1400))
+            if logo in LOGOS:
+                image = overlay_logo(image, LOGOS[logo]["file"],
+                                     position if position in LOGO_POSITIONS else "bottom-right")
+            buf = io.BytesIO()
+            image.convert("RGB").save(buf, "JPEG", quality=85)
+            return buf.getvalue()
+        except OSError:
+            return None
+
     _JOBS = {
+        "edit_base": _job_edit_base,
+        "edit_logo": _job_edit_logo,
         "warmup": _job_warmup,
         "photo": _job_photo,
         "upload_photo": _job_upload_photo,
@@ -1625,7 +1750,7 @@ class WebUI:
             opts = dict(
                 outdir=self.session_dir, filename=self._resolve_filename(),
                 clean_bg=self.clean_bg, add_logo=self.add_logo,
-                logo_position=self.logo_position,
+                logo_path=self.logo_path, logo_position=self.logo_position,
                 auto_center=self.auto_center, auto_zoom=self.auto_zoom,
                 upload=self.upload_enabled,
             )
@@ -1719,6 +1844,9 @@ class WebUI:
         with self.lock:
             if key == "logo_position" and val in LOGO_POSITIONS:
                 self.logo_position = val
+            elif key == "logo" and val in LOGOS:
+                self.logo_path = LOGOS[val]["file"]
+                persist_env("LOGO", val)
 
     def _act_review(self, data: dict) -> None:
         self._review_mark(data["session"], data["file"], data["verdict"])
@@ -1754,7 +1882,45 @@ class WebUI:
         self._jobs.put(("apply_update",))
         return None
 
+    def _act_edit_prepare(self, data: dict) -> dict | None:
+        f = Path(str(data.get("file", ""))).name
+        with self.lock:
+            if not self.name or self.edit_preparing:
+                return None
+            self.edit_preparing = f
+            session = self.name
+        self._jobs.put(("edit_base", session, f))
+
+    def _act_edit_save(self, data: dict) -> dict | None:
+        f = Path(str(data.get("file", ""))).name
+        logo = str(data.get("logo") or "")
+        pos = str(data.get("position") or "bottom-right")
+        if logo and logo not in LOGOS:
+            return {"ok": False, "error": "nieznane logo"}
+        if pos not in LOGO_POSITIONS:
+            return {"ok": False, "error": "nieznana pozycja"}
+        with self.lock:
+            if not self.name:
+                return {"ok": False, "error": "brak otwartej sesji"}
+            self.edit_saving = f
+            session = self.name
+        self._jobs.put(("edit_logo", session, f, logo, pos))
+
+    def _act_open_url(self, data: dict) -> dict | None:
+        """Strona repozytorium/wydania albo profil autora w systemowej
+        przegladarce (pywebview otworzylby ja w oknie aplikacji). Tylko adresy
+        repo aktualizacji i AUTHOR_URL."""
+        from . import updater
+        url = str(data.get("url") or "")
+        if not (url.startswith(f"https://github.com/{updater.GITHUB_REPO}") or url == AUTHOR_URL):
+            return {"ok": False, "error": "niedozwolony adres"}
+        import webbrowser
+        webbrowser.open(url)
+
     _ACTIONS = {
+        "open_url": _act_open_url,
+        "edit_prepare": _act_edit_prepare,
+        "edit_save": _act_edit_save,
         "set_session": _act_set_session,
         "clear_session": _act_clear_session,
         "refresh_sessions": _act_refresh_sessions,
@@ -1857,6 +2023,12 @@ class WebUI:
             "busy": self.update_busy,
             "progress": self.update_progress,
             "status": self.update_status,
+            "repo": updater.GITHUB_REPO,
+            "private": bool(updater.UPDATE_TOKEN),
+            "latest": (self.update_latest or {}).get("version", ""),
+            "latestDate": (self.update_latest or {}).get("published", ""),
+            "latestPage": (self.update_latest or {}).get("page", ""),
+            "checkedAt": int(self.update_checked * 1000),
         }
 
     def _session_shots(self, sdir: Path | None) -> list[dict]:
@@ -1944,6 +2116,8 @@ class WebUI:
                 "busy": self.busy,
                 "processing": self.processing_file,
                 "downloading": list(self.syncing),
+                "editPreparing": self.edit_preparing,
+                "editSaving": self.edit_saving,
                 "session": {
                     "name": self.name or "",
                     "dir": str(sdir) if sdir else "",
@@ -1977,6 +2151,10 @@ class WebUI:
                     "logo": self.add_logo,
                     "logoPosition": self.logo_position,
                     "logoPositions": list(LOGO_POSITIONS),
+                    # "" = wlasny plik z Ustawien, spoza listy
+                    "logoChoice": next((k for k, v in LOGOS.items()
+                                        if v["file"] == self.logo_path), ""),
+                    "logos": [{"key": k, "label": v["label"]} for k, v in LOGOS.items()],
                     "zoom": self.auto_zoom,
                     "center": self.auto_center,
                     "cleanBg": self.clean_bg,
@@ -2017,6 +2195,14 @@ class WebUI:
             if self._frame is None or self._frame_id == last_id:
                 return None, last_id
             return self._frame, self._frame_id
+
+    def logo_bytes(self, key: str) -> bytes | None:
+        """Plik logo z LOGOS do podgladu w wyborze logo."""
+        spec = LOGOS.get(key)
+        try:
+            return spec["file"].read_bytes() if spec else None
+        except OSError:
+            return None
 
     def cover_bytes(self, session_id: str) -> bytes | None:
         """Okladka sesji z photos/.covers — id jest liczba, wiec sciezka nie

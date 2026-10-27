@@ -16,6 +16,7 @@ from .config import (
     LOGO_MARGIN_RATIO,
     LOGO_OPACITY,
     LOGO_POSITION,
+    LOGOS,
     OUTPUT_SIZE,
 )
 
@@ -41,6 +42,25 @@ def crop_to_aspect(image: Image.Image, aspect_w: int, aspect_h: int) -> Image.Im
     return image.crop((left, top, left + new_w, top + new_h))
 
 
+def save_jpeg_atomic(image: Image.Image, path: Path) -> Path:
+    """Zapis przez .part + rename — czytajacy (miniatury, podglad) nigdy nie
+    widzi pliku w polowie zapisu."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".part")
+    image.convert("RGB").save(tmp, "JPEG", quality=JPEG_QUALITY)
+    os.replace(tmp, path)
+    return path
+
+
+def logo_style(logo_path: Path) -> tuple[float, float]:
+    """(wysokosc / kadr, krycie) dla pliku: logo z LOGOS ma swoje, kazdy
+    inny plik dostaje LOGO_HEIGHT_RATIO i LOGO_OPACITY."""
+    for spec in LOGOS.values():
+        if Path(logo_path) == spec["file"]:
+            return spec["height"], spec["opacity"]
+    return LOGO_HEIGHT_RATIO, LOGO_OPACITY
+
+
 def overlay_logo(
     canvas: Image.Image, logo_path: Path, position: str = LOGO_POSITION
 ) -> Image.Image:
@@ -54,14 +74,15 @@ def overlay_logo(
     logo = Image.open(logo_path).convert("RGBA")
     canvas_w, canvas_h = canvas.size
 
-    target_h = int(canvas_h * LOGO_HEIGHT_RATIO)
+    height_ratio, opacity = logo_style(logo_path)
+    target_h = int(canvas_h * height_ratio)
     scale = target_h / logo.height
     target_w = int(logo.width * scale)
     logo = logo.resize((target_w, target_h), Image.LANCZOS)
 
-    if LOGO_OPACITY < 1.0:
+    if opacity < 1.0:
         r, g, b, a = logo.split()
-        a = a.point(lambda v: int(v * LOGO_OPACITY))
+        a = a.point(lambda v: int(v * opacity))
         logo = Image.merge("RGBA", (r, g, b, a))
 
     margin = int(canvas_w * LOGO_MARGIN_RATIO)
@@ -83,6 +104,7 @@ def process(
     auto_center: bool = AUTO_CENTER,
     auto_zoom: bool = AUTO_ZOOM,
     out_name: str | None = None,
+    base_out: Path | None = None,
 ) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -109,6 +131,10 @@ def process(
             image = image.resize(target, Image.LANCZOS)
 
     if add_logo:
+        # Wersja BEZ logo obok (`base_out`) — z niej edycja w podgladzie
+        # zdejmuje, dodaje albo przestawia logo bez ponownej obrobki tla.
+        if base_out is not None:
+            save_jpeg_atomic(image, base_out)
         image = overlay_logo(image, logo_path, logo_position)
 
     # Zapis atomowy (tmp + rename): filmstrip w GUI widzi plik w katalogu od

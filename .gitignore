@@ -8,3 +8,5 @@ __pycache__/
 photos/*
 !photos/.keep
 .DS_Store
+# token do wydan, wpisywany przez CI przy budowie .exe (src/updater.py)
+src/update_token.py

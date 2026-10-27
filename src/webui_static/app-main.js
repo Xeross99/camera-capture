@@ -8,43 +8,60 @@ function updateBanner() {
   const u = S.state && S.state.update;
   if (!u || !u.available || S.updateDismissed === u.available) return "";
   const right = u.canApply
-    ? `<button onclick="applyUpdate()" ${u.busy ? "disabled" : ""} style="height: 24px; padding: 0 12px; ${btnBlue} border-radius: 4px; font-size: 11.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 7px; ${u.busy ? "opacity: .6;" : ""}">${u.busy ? `<span class="spinner"></span>Aktualizuję…` : "Zaktualizuj i uruchom ponownie"}</button>
-       <button onclick="S.updateDismissed = '${u.available}'; renderShell(true)" style="${btnGray} height: 24px; padding: 0 10px; font-size: 11.5px; opacity: .75;">Później</button>`
+    ? `<button type="button" class="btn btn-primary btn-sm" onclick="applyUpdate()" ${u.busy ? "disabled" : ""}>${u.busy ? `<span class="spinner" style="border-color: rgba(255,255,255,.35); border-top-color: #fff;"></span>Aktualizuję…` : "Zaktualizuj i uruchom ponownie"}</button>
+       <button type="button" class="btn btn-sm" onclick="S.updateDismissed = '${u.available}'; renderShell(true)">Później</button>`
     : `<span style="${mono} font-size: 11px; color: var(--warn-fg-2);">uruchomienie ze źródeł — zaktualizuj przez <b>git pull</b></span>
-       <button onclick="S.updateDismissed = '${u.available}'; renderShell(true)" style="${btnGray} height: 24px; padding: 0 10px; font-size: 11.5px; opacity: .75;">Ukryj</button>`;
+       <button type="button" class="btn btn-sm" onclick="S.updateDismissed = '${u.available}'; renderShell(true)">Ukryj</button>`;
   return `
-  <div style="flex: 0 0 auto; background: var(--warn-bg); border-bottom: 1px solid var(--warn-border); display: flex; align-items: center; gap: 12px; padding: 7px 14px;">
+  <div style="flex: 0 0 auto; background: var(--warn-bg); border-bottom: 1px solid var(--warn-border); display: flex; align-items: center; gap: 12px; padding: 8px 16px;">
     <span style="font-size: 12.5px; color: var(--warn-fg);">Dostępna aktualizacja <b>${u.available}</b> <span style="${mono} font-size: 11px; color: var(--warn-fg-2);">(masz ${u.current})</span></span>
     <span id="update-progress" style="${mono} font-size: 11px; color: var(--warn-fg-2);">${u.busy && u.progress ? u.progress + "%" : ""}</span>
     <span style="margin-left: auto; display: flex; align-items: center; gap: 8px;">${right}</span>
   </div>`;
 }
 
+// Status Automatu w pasku: brak tokenu / blad listy sesji / odswiezanie /
+// zdjecia sesji czekajace na wysylke / polaczono. Latany po id w updateVolatile.
+function automatStatus(st) {
+  const a = st.automat || {};
+  if (!a.hasToken) return { cls: "", text: "brak tokenu" };
+  if (a.error) return { cls: "err", text: "brak połączenia" };
+  const waiting = st.session.name ? st.shots.filter(s => !s.uploaded && s.status !== "rejected").length : 0;
+  if (waiting) return { cls: "warn", text: `wysyłanie ${plPhotos(waiting)}` };
+  if (refreshingNow(st)) return { cls: "warn", text: "odświeżam…" };
+  return { cls: "ok", text: "połączono" };
+}
+
 function shell() {
   const st = S.state;
   const conn = st && st.connected;
-  const tab = k => S.screen === k ? "var(--fg-0)" : "var(--fg-3)";
-  const bar = k => S.screen === k ? ACCENT : "transparent";
+  const tab = k => `seg-btn${S.screen === k ? " on" : ""}`;
+  const au = automatStatus(st);
   return `
-<div style="width: 100%; height: 100%; background: var(--bg-2); overflow: hidden; display: flex; flex-direction: column; font-family: -apple-system, 'Helvetica Neue', Helvetica, sans-serif; color: var(--fg-0); font-size: 13px;">
+<div class="ui" style="width: 100%; height: 100%; background: var(--ground); overflow: hidden; display: flex; flex-direction: column; font-size: 13px;">
   ${updateBanner()}
 
-  <div style="height: 34px; flex: 0 0 34px; background: var(--bg-tabs); border-bottom: 1px solid var(--line-strong); display: flex; align-items: stretch; padding: 0 10px; gap: 2px;">
-    <div onclick="go('sesja')" style="display: flex; align-items: center; padding: 0 18px; font-size: 12.5px; font-weight: 500; cursor: default; color: ${tab("sesja")}; border-bottom: 2px solid ${bar("sesja")};">Sesja</div>
-    <div onclick="go('ustawienia')" style="display: flex; align-items: center; padding: 0 18px; font-size: 12.5px; font-weight: 500; cursor: default; color: ${tab("ustawienia")}; border-bottom: 2px solid ${bar("ustawienia")};">Ustawienia</div>
-    <div style="margin-left: auto; display: flex; align-items: center; gap: 16px; font-size: 11.5px; color: var(--fg-3);">
-      <div style="display: flex; align-items: center; gap: 7px;">
-        <span style="display: flex; color: ${conn ? "var(--ok-dot)" : "var(--err-dot)"};">${CAM_ICON}</span><span id="conn-label">${conn ? `Aparat połączony · ${st.fps} fps` : "Aparat rozłączony"}</span>
-      </div>
-      ${st && st.robot && st.robot.enabled ? `
-      <div style="display: flex; align-items: center; gap: 7px;">
-        <span id="robot-dot" style="display: flex; color: ${st.robot.connected ? "var(--ok-dot)" : "var(--err-dot)"};">${ROBOT_ICON}</span><span id="robot-conn-label">${st.robot.connected ? "Robot połączony" : "Robot rozłączony"}</span>
-      </div>` : ""}
-    </div>
-  </div>
+  <header class="topbar">
+    <nav class="seg" aria-label="Główne">
+      <div id="tab-pill" class="seg-pill"></div>
+      <button type="button" id="tab-sesja" class="${tab("sesja")}" onclick="go('sesja')">${icon("camera")}Sesje</button>
+      <button type="button" id="tab-ustawienia" class="${tab("ustawienia")}" onclick="go('ustawienia')">${icon("sliders")}Ustawienia</button>
+    </nav>
+    ${st.session.name ? `
+    <nav class="crumbs" aria-label="Ścieżka">
+      <a onclick="showLeaveConfirm()">Sesje</a><span aria-hidden="true">/</span>
+      <span aria-current="page" style="font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${st.session.name}</span>
+    </nav>` : ""}
+    <div style="flex: 1;"></div>
+    <div class="chip"><span class="dot ${conn ? "ok" : "err"}"></span><span id="conn-label">${conn ? "Aparat połączony" : "Aparat rozłączony"}</span>${conn ? `<span id="conn-fps" class="fps">${st.fps} fps</span>` : ""}</div>
+    <div class="chip"><span id="automat-dot" class="dot ${au.cls}"></span>Automat<span id="automat-text" class="sub">${au.text}</span></div>
+    ${st.robot && st.robot.enabled ? `
+    <div class="chip"><span id="robot-dot" class="dot ${st.robot.connected ? "ok" : "err"}"></span><span id="robot-conn-label">${st.robot.connected ? "Robot połączony" : "Robot rozłączony"}</span></div>` : ""}
+    <button type="button" id="theme-toggle" class="icon-btn" onclick="toggleTheme()" title="${themeToggleTitle()}" aria-label="${themeToggleTitle()}">${themeToggleIcon()}</button>
+  </header>
 
   <div id="screen-sesja" style="flex: 1; display: ${S.screen === "sesja" ? "flex" : "none"}; min-height: 0;"></div>
-  <div id="screen-ustawienia" style="flex: 1; display: ${S.screen === "ustawienia" ? "grid" : "none"}; overflow: auto; background: var(--bg-panel); padding: 24px 28px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-content: start;"></div>
+  <div id="screen-ustawienia" style="flex: 1; display: ${S.screen === "ustawienia" ? "block" : "none"}; overflow: hidden; min-height: 0; background: var(--ground);"></div>
 </div>`;
 }
 
@@ -68,11 +85,14 @@ function renderShell(force) {
   const u = st.update || {};
   // progress pobierania NIE jest w kluczu — łata go updateVolatile(), bo
   // rebuild shella niszczy <img> streamu (miganie przy każdym procencie)
-  const key = JSON.stringify([S.screen, st.connected,
-    u.available, u.busy, u.canApply, S.updateDismissed]);
+  // S.screen NIE jest w kluczu: zmiana zakladki przelacza ekrany w miejscu
+  // (go()), zeby pasek pod zakladka mogl przejechac, a ekran wejsc animacja
+  const key = JSON.stringify([st.connected, st.session.name,
+    !!(st.robot && st.robot.enabled), u.available, u.busy, u.canApply, S.updateDismissed]);
   if (force || key !== lastShellKey) {
     lastShellKey = key;
     $("app").innerHTML = shell();
+    placeTabBar(false);
     lastSesja = lastUstawienia = "";
     renderScreens(true);
     return;
@@ -84,8 +104,9 @@ function renderShell(force) {
 // punktowo po id — pelny rebuild ekranu niszczylby <img> streamu
 // i podgladu (miganie co kazda zmiane stanu).
 function updateVolatile(st) {
-  const conn = $("conn-label");
-  if (conn) conn.textContent = st.connected ? `Aparat połączony · ${st.fps} fps` : "Aparat rozłączony";
+  // fps liczony na zywo przez watek aparatu, odswiezany co poll
+  const fps = $("conn-fps");
+  if (fps) fps.textContent = `${st.fps} fps`;
   // status robota w pasku zakładek — łatany po id jak aparat, bo połączenie
   // ramienia zmienia się bez rebuildu shella (nie siedzi w jego kluczu)
   const rl = $("robot-conn-label");
@@ -93,19 +114,30 @@ function updateVolatile(st) {
     const rc = !!(st.robot && st.robot.connected);
     rl.textContent = rc ? "Robot połączony" : "Robot rozłączony";
     const rd = $("robot-dot");
-    if (rd) rd.style.color = rc ? "var(--ok-dot)" : "var(--err-dot)";
+    if (rd) rd.className = `dot ${rc ? "ok" : "err"}`;
+  }
+  const at = $("automat-text");
+  if (at) {
+    const au = automatStatus(st);
+    if (at.textContent !== au.text) at.textContent = au.text;
+    const ad = $("automat-dot");
+    if (ad) ad.className = `dot ${au.cls}`;
   }
   const hist = $("hist-badge");
   if (hist) {
-    hist.textContent = histLabel(st);
-    hist.style.color = histColor(st);
+    const ht = $("hist-text"), hd = $("hist-dot");
+    if (ht) ht.textContent = histLabel(st);
+    if (hd) hd.className = `dot ${histDot(st)}`;
     hist.title = histTitle(st);
   }
+  const lf = $("live-fps");
+  if (lf) lf.textContent = st.fps;
   // EV jest ŚWIADOMIE łatane, nie keyowane: rebuild ekranu niszczy <img>
   // streamu MJPEG, a kompensacja zmienia się też z pokrętła na aparacie.
   // Cała łatka (w tym spinner oczekiwania na potwierdzenie z aparatu)
   // siedzi w evReconcile() w app-session.js.
   evReconcile(st);
+  editReconcile(st);
   const sl = $("shoot-label");
   if (sl && performance.now() - shootErrAt > 4000) {
     sl.textContent = st.busy || (st.robot && st.robot.busy ? "Ramię w ruchu…" : "Zrób zdjęcie");
@@ -145,13 +177,15 @@ function updateVolatile(st) {
   const sig = logSig(st);
   if (sig !== S.lastLogLen) {
     S.lastLogLen = sig;
-    const line = $("log-line");
-    if (line) line.innerHTML = lastLogLine();
-    const lp = $("log-panel");
-    if (lp) {
-      lp.innerHTML = logLines();
-      lp.scrollTop = lp.scrollHeight;
-    }
+    ["log", "review-log"].forEach(prefix => {
+      const line = $(`${prefix}-line`);
+      if (line) line.innerHTML = lastLogLine();
+      const lp = $(`${prefix}-panel`);
+      if (lp) {
+        lp.innerHTML = logLines();
+        lp.scrollTop = lp.scrollHeight;
+      }
+    });
   }
 }
 
@@ -159,8 +193,8 @@ function updateVolatile(st) {
 // minimalny scale, w duchu macOS. TYLKO przy realnej zmianie widoku: rebuildy
 // w obrebie tego samego widoku (okladki, poll) i powroty po rebuildzie shella
 // (prev === "") nie animuja, bo mrugaloby przy reconnextach i zmianie zakladki.
-function playScreenIn() {
-  const el = $("screen-sesja");
+function playScreenIn(id = "screen-sesja") {
+  const el = $(id);
   if (!el) return;
   el.style.animation = "none";
   void el.offsetWidth;   // restart animacji przy kolejnych przejsciach
@@ -194,6 +228,7 @@ function renderScreens(force) {
       const fromSesja = lastSesja && !isStartKey(lastSesja);
       lastSesja = key;
       $("screen-sesja").innerHTML = startScreen();
+      placeSegPill($("period-seg"), true);
       if (fromSesja) playScreenIn();
       if ($("start-scroll")) $("start-scroll").scrollTop = scroll;
       if (keep !== null) {
@@ -225,19 +260,30 @@ function renderScreens(force) {
     }
     {
       const fromStart = isStartKey(lastSesja);
+      // Przewinięcie paska zdjęć przechodzi przez przebudowę (wejście/wyjście
+      // z podglądu): pasek stoi w tym samym miejscu, więc nie może skoczyć.
+      // Na koniec jedziemy tylko, gdy przybyło zdjęć (świeży strzał).
+      const oldStrip = $("review-strip") || $("filmstrip");
+      const keepScroll = oldStrip && !fromStart && st.shots.length === S.stripCount ? oldStrip.scrollLeft : null;
+      S.stripCount = st.shots.length;
       lastSesja = key;
       lastStrip = stripSig(st);
       S.lastLogLen = logSig(st);
       $("screen-sesja").innerHTML = sesjaScreen();
+      placeSegPill($("grid-seg"), true);
       if (fromStart) playScreenIn();
-      // najnowsze zdjecie na wierzchu; w podgladzie zamiast tego dojezdzamy do
-      // zaznaczonego kafelka, zeby bylo widac, ktore zdjecie sie oglada
       ["filmstrip", "review-strip"].forEach(id => {
         const strip = $(id);
         if (!strip) return;
+        if (keepScroll === null) strip.scrollLeft = strip.scrollWidth;
+        else strip.scrollLeft = keepScroll;
+        // w podglądzie oglądany kafelek musi być widać — dojeżdżamy płynnie
+        // i tylko wtedy, gdy jest poza paskiem
         const tile = S.reviewMode && strip.querySelector(`[data-shot="${S.selShot}"]`);
-        if (tile) tile.scrollIntoView({ block: "nearest", inline: "center" });
-        else strip.scrollLeft = strip.scrollWidth;
+        if (tile) {
+          const a = tile.getBoundingClientRect(), b = strip.getBoundingClientRect();
+          if (a.left < b.left || a.right > b.right) tile.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+        }
       });
       const lp = $("log-panel");
       if (lp) lp.scrollTop = lp.scrollHeight;
@@ -253,14 +299,42 @@ function renderScreens(force) {
     if (force || key !== lastUstawienia) {
       if (document.activeElement && document.activeElement.tagName === "INPUT") return;
       lastUstawienia = key;
+      const sc = $("settings-scroll") ? $("settings-scroll").scrollTop : 0;
       $("screen-ustawienia").innerHTML = ustawieniaScreen();
+      if ($("settings-scroll")) $("settings-scroll").scrollTop = sc;
+      placeSegPill($("fps-seg"), true);
     }
   }
 }
 
+// Zmiana zakladki bez przebudowy shella: ekrany przelaczane w miejscu,
+// niebieski pasek przejezdza pod nowa zakladke, a ekran wchodzi ta sama
+// animacja co wejscie w sesje.
 function go(screen) {
+  if (S.screen === screen) return;
   S.screen = screen;
-  renderShell(true);
+  ["sesja", "ustawienia"].forEach(k => {
+    const t = $(`tab-${k}`);
+    if (t) t.classList.toggle("on", k === screen);
+    const el = $(`screen-${k}`);
+    if (el) el.style.display = k === screen ? (k === "sesja" ? "flex" : "block") : "none";
+  });
+  placeTabBar(true);
+  lastSesja = lastUstawienia = "";
+  renderScreens(true);
+  ["period-seg", "fps-seg", "grid-seg"].forEach(id => placeSegPill($(id), false));
+  playScreenIn(`screen-${screen}`);
+}
+
+function placeTabBar(animate) {
+  // biale tlo aktywnej zakladki (segmented control jak w macOS) przejezdza
+  // pod nowa zakladke
+  const t = $(`tab-${S.screen}`), pill = $("tab-pill");
+  if (!t || !pill) return;
+  const ease = "cubic-bezier(0.32, 0.72, 0, 1)";
+  pill.style.transition = animate ? `left .36s ${ease}, width .36s ${ease}` : "none";
+  pill.style.left = `${t.offsetLeft}px`;
+  pill.style.width = `${t.offsetWidth}px`;
 }
 
 
@@ -314,9 +388,63 @@ function toggleReview() {
 }
 function toggle(key, value) { post({ action: "toggle", key, value }); }
 
-function cycleGrid() {
-  S.grid = (S.grid + 1) % GRIDS.length;
-  renderScreens();
+// Zmiana siatki W MIEJSCU: biale tlo przejezdza pod nowa opcje, linie siatki
+// podmieniane na nakladce — rebuild ekranu zerwalby stream live view.
+function setGrid(i) {
+  if (S.grid === i) return;
+  S.grid = i;
+  const g = GRIDS[i];
+  const ov = $("grid-overlay");
+  if (ov) {
+    ov.style.background = gridBackground(g.cols, g.rows);
+    ov.style.display = g.cols && $("live") ? "block" : "none";
+  }
+  document.querySelectorAll("#grid-seg [data-grid]").forEach(b => {
+    const on = +b.dataset.grid === i;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-pressed", on);
+  });
+  placeSegPill($("grid-seg"), true);
+  lastSesja = sesjaKey(S.state);
+}
+
+// Biale tlo segmented controla pod aktywnym przyciskiem (.on). Pozycja jest
+// pamietana per id kontrolki, wiec po przebudowie ekranu (filtr listy, zapis
+// ustawienia) tlo PRZEJEZDZA ze starego miejsca, zamiast pojawic sie od razu.
+const segPos = {};
+function placeSegPill(seg, animate) {
+  if (!seg) return;
+  const pill = seg.querySelector(".overlay-pill, .seg-pill"), btn = seg.querySelector("button.on");
+  if (!pill || !btn) return;
+  const ease = "cubic-bezier(0.32, 0.72, 0, 1)";
+  const to = { left: btn.offsetLeft, width: btn.offsetWidth };
+  const from = seg.id && segPos[seg.id];
+  if (seg.id) segPos[seg.id] = to;
+  // animacja TYLKO przy realnej zmianie wyboru; świeżo zbudowany pill stoi na
+  // 0/0 i bez tego warunku wjeżdżał od lewej przy każdej przebudowie ekranu
+  const moved = from && (from.left !== to.left || from.width !== to.width);
+  if (animate && moved) {
+    pill.style.transition = "none";
+    pill.style.left = `${from.left}px`;
+    pill.style.width = `${from.width}px`;
+    void pill.offsetWidth;
+  }
+  pill.style.transition = animate && (moved || !seg.id) ? `left .32s ${ease}, width .32s ${ease}` : "none";
+  pill.style.left = `${to.left}px`;
+  pill.style.width = `${to.width}px`;
+}
+
+// Klik w opcję segmented controla: zaznaczenie i tło przestawiane od razu,
+// zanim backend/rebuild odpowie.
+function segClick(btn) {
+  const seg = btn.closest(".seg, .overlay-seg");
+  if (!seg) return;
+  seg.querySelectorAll("button").forEach(b => {
+    const on = b === btn;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-pressed", on);
+  });
+  placeSegPill(seg, true);
 }
 
 function reviewSelected(verdict) {
@@ -332,6 +460,13 @@ function reviewSelected(verdict) {
 // ---------- klawiatura ----------
 
 document.addEventListener("keydown", e => {
+  // ⌘F / ⌘N na liscie sesji: fokus na wyszukiwarke / pole nowej sesji
+  if ((e.metaKey || e.ctrlKey) && S.screen === "sesja" && S.state && !S.state.session.name
+      && ["f", "n"].includes(e.key.toLowerCase())) {
+    const el = $(e.key.toLowerCase() === "f" ? "session-filter" : "new-session-input");
+    if (el) { e.preventDefault(); el.focus(); el.select(); }
+    return;
+  }
   const tag = document.activeElement ? document.activeElement.tagName : "";
   if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") {
     if (e.key === "Enter" && document.activeElement.id === "new-session-input") {
@@ -353,7 +488,9 @@ document.addEventListener("keydown", e => {
   // czyli tam, gdzie panel jest widoczny. Skróty odległości (⌘−/⌘=) i kąta
   // kamery (⌘[/⌘]) usunięte razem z tymi suwakami: każda regulacja psuła
   // ustawione ujęcie (patrz komentarz w app-robot.js).
-  if ((e.metaKey || e.ctrlKey) && S.screen === "sesja" && S.state.session.name) {
+  // Bez ramienia (ROBOT_ENABLED=false) skroty nie maja czego ruszac.
+  if ((e.metaKey || e.ctrlKey) && S.screen === "sesja" && S.state.session.name
+      && S.state.robot && S.state.robot.enabled) {
     const robotKey = {
       "1": () => robotPose("top90"), "2": () => robotPose("a45"),
     }[e.key];
@@ -364,7 +501,7 @@ document.addEventListener("keydown", e => {
   // preventDefault na wszystkim co obslugujemy — bez tego WKWebView puszcza
   // klawisz w gore responder chain i macOS robi systemowy beep
   if (["Enter", " ", "Escape", "Backspace", "ArrowLeft", "ArrowRight",
-       "p", "P", "a", "A", "x", "X"].includes(e.key)) {
+       "p", "P", "a", "A", "x", "X", "e", "E"].includes(e.key)) {
     e.preventDefault();
   }
   // przy otwartym potwierdzeniu wyjscia reaguja TYLKO ESC (anuluj)
@@ -387,6 +524,7 @@ document.addEventListener("keydown", e => {
     case " ": toggleReview(); break;
     case "Escape":
       if (S.leaveConfirm) hideLeaveConfirm();
+      else if (S.edit) closeEdit();
       else if (S.reviewMode) closeReview();
       else if (S.screen === "sesja" && S.state && S.state.session.name) showLeaveConfirm();
       break;
@@ -394,6 +532,7 @@ document.addEventListener("keydown", e => {
       if (S.reviewMode) deleteReviewed();
       break;
     case "p": case "P": toggle("preview", !S.state.previewOn); break;
+    case "e": case "E": if (S.reviewMode) toggleEdit(); break;
     case "ArrowLeft": navShot(-1); break;
     case "ArrowRight": navShot(1); break;
     case "a": case "A": reviewSelected("accepted"); break;
@@ -424,9 +563,37 @@ function mergeLog(tail) {
 // (zero rebuildów, stream MJPEG żyje). Prawdą jest state.settings.uiTheme
 // z backendu (.env); klik w Ustawieniach ustawia atrybut od razu, żeby nie
 // czekać 500 ms na poll.
+// Przelacznik motywu w pasku zakladek: ikona pokazuje motyw, NA KTORY sie
+// przelaczy (slonce w ciemnym, ksiezyc w jasnym). Lata sie w miejscu — pelny
+// rebuild ekranu sesji zerwalby stream live view.
+const curTheme = () => document.documentElement.dataset.theme === "light" ? "light" : "dark";
+const themeToggleTitle = () => curTheme() === "light" ? "Motyw ciemny" : "Motyw jasny";
+function themeToggleIcon() {
+  return icon(curTheme() === "light" ? "moon" : "sun");
+}
+
+function toggleTheme() {
+  const next = curTheme() === "light" ? "dark" : "light";
+  applyTheme(next);
+  if (S.state && S.state.settings) S.state.settings.uiTheme = next;
+  post({action: "set_app", key: "ui_theme", value: next});
+  syncThemeToggle();
+}
+
+function syncThemeToggle() {
+  const b = $("theme-toggle");
+  if (!b) return;
+  b.innerHTML = themeToggleIcon();
+  b.title = themeToggleTitle();
+  b.setAttribute("aria-label", themeToggleTitle());
+}
+
 function applyTheme(theme) {
   const t = theme === "light" ? "light" : "dark";
-  if (document.documentElement.dataset.theme !== t) document.documentElement.dataset.theme = t;
+  if (document.documentElement.dataset.theme !== t) {
+    document.documentElement.dataset.theme = t;
+    syncThemeToggle();   // motyw zmieniony z Ustawien albo z .env
+  }
 }
 
 async function tick() {

@@ -22,6 +22,14 @@ STATIC_TYPES = {
 }
 
 
+# Obrazki interfejsu z assets/icons: adres -> plik. Biały znak Trixbrix (karta
+# Automat w Ustawieniach) i zdjęcie autora (stopka nawigacji Ustawień).
+ICONS = {
+    "/brand-mark": "trixbrix_mark.png",
+    "/author": "author.jpg",
+}
+
+
 class Handler(BaseHTTPRequestHandler):
     """Handler HTTP (instancja per request). Atrybut klasowy `ui` wstrzykiwany
     w WebUI.start() przez subklase — jeden serwer = jedno WebUI."""
@@ -65,6 +73,24 @@ class Handler(BaseHTTPRequestHandler):
             self._serve_stream()
         elif url.path == "/img":
             self._serve_img(parse_qs(url.query))
+        elif url.path in ICONS:
+            self._serve_icon(ICONS[url.path])
+        elif url.path == "/logo":
+            self._serve_logo(parse_qs(url.query))
+        elif url.path == "/edit_preview":
+            q = parse_qs(url.query)
+            data = self.ui.edit_preview_bytes(
+                q.get("s", [""])[0], q.get("f", [""])[0],
+                q.get("logo", [""])[0], q.get("pos", [""])[0])
+            if data is None:
+                self.send_error(404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(data)
         else:
             self.send_error(404)
 
@@ -130,6 +156,37 @@ class Handler(BaseHTTPRequestHandler):
             return
         self.send_response(200)
         self.send_header("Content-Type", "image/jpeg")
+        self.send_header("Content-Length", str(len(data)))
+        if q.get("v", [""])[0]:
+            # adres z wersja pliku (mtime) — nowa tresc = nowy adres. Bez tego
+            # kazdy przebudowany pasek zdjec (wejscie i wyjscie z podgladu)
+            # pobieral miniatury od nowa i kafelki mrugaly pustym tlem.
+            self.send_header("Cache-Control", "private, max-age=31536000, immutable")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _serve_icon(self, name: str):
+        """Obrazki z assets/icons dla UI (lista ICONS — nic spoza niej)."""
+        from .config import DEFAULT_ASSETS_DIR
+        path = DEFAULT_ASSETS_DIR / "icons" / name
+        if not path.is_file():
+            self.send_error(404)
+            return
+        data = path.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", "image/png" if name.endswith(".png") else "image/jpeg")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "max-age=86400")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _serve_logo(self, q: dict):
+        data = self.ui.logo_bytes(q.get("k", [""])[0])
+        if data is None:
+            self.send_error(404)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "image/webp")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)

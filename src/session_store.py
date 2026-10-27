@@ -65,13 +65,42 @@ def find_raw(session_dir: Path, final_name: str) -> Path | None:
     return None
 
 
+NOLOGO_DIR = ".nologo"
+
+
+def edit_base(session_dir: Path, final_name: str, review: dict) -> Path | None:
+    """Zdjecie bez logo, na ktore edycja naklada logo od nowa: kopia z
+    `.nologo/` (zapisywana przy obrobce od wersji z edycja) albo sam gotowy
+    plik, gdy wiadomo, ze robiono go bez logo (meta w .review.json)."""
+    cand = session_dir / NOLOGO_DIR / final_name
+    if cand.exists():
+        return cand
+    meta = review.get("meta", {}).get(final_name)
+    if meta is not None and "logo" not in meta.split(" · "):
+        return session_dir / final_name
+    return None
+
+
 def shot_entries(session_dir: Path | None, review: dict) -> list[dict]:
-    """Wpisy zdjec dla frontu (filmstrip sesji)."""
+    """Wpisy zdjec dla frontu (filmstrip sesji). `v` (mtime) idzie w adres
+    obrazka: adres zmienia sie tylko ze zmiana pliku, wiec przegladarka moze
+    trzymac obrazek w cache na stale (patrz `_serve_img`)."""
+    def version(f: str) -> int:
+        try:
+            return int((session_dir / f).stat().st_mtime)
+        except OSError:
+            return 0
+
     return [
         {
             "file": f,
             "status": "rejected" if f in review["rejected"] else "ok",
             "uploaded": f in review["uploaded"],
+            "v": version(f),
+            # edycja logo: "ready" = jest wersja bez logo, "raw" = trzeba ja
+            # najpierw zrobic z oryginalu z aparatu, "" = nie da sie
+            "edit": ("ready" if edit_base(session_dir, f, review)
+                     else "raw" if find_raw(session_dir, f) else ""),
         }
         for f in (finals(session_dir) if session_dir else [])
     ]

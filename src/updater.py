@@ -1,9 +1,12 @@
 """Auto-aktualizacja z GitHub Releases.
 
-Kanal wydan: publiczne repo `GITHUB_REPO`, release z tagiem `vX.Y.Z` i
+Kanal wydan: prywatne repo `GITHUB_REPO`, release z tagiem `vX.Y.Z` i
 zalacznikiem `CameraCapture-windows-vX.Y.Z.zip` (zawartosc `dist/CameraCapture`
 spakowana z poziomu katalogu — w zipie na wierzchu leza `.exe` i `_internal/`).
-Publiczne repo = `releases/latest` bez tokena, wiec .exe u operatora pyta samo.
+Prywatne repo bez tokena odpowiada 404 (czyli "brak nowszej wersji"), wiec .exe
+niesie w sobie token tylko do odczytu tego repo: CI wpisuje go z sekretu
+`UPDATE_TOKEN` do `src/update_token.py` (poza gitem) przed budowa. Ze zrodel
+token bierze sie z `GITHUB_UPDATE_TOKEN` w `.env`.
 
 Sama podmiana dziala TYLKO dla spakowanego .exe na Windowsie (`can_self_update`):
 dzialajacego procesu nie da sie nadpisac, wiec paczka jest rozpakowywana obok
@@ -38,6 +41,12 @@ from pathlib import Path
 from .config import PROJECT_DIR
 from .version import APP_VERSION, GITHUB_REPO, parse_version
 
+try:
+    from .update_token import UPDATE_TOKEN  # wpisany przez CI przy budowie .exe
+except ImportError:
+    UPDATE_TOKEN = ""
+UPDATE_TOKEN = os.environ.get("GITHUB_UPDATE_TOKEN", "").strip() or UPDATE_TOKEN
+
 RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 ASSET_HINT = "windows"
 HTTP_TIMEOUT = 10
@@ -51,30 +60,39 @@ _DETACHED = (getattr(subprocess, "DETACHED_PROCESS", 0)
              | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
 
 
+def _github_headers(accept: str) -> dict:
+    """Naglowki do API GitHuba — z tokenem, bo repo wydan jest prywatne."""
+    headers = {"Accept": accept, "User-Agent": f"camera-capture/{APP_VERSION}"}
+    if UPDATE_TOKEN:
+        headers["Authorization"] = f"Bearer {UPDATE_TOKEN}"
+    return headers
+
+
 def can_self_update() -> bool:
     """Podmiana plikow ma sens tylko dla spakowanego .exe na Windowsie."""
     return bool(getattr(sys, "frozen", False)) and sys.platform == "win32"
 
 
-def check_for_update() -> dict | None:
-    """Najnowszy release z GitHuba albo None, gdy nie ma nic nowszego.
+def latest_release() -> dict | None:
+    """Najnowszy release z GitHuba (niezaleznie od tego, czy jest nowszy)
+    albo None, gdy repo nie ma zadnego wydania.
 
-    Zwraca {version, url, size, notes, page}; `url` puste = release bez
-    zalacznika dla Windows (mozna tylko pokazac, ze cos wyszlo)."""
+    Zwraca {version, tag, published, url, size, notes, page}; `url` puste =
+    release bez zalacznika dla Windows (mozna tylko pokazac, ze cos wyszlo)."""
     import requests
 
     r = requests.get(
         RELEASES_API, timeout=HTTP_TIMEOUT,
-        headers={"Accept": "application/vnd.github+json",
-                 "User-Agent": f"camera-capture/{APP_VERSION}"},
+        headers=_github_headers("application/vnd.github+json"),
     )
     if r.status_code == 404:
-        return None  # repo bez zadnego wydania — nie ma z czym porownywac
+        # repo bez zadnego wydania — nie ma z czym porownywac (prywatne repo
+        # bez tokena wyglada tak samo, stad token wpisany w .exe)
+        return None
     r.raise_for_status()
     rel = r.json()
     remote = parse_version(str(rel.get("tag_name") or ""))
-    current = parse_version(APP_VERSION)
-    if remote is None or current is None or remote <= current:
+    if remote is None:
         return None
     asset = next(
         (a for a in rel.get("assets", [])
@@ -84,11 +102,26 @@ def check_for_update() -> dict | None:
     )
     return {
         "version": ".".join(str(n) for n in remote),
-        "url": str(asset.get("browser_download_url", "")) if asset else "",
+        "tag": str(rel.get("tag_name") or ""),
+        "published": str(rel.get("published_at") or ""),
+        # adres zalacznika w API, nie `browser_download_url` — ten z prywatnego
+        # repo bez zalogowanej przegladarki zwraca 404 nawet z tokenem
+        "url": str(asset.get("url", "")) if asset else "",
         "size": int(asset.get("size") or 0) if asset else 0,
         "notes": str(rel.get("body") or "").strip(),
         "page": str(rel.get("html_url") or ""),
     }
+
+
+def is_newer(version: str) -> bool:
+    remote, current = parse_version(version), parse_version(APP_VERSION)
+    return remote is not None and current is not None and remote > current
+
+
+def check_for_update() -> dict | None:
+    """Najnowszy release, gdy jest nowszy od zainstalowanej wersji, inaczej None."""
+    rel = latest_release()
+    return rel if rel and is_newer(rel["version"]) else None
 
 
 # ---------------------------------------------------------------- pobranie
@@ -131,7 +164,10 @@ def download_and_stage(url: str, progress=None) -> Path:
     root = _staging_root()
     zip_path = root / "update.zip"
     try:
-        with requests.get(url, stream=True, timeout=HTTP_TIMEOUT) as r:
+        # API przekierowuje na podpisany adres pobrania; `requests` zdejmuje
+        # Authorization przy zmianie hosta, wiec token nie wycieka dalej
+        with requests.get(url, stream=True, timeout=HTTP_TIMEOUT,
+                          headers=_github_headers("application/octet-stream")) as r:
             r.raise_for_status()
             total = int(r.headers.get("Content-Length") or 0)
             done = 0

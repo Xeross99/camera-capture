@@ -32,6 +32,7 @@ const S = {           // stan klienta
   robot: { pose: "top90", echoAt: 0 },
   setupMsg: "",       // ostatnia odmowa backendu w karcie „Robot — ujęcia" (przeżywa rebuild karty)
   setupPose: null,    // ujęcie wybrane w Ustawieniach → „Robot — ujęcia" (panel korekty pod kafelkiem)
+  edit: null,         // edycja logo w podglądzie: {file, logo, pos} — logo "" = bez logo
 };
 const $ = id => document.getElementById(id);
 const post = (payload) => fetch("/api/action", { method: "POST", body: JSON.stringify(payload) });
@@ -44,21 +45,6 @@ const chk = `accent-color: ${ACCENT}; width: 14px; height: 14px;`;
 const label = `display: flex; align-items: center; gap: 8px; color: var(--fg-1);`;
 const head = `font-size: 11px; font-weight: 600; color: var(--fg-4); letter-spacing: .06em; text-transform: uppercase;`;
 
-// Wiersz opcji w sidebarze: checkbox, tytul i opis pod spodem, wiersze rozdzielone
-// hairline'em. Sam checkbox z jednym slowem nie mowil, co wlasciwie robi.
-// `extra` (np. wybor rogu logo) siedzi POZA <label>, inaczej klik w select
-// przelaczalby checkbox.
-const optionRow = (key, checked, title, desc, extra = "") => `
-  <div class="opt-row">
-    <label style="display: flex; align-items: flex-start; gap: 9px;">
-      <input type="checkbox" ${checked ? "checked" : ""} onchange="toggle('${key}', this.checked)" style="${chk} margin-top: 1px; flex-shrink: 0;" />
-      <span style="flex: 1; min-width: 0;">
-        <span style="display: block; font-size: 12.5px; color: var(--fg-0);">${title}</span>
-        <span style="display: block; margin-top: 3px; font-size: 11.5px; line-height: 1.5; color: var(--fg-4);">${desc}</span>
-      </span>
-    </label>
-    ${extra ? `<div style="padding-left: 23px;">${extra}</div>` : ""}
-  </div>`;
 // Siatka kadrowania jak w aparacie (M50 II: 3×3 / 6×4). Domyślnie 6×4 — to
 // samo, co operator widzi na ekranie aparatu. Klik w badge cykluje.
 // Etykiety pozycji logo po polsku; value w <option> zostaje angielskie —
@@ -98,12 +84,6 @@ function gridBackground(cols, rows) {
   return parts.join(", ");
 }
 
-const MARKS = {
-  ok:   { mark: "✓", color: "var(--ok)", border: "var(--line-3)" },
-  bad:  { mark: "✕", color: "var(--err)", border: "var(--err-border)" },
-  cur:  { mark: "●", color: ACCENT,   border: ACCENT },
-  wait: { mark: "…", color: "var(--warn)", border: "var(--line-3)" },
-};
 
 // ---------- daty / polska odmiana ----------
 
@@ -120,6 +100,55 @@ const fmtDate = iso => {
   return isNaN(d) ? "" : `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")} ${hhmm(d)}`;
 };
 const CAM_ICON = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="width: 12px; height: 12px; display: block;"><path d="M12 9a3.75 3.75 0 1 0 0 7.5A3.75 3.75 0 0 0 12 9Z" /><path fill-rule="evenodd" clip-rule="evenodd" d="M9.344 3.071a49.5 49.5 0 0 1 5.312 0c.967.052 1.83.585 2.332 1.39l.821 1.317c.24.383.645.643 1.11.71.386.054.77.113 1.152.177 1.432.239 2.429 1.493 2.429 2.909V18a3 3 0 0 1-3 3h-15a3 3 0 0 1-3-3V9.574c0-1.416.997-2.67 2.429-2.909.382-.064.766-.123 1.151-.178a1.56 1.56 0 0 0 1.11-.71l.822-1.315a2.94 2.94 0 0 1 2.332-1.39ZM6.75 12.75a5.25 5.25 0 1 1 10.5 0 5.25 5.25 0 0 1-10.5 0Z" /></svg>`;
+
+// Ikony nowego UI — Heroicons outline (24 × 24, stroke). Kolor z currentColor,
+// rozmiar z CSS rodzica (.icon-btn svg) albo z `px`.
+const ICON_PATHS = {
+  camera: '<path d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z"/><path d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0Z"/>',
+  sliders: '<path d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75"/>',
+  moon: '<path d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z"/>',
+  sun: '<path d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z"/>',
+  search: '<path d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/>',
+  refresh: '<path d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/>',
+  arrowLeft: '<path d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/>',
+  chevL: '<path d="M15.75 19.5 8.25 12l7.5-7.5"/>',
+  chevR: '<path d="m8.25 4.5 7.5 7.5-7.5 7.5"/>',
+  trash: '<path d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"/>',
+  check: '<path d="m4.5 12.75 6 6 9-13.5"/>',
+  download: '<path d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/>',
+  cloud: '<path d="M12 16.5V9.75m0 0 3 3m-3-3-3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.233-2.33 3 3 0 0 1 3.758 3.848A3.752 3.752 0 0 1 18 19.5H6.75Z"/>',
+  folder: '<path d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z"/>',
+  sparkles: '<path d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09Z"/>',
+  terminal: '<path d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0 0 21 18V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v12a2.25 2.25 0 0 0 2.25 2.25Z"/>',
+  lock: '<path d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"/>',
+  external: '<path d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/>',
+  robot: '<path d="M4.5 21h9M9 21v-5M9 16l6-8M15 8l4 2.2"/>',
+  pencil: '<path d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10"/>',
+};
+const icon = (name, px = 16, sw = 1.7) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width: ${px}px; height: ${px}px; flex-shrink: 0; display: block;">${ICON_PATHS[name]}</svg>`;
+
+// Znak GitHuba (Octicons mark-github) — przy aktualizacjach z GitHub Releases.
+const GITHUB_MARK = `<svg viewBox="0 0 16 16" fill="currentColor" role="img" aria-label="GitHub" style="width: 24px; height: 24px; display: block;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>`;
+
+// Przelacznik (role=switch). Klik przestawia go od razu w DOM, a backend
+// potwierdza przy nastepnym pollu — bez tego odpowiedz na klik czekalaby 500 ms.
+// Klawisz-modyfikator w napisach skrótów: macOS ma ⌘, Windows (WebView2) Ctrl.
+// Obsługa klawiatury w app-main.js łapie metaKey I ctrlKey, więc różnią się
+// tylko napisy.
+const IS_MAC = /mac/i.test(navigator.platform || "");
+const modKey = k => IS_MAC ? `⌘${k}` : `Ctrl+${k}`;
+
+// Klawisz w podpowiedziach: wszystkie w jednakowej ramce i wielkości (strzałki
+// systemowym fontem — w Plex Mono wychodziły malutkie).
+const kHint = k => `<span class="hint-key${/^[←→↑↓ ]+$/.test(k) ? " arrows" : ""}">${k}</span>`;
+
+const switchHtml = (on, action, labelText, id = "") =>
+  `<button type="button" class="switch" role="switch" ${id ? `id="${id}"` : ""} aria-checked="${on ? "true" : "false"}" aria-label="${labelText}" onclick="flipSwitch(this); ${action}"></button>`;
+function flipSwitch(el) {
+  el.setAttribute("aria-checked", el.getAttribute("aria-checked") === "true" ? "false" : "true");
+}
+const switchOn = el => el.getAttribute("aria-checked") === "true";
+
 
 // Ramie robota (podstawa + dwa segmenty + przeguby i glowica) — do statusu
 // ramienia w pasku zakladek, w parze z CAM_ICON dla aparatu. Kreski, nie fill:

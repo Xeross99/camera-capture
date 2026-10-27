@@ -22,13 +22,27 @@ if getattr(sys, "frozen", False):
     DEFAULT_ASSETS_DIR = Path(getattr(sys, "_MEIPASS", PROJECT_DIR)) / "assets"
 else:
     DEFAULT_ASSETS_DIR = PROJECT_DIR / "assets"
-DEFAULT_LOGO = DEFAULT_ASSETS_DIR / "logos" / "trixbrix_eu.webp"
+# Logo do wyboru w Postprocessingu. Kazde ma wlasny rozmiar i krycie, bo pliki
+# sa rozne: czarne TRIXBRIX.eu przyciemnia sie kryciem, szare KIDS jest juz
+# w docelowym kolorze (#8f8f8f) i kryje w 100% (tak wyglada wzorzec).
+# Wybor zapisuje sie w .env jako LOGO.
+LOGOS = {
+    "trixbrix": {"label": "TRIXBRIX.eu", "file": DEFAULT_ASSETS_DIR / "logos" / "trixbrix_eu.webp",
+                 "height": 0.06, "opacity": 0.5},
+    "kids": {"label": "TRIXBRIX.eu KIDS", "file": DEFAULT_ASSETS_DIR / "logos" / "trixbrix_kids.webp",
+             "height": 0.10, "opacity": 1.0},
+}
+LOGO_CHOICE = os.environ.get("LOGO", "kids").strip().lower()
+if LOGO_CHOICE not in LOGOS:
+    LOGO_CHOICE = "kids"
+DEFAULT_LOGO = LOGOS[LOGO_CHOICE]["file"]
 DEFAULT_OUTPUT_DIR = PROJECT_DIR / "photos"
 
 ASPECT_W, ASPECT_H = 1, 1
 OUTPUT_SIZE = 3000
 LOGO_ENABLED = True
 LOGO_POSITION = "bottom-right"  # bottom-right / bottom-left / top-right / top-left
+# Rozmiar i krycie pliku spoza LOGOS (wlasny plik z Ustawien albo --logo)
 LOGO_HEIGHT_RATIO = 0.06
 LOGO_MARGIN_RATIO = 0.04
 LOGO_OPACITY = 0.5  # stale krycie watermarku — celowo bez mozliwosci zmiany w UI
@@ -95,8 +109,10 @@ TRASH_RETENTION_DAYS = int(os.environ.get("TRASH_RETENTION_DAYS", "30"))
 # osobno, ujecie jest jedna pozycja i tyle.
 #
 # Ramienia zwykle nie ma na maszynie deweloperskiej, wiec brak portu/paczki to
-# stan „rozlaczony" w UI, a nie blad startu.
-ROBOT_ENABLED = os.environ.get("ROBOT_ENABLED", "true").lower() in ("1", "true", "yes", "on")
+# stan „rozlaczony" w UI, a nie blad startu. Domyslnie WYLACZONE — robot
+# poki co nie jezdzi przy zdjeciach, wiec caly jego UI jest schowany;
+# ROBOT_ENABLED=true w .env przywraca go w calosci.
+ROBOT_ENABLED = os.environ.get("ROBOT_ENABLED", "false").lower() in ("1", "true", "yes", "on")
 ROBOT_TYPE = os.environ.get("ROBOT_TYPE", "roarm_m2")
 # Pusty = autodetekcja portu po VID plytki (patrz find_robot_port).
 ROBOT_PORT = os.environ.get("ROBOT_PORT", "").strip() or None

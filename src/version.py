@@ -9,9 +9,9 @@ Bez importow — spec PyInstallera czyta ten plik zanim cokolwiek innego
 zdazy sie zaimportowac.
 """
 
-APP_VERSION = "1.8.1"
+APP_VERSION = "2.0.0"
 
-GITHUB_REPO = "Xeross99/camera-capture"
+GITHUB_REPO = "trixbrix/CameraCapture"
 
 
 def parse_version(text: str) -> tuple[int, int, int] | None:

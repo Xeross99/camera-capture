@@ -50,7 +50,10 @@ VSVersionInfo(
 
 datas = [
     ("src/webui_static", "src/webui_static"),
-    ("assets", "assets"),
+    # tylko to, czego aplikacja używa — assets/readme (zrzuty do README) nie
+    # ma czego szukać w .exe
+    ("assets/logos", "assets/logos"),
+    ("assets/icons", "assets/icons"),
 ]
 binaries = []
 hiddenimports = [

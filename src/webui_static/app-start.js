@@ -19,46 +19,65 @@ function groupByDay(sessions) {
   return groups;
 }
 
+const PL_WEEKDAYS = ["niedziela", "poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota"];
+const PL_MONTHS_SHORT = ["sty", "lut", "mar", "kwi", "maj", "cze", "lip", "sie", "wrz", "paź", "lis", "gru"];
+const PL_MONTHS_NOM = ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec",
+  "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"];
+
+// Nagłówek dnia w liście: „Dziś" / „Wczoraj" / data, obok dzień tygodnia.
+function dayHeading(g) {
+  if (isNaN(g.date)) return { title: "Bez daty", sub: plSessions(g.items.length) };
+  const t = new Date(), y = new Date(t.getFullYear(), t.getMonth(), t.getDate() - 1);
+  const same = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  const wd = PL_WEEKDAYS[g.date.getDay()];
+  const title = same(g.date, t) ? "Dziś" : same(g.date, y) ? "Wczoraj" : plDay(g.date);
+  const sub = title === plDay(g.date) ? `${wd} · ${plSessions(g.items.length)}`
+    : `${wd}, ${g.date.getDate()} ${PL_MONTHS[g.date.getMonth()]} · ${plSessions(g.items.length)}`;
+  return { title, sub };
+}
+
 function sessionCard(s, idx) {
   // okładkę robi backend (photos/.covers) — dopóki jej nie ma, kafelek pokazuje
   // szkielet i wypełni się sam przy kolejnym poll-u
   const cover = s.cover
-    ? `<img src="/img?cover=${s.id}" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;" />`
-    : `<div class="${s.photos_count ? "skeleton" : ""}" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; ${mono} font-size: 10px; color: var(--fg-3);">${s.photos_count ? "" : "bez zdjęć"}</div>`;
-  const sub = s.product
-    ? `<span style="color: var(--ok);">${s.product.name}</span>`
-    : `<span style="color: var(--fg-4);">Sesja luźna</span>`;
+    ? `<img src="/img?cover=${s.id}" alt="" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;" />`
+    : `<div class="${s.photos_count ? "skeleton" : ""}" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; ${mono} font-size: 11px; color: var(--muted-2); background-color: var(--surface-2);">${s.photos_count ? "" : "bez zdjęć"}</div>`;
+  const product = s.product ? s.product.name : "Sesja luźna";
+  const pColor = s.product ? "var(--ok-fg)" : "var(--muted-2)";
   const d = new Date(s.created_at);
   // podswietlenie (hover i zaznaczenie klawiatura) idzie JEDNYM stanem:
   // S.pickIdx + paintPick() — dwie osobne mechaniki gryzly sie o ramke
   return `
-  <div data-pick="${idx}" onclick='pickSession(${s.id}, ${JSON.stringify(s.name)})' onmouseover="pickTo(${idx})" style="background: var(--bg-2); border: 1px solid ${idx === S.pickIdx ? ACCENT : "var(--line-2)"}; border-radius: 8px; overflow: hidden; cursor: default; display: flex; flex-direction: column;">
-    <div style="position: relative; aspect-ratio: 1 / 1; background: #fff;">${cover}</div>
-    <div style="padding: 9px 12px 11px; display: flex; flex-direction: column; gap: 3px; min-width: 0;">
-      <div style="font-size: 13px; font-weight: 600; color: var(--fg-0); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${s.name}</div>
-      <div style="font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${sub}</div>
-      <div style="${mono} font-size: 10.5px; color: var(--fg-5);">${plPhotos(s.photos_count)}${isNaN(d) ? "" : ` · ${hhmm(d)}`}</div>
+  <div data-pick="${idx}" class="session-card${idx === S.pickIdx ? " picked" : ""}" onclick='pickSession(${s.id}, ${JSON.stringify(s.name)})' onmouseover="pickTo(${idx})">
+    <div class="cover">
+      ${cover}
+      ${s.photos_count ? `<span class="cover-badge">${s.photos_count} zdj.</span>` : ""}
+    </div>
+    <div style="padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0;">
+      <div style="font-size: 13.5px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${s.name}</div>
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: ${pColor}; overflow: hidden; white-space: nowrap;">
+        <span style="width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: ${pColor};"></span><span style="overflow: hidden; text-overflow: ellipsis;">${product}</span>
+      </div>
+      <div style="${mono} font-size: 11px; color: var(--muted-2);">${isNaN(d) ? "" : hhmm(d)}</div>
     </div>
   </div>`;
 }
 
+// Lewy panel: dni pogrupowane miesiącami, przy każdym liczba sesji.
 function dayRail(groups) {
-  const items = groups.map(g => {
-    const on = S.dayFocus === g.key;
-    return `
-    <div onclick="focusDay('${g.key}')" style="display: flex; align-items: center; gap: 10px; padding: 5px 6px; border-radius: 6px; position: relative; cursor: default;">
-      <div style="width: 22px; height: 22px; flex: 0 0 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; z-index: 1; color: ${on ? "#fff" : "var(--fg-4)"}; background: ${on ? ACCENT : "var(--bg-4)"}; border: 1px solid ${on ? ACCENT : "var(--line-3)"};">${CAM_ICON}</div>
-      <div style="min-width: 0;">
-        <div style="font-size: 12px; color: ${on ? ACCENT : "var(--fg-1)"}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${isNaN(g.date) ? "bez daty" : plDay(g.date)}</div>
-        <div style="${mono} font-size: 10px; color: var(--fg-4); white-space: nowrap;">${plSessions(g.items.length)}</div>
-      </div>
+  let month = "";
+  return groups.map(g => {
+    const m = isNaN(g.date) ? "Bez daty" : `${PL_MONTHS_NOM[g.date.getMonth()]} ${g.date.getFullYear()}`;
+    const headHtml = m !== month
+      ? `<div class="eyebrow" style="padding: ${month ? "16px" : "0"} 10px 8px;">${m}</div>` : "";
+    month = m;
+    return `${headHtml}
+    <div class="day-row${S.dayFocus === g.key ? " on" : ""}" onclick="focusDay('${g.key}')">
+      <span class="cal" aria-hidden="true"><span class="cal-m">${isNaN(g.date) ? "" : PL_MONTHS_SHORT[g.date.getMonth()]}</span><span class="cal-d">${isNaN(g.date) ? "—" : g.date.getDate()}</span></span>
+      <span class="day-wd">${isNaN(g.date) ? "bez daty" : PL_WEEKDAYS[g.date.getDay()]}</span>
+      <span class="count">${g.items.length} ${plForm(g.items.length, "sesja", "sesje", "sesji")}</span>
     </div>`;
   }).join("");
-  return `
-  <div style="position: relative; display: flex; flex-direction: column; gap: 2px;">
-    <div style="position: absolute; left: 17px; top: 16px; bottom: 16px; width: 1px; background: var(--line-2);"></div>
-    ${items}
-  </div>`;
 }
 
 function focusDay(key) {
@@ -88,7 +107,7 @@ function filterSessions(v) {
 
 function paintPick() {
   document.querySelectorAll("[data-pick]").forEach(el => {
-    el.style.borderColor = +el.dataset.pick === S.pickIdx ? ACCENT : "var(--line-2)";
+    el.classList.toggle("picked", +el.dataset.pick === S.pickIdx);
   });
 }
 
@@ -129,9 +148,7 @@ function refreshingNow(st) {
 }
 
 function refreshBtnHtml() {
-  return refreshingNow(S.state)
-    ? '<span class="spinner"></span>Odświeżam…'
-    : "Odśwież listę";
+  return refreshingNow(S.state) ? '<span class="spinner"></span>' : icon("refresh");
 }
 
 function refreshSessions() {
@@ -191,70 +208,93 @@ function startScreen() {
   if (S.pickIdx >= visible.length) S.pickIdx = visible.length ? 0 : -1;
   const groups = groupByDay(visible);
   let pi = 0;
-  const feed = groups.map(g => `
-    <div id="day-${g.key}" style="display: flex; flex-direction: column; gap: 12px; scroll-margin-top: 6px;">
-      <div style="display: flex; align-items: baseline; gap: 8px;">
-        <div style="font-size: 13px; font-weight: 600; color: var(--fg-1);">${isNaN(g.date) ? "bez daty" : plDay(g.date)}</div>
-        <div style="${mono} font-size: 10.5px; color: var(--fg-4);">· ${plSessions(g.items.length)}</div>
-      </div>
-      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; align-content: start;">
+  const feed = groups.map(g => {
+    const h = dayHeading(g);
+    return `
+    <section id="day-${g.key}" style="display: flex; flex-direction: column; gap: 12px; scroll-margin-top: 8px;">
+      <h2 style="margin: 0; display: flex; align-items: baseline; gap: 10px; font-size: 15px; font-weight: 700; color: var(--text);">${h.title} <span style="font-size: 12.5px; font-weight: 500; color: var(--muted-2);">${h.sub}</span></h2>
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 16px; align-content: start;">
         ${g.items.map(s => sessionCard(s, pi++)).join("")}
       </div>
-    </div>`).join("")
+    </section>`;
+  }).join("")
     || (anyFilter() && a.sessions.length
-        ? `<div style="${mono} font-size: 11px; color: var(--fg-4);">Żadna sesja nie pasuje do filtrów.</div>`
+        ? `<div style="font-size: 13px; color: var(--muted-2);">Żadna sesja nie pasuje do filtrów.</div>`
         : "");
   const info = !a.hasToken
-    ? `<div style="${mono} font-size: 11px; color: var(--warn);">Brak tokenu Automatu (.env / Ustawienia) — sesje z Automatu niedostępne, możesz utworzyć lokalną.</div>`
+    ? `<div style="font-size: 12.5px; color: var(--warn-fg-3);">Brak tokenu Automatu (.env albo Ustawienia). Sesje z Automatu są niedostępne, możesz utworzyć lokalną.</div>`
     : a.error
-      ? `<div style="${mono} font-size: 11px; color: var(--err);">✗ ${a.error}</div>`
+      ? `<div style="font-size: 12.5px; color: var(--err-fg);">✗ ${a.error}</div>`
       : a.sessions.length === 0
-        ? `<div style="${mono} font-size: 11px; color: var(--fg-4);">Ładuję sesje z Automatu…</div>`
+        ? `<div style="font-size: 12.5px; color: var(--muted-2);">Ładuję sesje z Automatu…</div>`
         : "";
   const p = S.pendingNew;
   const pend = !p ? "" : `
-    <div style="background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: 6px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 660px; box-sizing: border-box;">
-      <div style="font-size: 12.5px; color: var(--fg-0);">Sesja <b>${p.match.name}</b> już istnieje w Automacie (${fmtDate(p.match.created_at)}, zdjęć: ${p.match.photos_count}).</div>
+    <div style="background: var(--warn-soft); border: 1px solid var(--warn-border); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;">
+      <div style="font-size: 13px; color: var(--text);">Sesja <b>${p.match.name}</b> już istnieje w Automacie (${fmtDate(p.match.created_at)}, zdjęć: ${p.match.photos_count}).</div>
       <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-        <button onclick="resolvePending(true)" style="height: 28px; padding: 0 14px; ${btnBlue} border-radius: 4px; font-size: 12px; font-weight: 600;">Podłącz do istniejącej</button>
-        <button onclick="resolvePending(false)" style="${btnGray} height: 28px;">Utwórz nową</button>
-        <button onclick="S.pendingNew = null; renderScreens(true)" style="${btnGray} height: 28px; opacity: .7;">Anuluj</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="resolvePending(true)">Podłącz do istniejącej</button>
+        <button type="button" class="btn btn-sm" onclick="resolvePending(false)">Utwórz nową</button>
+        <button type="button" class="btn btn-sm" onclick="S.pendingNew = null; renderScreens(true)">Anuluj</button>
       </div>
     </div>`;
+  const total = visible.reduce((n, s) => n + (s.photos_count || 0), 0);
+  const period = (v, text) => `<button type="button" class="seg-btn${S.dateFilter === v ? " on" : ""}" aria-pressed="${S.dateFilter === v}" onclick="segClick(this); setStartFilter('date', '${v}')" tabindex="-1">${text}</button>`;
   return `
-  <div style="flex: 1; display: flex; min-width: 0; background: var(--bg-panel);">
+  <div style="flex: 1; display: flex; min-width: 0; background: var(--ground);">
 
-    <div style="flex: 0 0 216px; border-right: 1px solid var(--line); padding: 22px 12px 22px 18px; overflow-y: scroll; overflow-x: hidden;">
-      <div style="${head} padding: 0 6px 10px;">Dni zdjęciowe</div>
+    <aside style="width: 232px; flex: 0 0 232px; box-sizing: border-box; padding: 20px 12px; border-right: 1px solid var(--border); background: var(--surface-2); display: flex; flex-direction: column; gap: 4px; overflow-y: auto; overflow-x: hidden;">
       ${dayRail(groups)}
-    </div>
+    </aside>
 
-    <div id="start-scroll" style="flex: 1; overflow-y: scroll; overflow-x: hidden; padding: 22px 26px 28px; display: flex; flex-direction: column; gap: 20px; min-width: 0;">
-      <div style="display: flex; flex-direction: column; gap: 10px;">
-        <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px 0 2px;">
-          <div style="${head}">Nowa sesja zdjęciowa</div>
-          <div style="display: flex; gap: 10px; width: 100%; max-width: 660px;">
-            <input id="new-session-input" placeholder="nazwa produktu…" style="flex: 1; min-width: 0; ${inp} height: 42px; font-size: 14.5px; padding: 0 14px; border-radius: 6px;" />
-            <button onclick="commitNewSession()" tabindex="-1" style="flex-shrink: 0; height: 42px; padding: 0 24px; ${btnBlue} border-radius: 6px; font-size: 13.5px; font-weight: 600;">Rozpocznij sesję</button>
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+      <div id="start-scroll" style="flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 24px 32px 28px; display: flex; flex-direction: column; gap: 20px;">
+
+        <section aria-label="Nowa sesja" class="panel" style="padding: 20px 22px; display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; align-items: flex-end; gap: 20px;">
+            <div style="display: flex; flex-direction: column; gap: 4px; width: 210px; flex-shrink: 0; align-self: center;">
+              <div style="font-size: 17px; font-weight: 700; letter-spacing: -.01em; color: var(--text);">Nowa sesja</div>
+              <div style="font-size: 12.5px; line-height: 1.45; color: var(--muted);">Nazwa trafia do folderu i do Automatu. Produkt dopasuje się sam.</div>
+            </div>
+            <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px;">
+              <label for="new-session-input" style="font-size: 12px; font-weight: 500; color: var(--text-2);">Nazwa produktu</label>
+              <input id="new-session-input" class="field" placeholder="np. right switch r148" style="height: 44px; border-radius: 10px; font-size: 14px; padding: 0 14px;" />
+            </div>
+            <button type="button" class="btn btn-primary" onclick="commitNewSession()" tabindex="-1" style="height: 44px; padding: 0 20px; border-radius: 10px; font-size: 14px;">Rozpocznij sesję <span class="kbd">ENTER</span></button>
           </div>
-          <div style="${mono} font-size: 10.5px; color: var(--fg-4); text-align: center;">nazwa = folder w photos/ i sesja w Automacie (dopasowanie do produktu po nazwie)</div>
           ${info}
           ${pend}
+        </section>
+
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <div style="position: relative; width: 280px;">
+            <span style="position: absolute; left: 11px; top: 10px; color: var(--muted-2);">${icon("search", 16, 1.8)}</span>
+            <input id="session-filter" class="field" type="search" aria-label="Szukaj sesji" placeholder="Szukaj sesji lub produktu" value="${(S.sessionFilter || "").replace(/"/g, "&quot;")}" oninput="filterSessions(this.value)" style="width: 100%; padding-left: 34px; font-family: inherit; font-size: 13px;" />
+          </div>
+          <div id="period-seg" class="seg seg-sm has-pill" role="group" aria-label="Okres">
+            <span class="seg-pill"></span>
+            ${period("", "Wszystkie")}${period("today", "Dziś")}${period("7", "7 dni")}${period("30", "30 dni")}
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted);">
+            Zdjęć
+            <input id="photos-min" class="field" inputmode="numeric" aria-label="Najmniej zdjęć" placeholder="od" value="${S.photosMin}" oninput="setStartFilter('min', this.value)" tabindex="-1" style="width: 56px; height: 34px; text-align: center; padding: 0 6px;" />
+            –
+            <input id="photos-max" class="field" inputmode="numeric" aria-label="Najwięcej zdjęć" placeholder="do" value="${S.photosMax}" oninput="setStartFilter('max', this.value)" tabindex="-1" style="width: 56px; height: 34px; text-align: center; padding: 0 6px;" />
+          </div>
+          <div style="flex: 1;"></div>
+          <span style="font-size: 12px; color: var(--muted-2);">${visible.length} ${plForm(visible.length, "sesja", "sesje", "sesji")} · ${plPhotos(total)}</span>
+          <button type="button" id="refresh-btn" class="icon-btn" onclick="refreshSessions()" tabindex="-1" aria-label="Odśwież listę z Automatu" title="Odśwież listę z Automatu" data-busy="${refreshingNow(S.state) ? "1" : ""}" style="width: 36px; height: 36px; border-color: var(--border-strong); border-radius: 9px;">${refreshBtnHtml()}</button>
         </div>
-        <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px;">
-          <button id="refresh-btn" onclick="refreshSessions()" tabindex="-1" data-busy="${refreshingNow(S.state) ? "1" : ""}" style="${btnGray} height: 26px; padding: 0 10px; font-size: 11px; display: inline-flex; align-items: center; gap: 6px;">${refreshBtnHtml()}</button>
-          <input id="photos-min" inputmode="numeric" placeholder="min zdjęć" value="${S.photosMin}" oninput="setStartFilter('min', this.value)" tabindex="-1" style="${inp} width: 72px;" />
-          <input id="photos-max" inputmode="numeric" placeholder="max zdjęć" value="${S.photosMax}" oninput="setStartFilter('max', this.value)" tabindex="-1" style="${inp} width: 72px;" />
-          <select onchange="setStartFilter('date', this.value)" tabindex="-1" style="${sel} height: 26px;">
-            <option value="">data: wszystkie</option>
-            <option value="today" ${S.dateFilter === "today" ? "selected" : ""}>dzisiaj</option>
-            <option value="7" ${S.dateFilter === "7" ? "selected" : ""}>ostatnie 7 dni</option>
-            <option value="30" ${S.dateFilter === "30" ? "selected" : ""}>ostatnie 30 dni</option>
-          </select>
-          <input id="session-filter" placeholder="filtruj sesje…" value="${(S.sessionFilter || "").replace(/"/g, "&quot;")}" oninput="filterSessions(this.value)" style="${inp} width: 210px;" />
-        </div>
+
+        ${feed}
       </div>
-      ${feed}
+
+      <footer class="hints" style="flex: 0 0 auto; padding: 10px 32px 12px; border-top: 1px solid var(--border); font-size: 12px;">
+        <span>${kHint("← → ↑ ↓")}wybór sesji</span>
+        <span>${kHint("ENTER")}otwórz</span>
+        <span>${kHint(modKey("F"))}szukaj</span>
+        <span>${kHint(modKey("N"))}nowa sesja</span>
+      </footer>
     </div>
   </div>`;
 }

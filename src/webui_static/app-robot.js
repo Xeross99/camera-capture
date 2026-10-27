@@ -23,11 +23,8 @@ const robotLocked = () => {
   return !r.connected || !!r.busy;
 };
 
-// Etykiety skrótów zależą od platformy: macOS ma ⌘, Windows (WebView2) Ctrl.
-// Obsługa klawiatury w app-main.js łapie metaKey I ctrlKey, więc różnią się
-// tylko napisy.
-const ROBOT_MAC = navigator.platform.toUpperCase().includes("MAC");
-const robotKbd = k => ROBOT_MAC ? `⌘${k}` : `Ctrl+${k}`;
+// Etykiety skrótów zależą od platformy (modKey w app-core.js).
+const robotKbd = modKey;
 
 // Ujęcia. Klucze MUSZĄ zgadzać się z ROBOT_JOINTS w config.py — backend
 // odrzuca nieznaną nazwę. `tilt` służy WYŁĄCZNIE do nachylenia kreski w ikonie:

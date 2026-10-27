@@ -40,9 +40,8 @@ def test_two_photos_in_the_same_second_are_both_kept(app, camera):
     sdir = open_session(app)
     app.action({"action": "shoot"})
     app.action({"action": "shoot"})
-    wait_for(lambda: camera.captures == 2 and not app.state()["busy"]
-             and app.state()["processing"] is None, 120, "dwa zdjecia")
-    wait_for(lambda: len(app.state()["shots"]) >= 1, 5, "zdjecia w sesji")
+    wait_for(lambda: sum(t.startswith("Zapisano ") for t in log_texts(app)) == 2, 120,
+             "obrobka obu zdjec")
     assert len(app.state()["shots"]) == 2, "drugie zdjecie nie moze nadpisac pierwszego"
 
 

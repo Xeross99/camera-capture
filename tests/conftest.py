@@ -173,7 +173,11 @@ def shoot_and_wait(app, timeout: float = 120.0) -> str:
     def done():
         st = app.state()
         new = [s["file"] for s in st["shots"] if s["file"] not in before]
-        return new[0] if new and not st["busy"] else None
+        if not new or st["busy"]:
+            return None
+        # plik i wolna migawka pojawiaja sie, zanim worker dopisze .review.json
+        # i raw/ — koniec obrobki to dopiero wpis „Zapisano <plik>" w logu
+        return new[0] if any(t.startswith(f"Zapisano {new[0]}") for t in log_texts(app)) else None
     return wait_for(done, timeout, "gotowe zdjecie w sesji")
 
 

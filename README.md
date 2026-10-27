@@ -113,6 +113,8 @@ python3 gui.py              # okno aplikacji
 python3 gui.py --browser    # to samo w przeglądarce
 ```
 
+Na macOS aparat działa przez Canon EDSDK, gdy w katalogu aplikacji leży `EDSDK.framework` (z paczki Canona dla macOS, poza repozytorium). Bez niego aplikacja używa gphoto2. Kliknięcie w podgląd ustawia ostrość w tym miejscu (tylko przez EDSDK).
+
 Bez aparatu można przetworzyć gotowy plik: `python3 main.py --input zdjecie.jpg --name test --no-upload`.
 
 ## Dokumentacja

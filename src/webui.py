@@ -313,6 +313,8 @@ class WebUI:
         self.warmup_t0 = time.monotonic()
         self.warmup_done = False
         self.warmup_eta: int | None = None     # szacowany czas rozgrzewki z .warmup.json
+        self.focus_seq = 0                     # kolejne kliknięcia „ostrość tutaj"
+        self.focus_result: dict | None = None  # wynik ostatniego (ok, punkt, seq)
         self._robot_read_at = 0.0   # throttle odpytywania katow w bezczynnosci
         # trwa ekspozycja/pobieranie pliku z aparatu — na ten czas ramie stoi.
         # Osobno od `busy`, ktore obejmuje takze obrobke (patrz _robot_ready).
@@ -568,6 +570,8 @@ class WebUI:
             self._do_capture(rest[0])
         elif kind == "set_ev":
             self._do_set_ev(rest[0])
+        elif kind == "focus_at":
+            self._do_focus_at(*rest)
 
     # Kompensacja ekspozycji. Wszystko leci wątkiem camera — aparat ma JEDNEGO
     # właściciela (gphoto2 nie jest thread-safe, EDSDK wymaga tego samego wątku
@@ -593,6 +597,20 @@ class WebUI:
                       f"{' … ' + str(choices[-1]) if len(choices) > 3 else ''}).")
         with self.lock:
             self.ev = ev
+
+    def _do_focus_at(self, fx: float, fy: float) -> None:
+        """Ostrość w klikniętym punkcie podglądu (EDSDK: ramka AF + półwciśnięcie).
+        Wynik ląduje w state.focus, front zabarwia nim ramkę na podglądzie."""
+        ok, note = False, ""
+        try:
+            note = self.session.focus_at(fx, fy)
+            ok = True
+        except Exception as e:
+            note = str(e)
+            self._log(f"✗ Ostrość w punkcie: {e}. Ustaw w aparacie AF z wybieranym "
+                      "punktem (1-punktowy albo strefa) i przełącznik obiektywu na AF.", "err")
+        with self.lock:
+            self.focus_result = {"ok": ok, "at": [fx, fy], "seq": self.focus_seq, "note": note}
 
     def _do_set_ev(self, value: str) -> None:
         reply = None
@@ -1756,6 +1774,21 @@ class WebUI:
                 self.sessions_refreshing = True
             self._jobs.put(("list_sessions",))
 
+    def _act_focus_at(self, data: dict) -> dict | None:
+        if not self.connected:
+            return {"ok": False, "error": "aparat nie jest połączony"}
+        try:
+            fx, fy = float(data["x"]), float(data["y"])
+        except (KeyError, TypeError, ValueError):
+            return {"ok": False, "error": "zły punkt"}
+        if not (0 <= fx <= 1 and 0 <= fy <= 1):
+            return {"ok": False, "error": "punkt poza kadrem"}
+        with self.lock:
+            self.focus_seq += 1
+            seq = self.focus_seq
+        self._cam_q.put(("focus_at", fx, fy))
+        return {"ok": True, "seq": seq}
+
     def _act_set_ev(self, data: dict) -> dict | None:
         """Kompensacja ekspozycji: żądanie tylko kolejkujemy — wykona je wątek
         camera, a stan i tak przyjdzie z aparatu przy najbliższym odpytaniu."""
@@ -1978,6 +2011,7 @@ class WebUI:
         "refresh_sessions": _act_refresh_sessions,
         "shoot": _act_shoot,
         "set_ev": _act_set_ev,
+        "focus_at": _act_focus_at,
         "robot_pose": _act_robot_pose,
         "robot_torque": _act_robot_torque,
         "robot_teach": _act_robot_teach,
@@ -2163,6 +2197,9 @@ class WebUI:
                 "edsdkMissing": _edsdk_missing(),
                 "warmup": None if self.warmup_done else int(time.monotonic() - self.warmup_t0),
                 "warmupEta": self.warmup_eta,
+                "focus": self.focus_result,
+                # ostrość w punkcie tylko przez EDSDK (gphoto2 tego nie umie)
+                "focusSupported": "edsdk" in str(getattr(getattr(self, "session", None), "backend_info", "")),
                 "fps": round(self.fps),
                 "previewOn": self.preview_on,
                 "busy": self.busy,

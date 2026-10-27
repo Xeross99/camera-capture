@@ -1,9 +1,10 @@
-"""Backend aparatu dla Windows: Canon EDSDK (oficjalne SDK, przez ctypes).
+"""Backend aparatu: Canon EDSDK (oficjalne SDK, przez ctypes) — Windows i macOS.
 
 Zero posrednikow — zadnego digiCamControl: aplikacja laduje EDSDK.dll
-(+ EdsImage.dll z tego samego katalogu) i rozmawia z aparatem po USB sama.
-DLL-ki NIE sa w repo (licencja Canona) — pobierz SDK x64 z programu
-deweloperskiego Canona i poloz obok aplikacji (szczegoly: WINDOWS.md).
+(+ EdsImage.dll z tego samego katalogu) na Windowsie albo EDSDK.framework na
+macOS i rozmawia z aparatem po USB sama. SDK NIE jest w repo (licencja
+Canona) — pobierz z programu deweloperskiego Canona i poloz obok aplikacji
+(szczegoly: WINDOWS.md, a na macOS EDSDK.framework w katalogu projektu).
 
 Interfejs 1:1 z CameraSession (open/preview_frame/capture_to/get_settings/
 set_setting/close) — webui nie widzi roznicy miedzy backendami.
@@ -62,6 +63,9 @@ _EV_LABEL_TO_CODE = {label: code for code, label in _EV_CODES.items()}
 _EV_UNKNOWN = 0xFFFFFFFF          # aparat w trybie, ktory nie ma kompensacji
 
 _CMD_PRESS_SHUTTER = 0x0004
+_CMD_DO_EVF_AF = 0x0102           # kEdsCameraCommand_DoEvfAf (ON=1 / OFF=0)
+_PROP_EVF_ZOOM_POSITION = 0x0508  # kEdsPropID_Evf_ZoomPosition (EdsPoint)
+_PROP_EVF_COORDINATE_SYSTEM = 0x0540  # kEdsPropID_Evf_CoordinateSystem (EdsSize)
 _SHUTTER_OFF = 0
 _SHUTTER_COMPLETELY = 3
 
@@ -114,6 +118,14 @@ _HANDLER_TYPE = None
 _USER32 = None
 
 
+class _EdsPoint(ctypes.Structure):
+    _fields_ = [("x", ctypes.c_int32), ("y", ctypes.c_int32)]
+
+
+class _EdsSize(ctypes.Structure):
+    _fields_ = [("width", ctypes.c_int32), ("height", ctypes.c_int32)]
+
+
 class _EdsCapacity(ctypes.Structure):
     _fields_ = [("numberOfFreeClusters", ctypes.c_int32),
                 ("bytesPerSector", ctypes.c_int32),
@@ -131,8 +143,18 @@ class _EdsDirectoryItemInfo(ctypes.Structure):
 
 
 def find_edsdk_dll() -> Path | None:
-    """Szuka EDSDK.dll: EDSDK_DLL z .env (plik lub katalog), potem PROJECT_DIR
-    i PROJECT_DIR/edsdk. Uzywane tez przez make_camera_session() do auto-wyboru."""
+    """Szuka biblioteki EDSDK: EDSDK_DLL z .env (plik lub katalog), potem
+    PROJECT_DIR i PROJECT_DIR/edsdk. Windows: EDSDK.dll; macOS: binarka w
+    EDSDK.framework. Uzywane tez przez make_camera_session() do auto-wyboru."""
+    if sys.platform == "darwin":
+        def in_framework(p: Path) -> Path:
+            if p.name.endswith(".framework"):
+                return p / "EDSDK"
+            return p if p.name == "EDSDK" else p / "EDSDK.framework" / "EDSDK"
+        candidates = [in_framework(Path(EDSDK_DLL))] if EDSDK_DLL else []
+        candidates += [PROJECT_DIR / "EDSDK.framework" / "EDSDK",
+                       PROJECT_DIR / "edsdk" / "EDSDK.framework" / "EDSDK"]
+        return next((p for p in candidates if p.is_file()), None)
     candidates = []
     if EDSDK_DLL:
         p = Path(EDSDK_DLL)
@@ -147,6 +169,26 @@ def _dll_is_64bit(path: Path) -> bool:
     pe_off = struct.unpack_from("<i", head, 60)[0]
     machine = struct.unpack_from("<H", head, pe_off + 4)[0]
     return machine == 0x8664
+
+
+_CF = None
+_CF_DEFAULT_MODE = None
+
+
+def _run_loop_once() -> None:
+    """macOS: jeden niezablokowany obrot run loopa biezacego watku. Czesc
+    zdarzen EDSDK na macOS idzie przez CFRunLoop, a nasz watek camera zadnego
+    nie kreci — odpowiednik pompy komunikatow z Windowsa."""
+    global _CF, _CF_DEFAULT_MODE
+    try:
+        if _CF is None:
+            _CF = ctypes.CDLL("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")
+            _CF.CFRunLoopRunInMode.argtypes = [ctypes.c_void_p, ctypes.c_double, ctypes.c_bool]
+            _CF.CFRunLoopRunInMode.restype = ctypes.c_int32
+            _CF_DEFAULT_MODE = ctypes.c_void_p.in_dll(_CF, "kCFRunLoopDefaultMode")
+        _CF.CFRunLoopRunInMode(_CF_DEFAULT_MODE, 0.0, True)
+    except (OSError, ValueError):
+        pass
 
 
 class EdsdkError(RuntimeError):
@@ -176,25 +218,41 @@ class EdsdkSession:
         if _SDK is not None:
             return _SDK
         dll = find_edsdk_dll()
+        if dll is None and sys.platform == "darwin":
+            raise RuntimeError(
+                "Nie znaleziono EDSDK.framework. Pobierz Canon EDSDK dla macOS z "
+                "programu deweloperskiego Canona i poloz EDSDK.framework w katalogu "
+                "aplikacji (albo ustaw EDSDK_DLL w .env)."
+            )
         if dll is None:
             raise RuntimeError(
                 "Nie znaleziono EDSDK.dll. Pobierz Canon EDSDK (x64) z programu "
                 "deweloperskiego Canona i poloz EDSDK.dll + EdsImage.dll obok "
                 "aplikacji (albo ustaw EDSDK_DLL w .env). Szczegoly: WINDOWS.md."
             )
-        if not _dll_is_64bit(dll):
-            raise RuntimeError(
-                f"{dll} jest 32-bitowa — 64-bitowy Python jej nie zaladuje. "
-                "Potrzebna wersja x64 z oficjalnego SDK Canona (paczka zawiera obie)."
-            )
-        os.add_dll_directory(str(dll.parent))
-        try:
-            sdk = ctypes.WinDLL(str(dll))
-        except OSError as exc:
-            raise RuntimeError(
-                f"Nie udalo sie zaladowac {dll}: {exc}. Sprawdz, czy obok lezy "
-                "EdsImage.dll z tej samej paczki SDK."
-            ) from exc
+        if sys.platform == "darwin":
+            try:
+                sdk = ctypes.CDLL(str(dll))
+            except OSError as exc:
+                raise RuntimeError(
+                    f"Nie udalo sie zaladowac {dll}: {exc}. Jesli macOS blokuje "
+                    "framework pobrany z internetu: xattr -dr com.apple.quarantine "
+                    "EDSDK.framework."
+                ) from exc
+        else:
+            if not _dll_is_64bit(dll):
+                raise RuntimeError(
+                    f"{dll} jest 32-bitowa — 64-bitowy Python jej nie zaladuje. "
+                    "Potrzebna wersja x64 z oficjalnego SDK Canona (paczka zawiera obie)."
+                )
+            os.add_dll_directory(str(dll.parent))
+            try:
+                sdk = ctypes.WinDLL(str(dll))
+            except OSError as exc:
+                raise RuntimeError(
+                    f"Nie udalo sie zaladowac {dll}: {exc}. Sprawdz, czy obok lezy "
+                    "EdsImage.dll z tej samej paczki SDK."
+                ) from exc
         # argtypes MUSZA byc kompletne: bez nich ctypes przepycha Pythonowy int
         # jako 32-bitowy `int`, a uchwyty EDSDK (EdsBaseRef) na x64 to wskazniki
         # powyzej 4 GB. Ucinaly sie po drodze, wiec kazde wywolanie z uchwytem
@@ -203,7 +261,9 @@ class EdsdkSession:
         u32, i32, u64 = ctypes.c_uint32, ctypes.c_int32, ctypes.c_uint64
         void_p = ctypes.c_void_p
         p_void_p = ctypes.POINTER(void_p)
-        _HANDLER_TYPE = ctypes.WINFUNCTYPE(u32, u32, void_p, void_p)
+        # Windows: __stdcall (WINFUNCTYPE); macOS: zwykla konwencja C
+        _HANDLER_TYPE = (ctypes.WINFUNCTYPE if sys.platform == "win32"
+                         else ctypes.CFUNCTYPE)(u32, u32, void_p, void_p)
         sdk.EdsGetCameraList.argtypes = [p_void_p]
         sdk.EdsGetChildCount.argtypes = [void_p, ctypes.POINTER(u32)]
         sdk.EdsGetChildAtIndex.argtypes = [void_p, i32, p_void_p]
@@ -224,7 +284,13 @@ class EdsdkSession:
         sdk.EdsGetLength.argtypes = [void_p, ctypes.POINTER(u64)]
         sdk.EdsSetPropertyData.argtypes = [void_p, u32, i32, u32, void_p]
         sdk.EdsGetPropertyData.argtypes = [void_p, u32, i32, u32, void_p]
+        # nowsze SDK (13.18+) — ramka AF/zoomu w live view; starsze jej nie maja
+        if hasattr(sdk, "EdsSetFramePoint"):
+            sdk.EdsSetFramePoint.argtypes = [void_p, _EdsPoint, ctypes.c_bool]
 
+        if sys.platform != "win32":
+            _SDK = sdk
+            return sdk
         _USER32 = ctypes.WinDLL("user32")
         _USER32.PeekMessageW.argtypes = [ctypes.POINTER(_Msg), void_p, u32, u32, u32]
         _USER32.PeekMessageW.restype = ctypes.c_int
@@ -266,6 +332,8 @@ class EdsdkSession:
         NIE jest wolane przy zamykaniu sesji — watek camera zyje przez caly
         proces i przy reconnekcie wraca tu ten sam watek (S_FALSE), a zrywanie
         apartamentu pod zainicjalizowanym SDK to proszenie sie o klopoty."""
+        if sys.platform != "win32":
+            return   # macOS: COM nie istnieje, zdarzenia zbiera EdsGetEvent + run loop
         try:
             ctypes.windll.ole32.CoInitializeEx(None, 0x2)  # APARTMENTTHREADED
         except OSError:
@@ -282,6 +350,9 @@ class EdsdkSession:
         nie przychodzi. Limit 32 komunikatow na obrot, zeby pompa nie zjadla
         petli czekania."""
         self._sdk.EdsGetEvent()
+        if sys.platform == "darwin":
+            _run_loop_once()
+            return
         if _USER32 is None:
             return
         msg = _Msg()
@@ -313,8 +384,8 @@ class EdsdkSession:
 
     def open(self) -> None:
         global _SDK_INITIALIZED
-        if sys.platform != "win32":
-            raise RuntimeError("backend edsdk dziala tylko na Windows")
+        if sys.platform not in ("win32", "darwin"):
+            raise RuntimeError("backend edsdk dziala tylko na Windows i macOS")
         self._init_com()
         self._sdk = self._load()
         if not _SDK_INITIALIZED:
@@ -432,6 +503,33 @@ class EdsdkSession:
         if not data.startswith(_JPEG_MAGIC):
             raise RuntimeError("EDSDK: klatka live view nie jest JPEG-iem")
         return data
+
+    def focus_at(self, fx: float, fy: float) -> str:
+        """Ostrość w punkcie podglądu: (fx, fy) to ułamki szerokości/wysokości
+        klatki live view (0–1). Ramka AF jedzie w ten punkt (EdsSetFramePoint,
+        a na starszym SDK Evf_ZoomPosition), potem półwciśnięcie przez
+        DoEvfAf ON → OFF. Działa tylko w trybie AF z wybieranym punktem —
+        w trybie twarz+śledzenie albo przy MF aparat to ignoruje."""
+        size = _EdsSize()
+        code = self._sdk.EdsGetPropertyData(self._camera, _PROP_EVF_COORDINATE_SYSTEM,
+                                            0, ctypes.sizeof(size), ctypes.byref(size))
+        self._check(code, "Evf_CoordinateSystem")
+        x = int(max(0.0, min(1.0, fx)) * size.width)
+        y = int(max(0.0, min(1.0, fy)) * size.height)
+        pt = _EdsPoint(x, y)
+        if hasattr(self._sdk, "EdsSetFramePoint"):
+            self._check(self._sdk.EdsSetFramePoint(self._camera, pt, False), "EdsSetFramePoint")
+        else:
+            self._check(self._sdk.EdsSetPropertyData(self._camera, _PROP_EVF_ZOOM_POSITION, 0,
+                                                     ctypes.sizeof(pt), ctypes.byref(pt)),
+                        "Evf_ZoomPosition")
+        self._check(self._sdk.EdsSendCommand(self._camera, _CMD_DO_EVF_AF, 1), "DoEvfAf ON")
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < 1.2:   # aparat ostrzy; zdarzenia muszą płynąć
+            self._pump()
+            time.sleep(0.03)
+        self._sdk.EdsSendCommand(self._camera, _CMD_DO_EVF_AF, 0)
+        return f"{x},{y} z {size.width}×{size.height}"
 
     def capture_to(self, workdir: Path) -> Path:
         try:

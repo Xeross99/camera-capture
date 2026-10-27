@@ -23,8 +23,9 @@ function sesjaScreen() {
           ${liveEmptyHtml(st)}
           <!-- obraz PO karcie: pierwsza klatka zawsze ją przykrywa (przed nią
                <img> MJPEG jest przezroczysty i karta jest widoczna) -->
-          ${liveOn ? `<img id="live" src="/stream" alt="Podgląd na żywo" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;" />` : ""}
-          <div id="grid-overlay" style="position: absolute; inset: 0; display: ${grid.cols && liveOn ? "block" : "none"}; background: ${gridBackground(grid.cols, grid.rows)};"></div>
+          ${liveOn ? `<img id="live" src="/stream" alt="Podgląd na żywo" ${st.focusSupported ? `class="live-focusable" title="Kliknij, żeby ustawić ostrość w tym miejscu" onclick="focusAt(event)"` : ""} style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;" />` : ""}
+          <span id="af-box" class="af-box" hidden></span>
+          <div id="grid-overlay" style="position: absolute; inset: 0; pointer-events: none; display: ${grid.cols && liveOn ? "block" : "none"}; background: ${gridBackground(grid.cols, grid.rows)};"></div>
 
           <div id="grid-seg" class="overlay-seg" role="group" aria-label="Siatka kadrowania" style="left: 14px; top: 14px;">
             <span class="overlay-pill"></span>
@@ -204,6 +205,46 @@ function liveEmptyHtml(st) {
       <div class="live-empty-text">${v.text}</div>
       ${v.foot}
     </div>`;
+}
+
+// Ostrość w klikniętym punkcie podglądu (Canon EDSDK). Ramka AF pojawia się od
+// razu, pulsuje, aż aparat odpowie, a potem robi się zielona (złapał) albo
+// czerwona (nie: zły tryb AF, MF, za ciemno). Wynik przychodzi w state.focus.
+let afSeq = 0;
+function focusAt(ev) {
+  const img = ev.currentTarget, r = img.getBoundingClientRect();
+  // klatka jest 3:2 w ramce 3:2 (object-fit: contain) — ułamek = pozycja w img
+  const fx = (ev.clientX - r.left) / r.width, fy = (ev.clientY - r.top) / r.height;
+  const box = $("af-box");
+  if (box) {
+    clearTimeout(box._t);   // znikanie poprzedniej ramki nie może schować tej
+    box.style.left = `${fx * 100}%`;
+    box.style.top = `${fy * 100}%`;
+    box.className = "af-box busy";
+    box.hidden = false;
+    void box.offsetWidth;
+  }
+  post({ action: "focus_at", x: fx, y: fy }).then(r => r.json()).then(res => {
+    if (res && res.ok) afSeq = res.seq;
+    else afResult(false);
+  }).catch(() => afResult(false));
+}
+
+function afResult(ok) {
+  const box = $("af-box");
+  if (!box || box.hidden) return;
+  box.className = `af-box ${ok ? "ok" : "fail"}`;
+  clearTimeout(box._t);
+  box._t = setTimeout(() => {
+    box.className = `af-box ${ok ? "ok" : "fail"} out`;
+    box._t = setTimeout(() => { box.hidden = true; }, 230);
+  }, ok ? 1200 : 1800);
+}
+
+// Z pollu: wynik dla ostatniego kliknięcia (seq), gdy już przyszedł.
+function afReconcile(st) {
+  const f = st.focus;
+  if (afSeq && f && f.seq === afSeq) { afSeq = 0; afResult(f.ok); }
 }
 
 // Sesja Automatu o tej nazwie (z listy sesji) — stad dopasowany produkt.

@@ -117,6 +117,7 @@ def _serve() -> int:
         "get_setting": lambda req: ses.get_setting(req["key"]),
         "set_setting": lambda req: ses.set_setting(req["key"], req["value"]),
         "get_settings": lambda req: ses.get_settings(),
+        "focus_at": lambda req: ses.focus_at(req["x"], req["y"]),
         "close": lambda req: ses.close(),
     }
     while True:
@@ -308,3 +309,6 @@ class EdsdkProxy:
 
     def get_settings(self) -> dict:
         return self._call("get_settings")
+
+    def focus_at(self, fx: float, fy: float) -> str:
+        return self._call("focus_at", x=fx, y=fy)

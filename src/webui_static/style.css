@@ -466,3 +466,22 @@ html[data-theme="dark"] .theme-light, html:not([data-theme]) .theme-light { disp
 .warm-progress > span { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--accent); transition: width .5s ease; }
 .warm-progress > span.indet { width: 35% !important; animation: indet 1.3s ease-in-out infinite; }
 .warm-meta { margin-top: 6px; font-size: 12px; color: var(--muted-2); }
+
+/* Ostrość w punkcie (klik w podgląd) */
+.live-focusable { cursor: crosshair; }
+.af-box { position: absolute; z-index: 2; width: 64px; height: 44px; margin: -22px 0 0 -32px; border: 2px solid #fff; border-radius: 6px; box-shadow: 0 0 0 1px rgba(0, 0, 0, .35); pointer-events: none; }
+.af-box { transition: border-color .15s ease; }
+/* wejście: z dużej ramki zjeżdża na punkt z lekkim odbiciem, potem „oddycha"
+   skalą, aż aparat odpowie */
+.af-box.busy { animation: afIn .32s cubic-bezier(.34, 1.56, .64, 1), afBreathe .9s ease-in-out .32s infinite; }
+/* złapał: krótkie zaciśnięcie i powrót, zielona poświata */
+.af-box.ok { border-color: #4ade80; box-shadow: 0 0 0 1px rgba(0, 0, 0, .35), 0 0 14px rgba(74, 222, 128, .55); animation: afLock .35s cubic-bezier(.34, 1.56, .64, 1); }
+/* nie złapał: wyskok w górę i opadnięcie, czerwona */
+.af-box.fail { border-color: #f87171; animation: afMiss .45s cubic-bezier(.34, 1.56, .64, 1); }
+/* znikanie: skala w dół i fade */
+.af-box.out { animation: afOut .22s ease-in forwards; }
+@keyframes afIn { from { transform: scale(1.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes afBreathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(.9); } }
+@keyframes afLock { 0% { transform: scale(1); } 45% { transform: scale(.8); } 100% { transform: scale(1); } }
+@keyframes afMiss { 0% { transform: scale(1); } 40% { transform: scale(1.18); } 100% { transform: scale(1); } }
+@keyframes afOut { to { transform: scale(.6); opacity: 0; } }

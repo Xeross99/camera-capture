@@ -473,6 +473,9 @@ class CameraSession:
         camera_file = self.camera.capture_preview()
         return bytes(camera_file.get_data_and_size())
 
+    def focus_at(self, fx: float, fy: float) -> str:
+        raise RuntimeError("ostrość w punkcie działa tylko przez Canon EDSDK")
+
     def capture_to(self, workdir: Path) -> Path:
         """Pelnoprawny strzal (retry + reset USB jak w capture_from_camera)."""
         file_path, self.camera = _capture_with_retry(self.camera)
@@ -605,6 +608,13 @@ def make_camera_session():
         backend = "edsdk" if sys.platform == "win32" else "auto"
         reason = "backend digiCamControl został usunięty — używam EDSDK"
         print(f"Uwaga: {reason}.")
+    if backend == "auto" and sys.platform == "darwin":
+        # macOS: EDSDK, gdy EDSDK.framework leży obok aplikacji (pełna kontrola
+        # Canona: podgląd, ostrość w punkcie); bez niego gphoto2 jak dotąd
+        from .camera_edsdk import find_edsdk_dll
+        dll = find_edsdk_dll()
+        if dll is not None:
+            backend, reason = "edsdk", f"auto: znaleziono {dll.parent.name}"
     if backend == "auto":
         if gp is not None:
             backend, reason = "gphoto2", "auto: gphoto2 dostępne"

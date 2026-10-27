@@ -10,3 +10,9 @@ photos/*
 .DS_Store
 # token do wydan, wpisywany przez CI przy budowie .exe (src/updater.py)
 src/update_token.py
+
+# Canon EDSDK dla macOS (licencja Canona, nie do repo — jak EDSDK.dll na Windowsie)
+EDSDK.framework/
+.edsdk-headers/
+# czasy rozgrzewki silnika czyszczenia tla na tym komputerze
+.warmup.json

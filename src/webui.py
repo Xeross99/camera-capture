@@ -37,6 +37,7 @@ from .automat_uploader import (AutomatNotFound, AutomatUploader,
                                describe_opened_session)
 from .camera import CAMERA_ERRORS, make_camera_session
 from .config import (
+    CAMERA_BACKEND,
     CAMERA_EDSDK_ISOLATION,
     PREVIEW_FPS,
     CLEAN_BG_GPU,
@@ -172,6 +173,16 @@ class _LogPipe(io.TextIOBase):
             if line.strip():
                 self.ui._log(line.strip())
         return len(s)
+
+
+def _edsdk_missing() -> bool:
+    """Windows bez EDSDK.dll: aparatem nie ma czym sterować, a plików nie ma w
+    paczce (licencja Canona) — UI pokazuje wtedy, skąd je wziąć. Na macOS/Linux
+    aparat idzie przez gphoto2, więc nigdy."""
+    if sys.platform != "win32" or CAMERA_BACKEND not in ("auto", "edsdk", "digicamcontrol"):
+        return False
+    from .camera_edsdk import find_edsdk_dll
+    return find_edsdk_dll() is None
 
 
 class WebUI:
@@ -2110,6 +2121,7 @@ class WebUI:
             bg = self.bg_range
             return {
                 "connected": self.connected,
+                "edsdkMissing": _edsdk_missing(),
                 "warmup": None if self.warmup_done else int(time.monotonic() - self.warmup_t0),
                 "fps": round(self.fps),
                 "previewOn": self.preview_on,

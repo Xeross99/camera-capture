@@ -438,3 +438,15 @@ html[data-theme="dark"] .theme-light, html:not([data-theme]) .theme-light { disp
 @keyframes liveRing { 0% { opacity: .55; transform: scale(1); } 100% { opacity: 0; transform: scale(1.9); } }
 @keyframes liveNudge { 0%, 70%, 100% { transform: rotate(0); } 76% { transform: rotate(-8deg); } 82% { transform: rotate(7deg); } 88% { transform: rotate(-4deg); } 94% { transform: rotate(2deg); } }
 @keyframes liveBreathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+
+/* Brak Canon EDSDK (Windows) */
+.live-empty.sdk { max-width: 460px; text-align: left; align-items: stretch; gap: 8px; }
+.live-empty.sdk .live-empty-icon { align-self: center; background: var(--warn-soft); color: var(--warn-fg-3); }
+.live-empty.sdk .live-empty-title { text-align: center; }
+.live-empty.sdk .live-empty-text { text-align: center; }
+.live-empty.sdk .btn { align-self: center; margin-top: 4px; }
+.sdk-steps { display: flex; flex-direction: column; gap: 7px; margin-top: 6px; padding: 12px 14px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--hair); font-size: 12.5px; line-height: 1.45; color: var(--text-2); }
+.sdk-steps > div { display: flex; gap: 10px; align-items: flex-start; }
+.sdk-n { width: 18px; height: 18px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--accent-soft); color: var(--accent-fg); font-size: 11px; font-weight: 700; }
+.sdk-person { display: inline-flex; align-items: center; gap: 5px; vertical-align: -4px; }
+.sdk-person img { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; box-shadow: 0 0 0 1px var(--border); }

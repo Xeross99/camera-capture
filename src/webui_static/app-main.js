@@ -84,7 +84,7 @@ let lastShellKey = "", lastSesja = "", lastUstawienia = "", lastStrip = "";
 // z pollu (renderScreens), bez dotykania reszty DOM.
 const sesjaKey = st => JSON.stringify([st.session.name, st.session.dir,
   ...(S.reviewMode ? [] : [st.shots, st.processing, st.downloading]),
-  st.post, st.previewOn, S.selShot, S.logOpen, S.grid, S.reviewMode]);
+  st.post, st.previewOn, st.edsdkMissing, S.selShot, S.logOpen, S.grid, S.reviewMode]);
 
 const stripSig = st => JSON.stringify([st.shots, st.processing, st.downloading]);
 

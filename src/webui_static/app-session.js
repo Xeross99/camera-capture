@@ -134,7 +134,25 @@ const UNPLUGGED_SVG = `
     </g>
   </svg>`;
 
+// Brak Canon EDSDK (Windows): pliki są na licencji Canona, więc nie ma ich
+// w paczce aplikacji — karta mówi, po co są, skąd je wziąć i gdzie położyć.
+function edsdkMissingHtml() {
+  return `
+    <div class="live-empty sdk">
+      <div class="live-empty-icon">${icon("puzzle", 26, 1.6)}</div>
+      <div class="live-empty-title">Brak sterownika aparatu Canon</div>
+      <div class="live-empty-text">Aplikacja steruje aparatem przez Canon EDSDK: robi zdjęcia, pobiera je po USB i pokazuje podgląd na żywo. Pliki <span class="mono">EDSDK.dll</span> i <span class="mono">EdsImage.dll</span> wymagają licencji Canona, dlatego nie ma ich w paczce aplikacji.</div>
+      <div class="sdk-steps">
+        <div><span class="sdk-n">1</span><span>Poproś o pliki: <span class="sdk-person"><img src="/author" alt="" /><b>Michał Krzysteczko</b></span>, ma licencję na Canon EDSDK.</span></div>
+        <div><span class="sdk-n">2</span><span>Połóż oba pliki obok <span class="mono">Trixbrix - Camera Capture.exe</span>.</span></div>
+        <div><span class="sdk-n">3</span><span>Uruchom aplikację ponownie.</span></div>
+      </div>
+      <button type="button" class="btn btn-sm" onclick="post({action:'open_url', url: 'https://github.com/Xeross99'})">${GITHUB_MARK.replace("width: 24px; height: 24px", "width: 14px; height: 14px")}Kontakt: Xeross99${icon("external", 13, 1.8)}</button>
+    </div>`;
+}
+
 function liveEmptyHtml(st) {
+  if (st.edsdkMissing) return edsdkMissingHtml();
   const v = !st.connected
     ? { cls: "err", ic: "cameraOff", title: "Aparat rozłączony", text: "Sprawdź kabel USB i czy aparat jest włączony.", foot: `<span class="live-empty-foot"><span class="spinner"></span>Łączę ponownie…</span>` }
     : st.previewOn
@@ -180,6 +198,7 @@ const BG_DOT = { ok: "ok", dark: "warn", unknown: "" };
 // Stan, w którym nie ma czego ustawiać: rozłączony aparat albo tryb bez
 // kompensacji (M). Zamiast wyszarzonych −/+ mówi wprost, co się dzieje.
 function camOffHtml(st) {
+  if (st.edsdkMissing) return `<span class="dot warn"></span><span><b>Brak Canon EDSDK.</b> Bez tych plików aplikacja nie połączy się z aparatem. Szczegóły w ramce podglądu.</span>`;
   if (!st.connected) return `<span class="dot err"></span><span><b>Aparat rozłączony.</b> Kompensacja wróci po połączeniu.</span>`;
   return `<span class="dot warn"></span><span><b>Kompensacja niedostępna</b> w tym trybie. Ustaw pokrętło aparatu na P, Av albo Tv.</span>`;
 }

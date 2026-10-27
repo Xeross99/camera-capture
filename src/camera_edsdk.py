@@ -4,7 +4,7 @@ Zero posrednikow — zadnego digiCamControl: aplikacja laduje EDSDK.dll
 (+ EdsImage.dll z tego samego katalogu) na Windowsie albo EDSDK.framework na
 macOS i rozmawia z aparatem po USB sama. SDK NIE jest w repo (licencja
 Canona) — pobierz z programu deweloperskiego Canona i poloz obok aplikacji
-(szczegoly: WINDOWS.md, a na macOS EDSDK.framework w katalogu projektu).
+(szczegoly: README, a na macOS EDSDK.framework w katalogu projektu).
 
 Interfejs 1:1 z CameraSession (open/preview_frame/capture_to/get_settings/
 set_setting/close) — webui nie widzi roznicy miedzy backendami.
@@ -229,7 +229,7 @@ class EdsdkSession:
             raise RuntimeError(
                 "Nie znaleziono EDSDK.dll. Pobierz Canon EDSDK (x64) z programu "
                 "deweloperskiego Canona i poloz EDSDK.dll + EdsImage.dll obok "
-                "aplikacji (albo ustaw EDSDK_DLL w .env). Szczegoly: WINDOWS.md."
+                "aplikacji (albo ustaw EDSDK_DLL w .env). Szczegoly: README."
             )
         if sys.platform == "darwin":
             try:

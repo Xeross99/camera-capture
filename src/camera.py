@@ -18,7 +18,7 @@ def make_camera_session():
     dll = find_edsdk_dll()
     missing = ("BRAK EDSDK.framework w katalogu aplikacji" if sys.platform == "darwin"
                else "BRAK EDSDK.dll obok aplikacji — połóż EDSDK.dll "
-                    "+ EdsImage.dll (x64) obok .exe, patrz WINDOWS.md")
+                    "+ EdsImage.dll (x64) obok .exe, patrz README")
     reason = f"znaleziono {dll}" if dll else missing
     if CAMERA_EDSDK_ISOLATION:
         # SDK w osobnym procesie: zawieszka w DLL-u = kill dziecka +

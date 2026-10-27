@@ -8,7 +8,7 @@
 <h1 align="center">Camera Capture</h1>
 
 A product photography app. The camera stands on a tripod, connected over USB, and the operator presses
-ENTER. The photo gets a white background, the product lands in the centre of the frame, a logo appears in
+<kbd>Enter</kbd>. The photo gets a white background, the product lands in the centre of the frame, a logo appears in
 the corner, and the finished 3000 × 3000 JPEG goes to the session in the API.
 
 ## Result
@@ -44,7 +44,7 @@ The same products straight from the camera and after processing in the app, with
    next to it, and the processed photo goes to the session in the API. The raw original stays on disk only.
 
 One photo takes a few seconds from the shutter to the file on disk. Between shots, turn the product and press
-ENTER again.
+<kbd>Enter</kbd> again.
 
 ## The app
 
@@ -53,7 +53,7 @@ The interface is in Polish.
 ### Session list
 
 The start screen shows every session from the API, grouped by day, with a cover, the matched product and
-the number of photos. A new session starts at the top: type the product name and press ENTER. The list can be
+the number of photos. A new session starts at the top: type the product name and press <kbd>Enter</kbd>. The list can be
 searched and narrowed to a day, week or month and to a number of photos, and the arrow keys move between tiles.
 
 <img src="assets/readme/sessions.jpg" width="100%" alt="Session list grouped by day">
@@ -70,8 +70,8 @@ waiting to upload). Photos taken on another computer are downloaded from the API
 
 ### Photo viewer and editing
 
-SPACE opens a photo full window, the arrow keys move between photos, BACKSPACE deletes (to the trash on disk
-and from the API). "Edit" (the E key) removes, adds or moves the logo on a finished photo. The preview next
+<kbd>Space</kbd> opens a photo full window, the arrow keys move between photos, <kbd>Backspace</kbd> deletes (to the trash on disk
+and from the API). "Edit" (<kbd>E</kbd>) removes, adds or moves the logo on a finished photo. The preview next
 to it shows exactly what will be saved, and the change also replaces the same photo in the API.
 
 <img src="assets/readme/review.jpg" width="100%" alt="A photo opened full window">
@@ -97,15 +97,15 @@ theme switches with the icon in the top right corner.
 
 | Key | What it does |
 |---|---|
-| **ENTER** | takes a photo (in the session list: opens the selected one) |
-| **SPACE** | opens the photo viewer full window |
-| **← →** | moves between photos |
-| **E** | edits the logo on the photo being viewed |
-| **BACKSPACE** | deletes the photo: it goes to the trash on disk and disappears from the API |
-| **ESC** | closes the viewer or leaves the session |
-| **P** | turns the camera live view on and off |
-| **⌘F / Ctrl+F** | searches sessions |
-| **⌘N / Ctrl+N** | starts a new session |
+| <kbd>Enter</kbd> | takes a photo (in the session list: opens the selected one) |
+| <kbd>Space</kbd> | opens the photo viewer full window |
+| <kbd>←</kbd> <kbd>→</kbd> | moves between photos |
+| <kbd>E</kbd> | edits the logo on the photo being viewed |
+| <kbd>Backspace</kbd> | deletes the photo: it goes to the trash on disk and disappears from the API |
+| <kbd>Esc</kbd> | closes the viewer or leaves the session |
+| <kbd>P</kbd> | turns the camera live view on and off |
+| <kbd>⌘</kbd> <kbd>F</kbd> / <kbd>Ctrl</kbd> <kbd>F</kbd> | searches sessions |
+| <kbd>⌘</kbd> <kbd>N</kbd> / <kbd>Ctrl</kbd> <kbd>N</kbd> | starts a new session |
 
 ## API
 
@@ -120,16 +120,23 @@ The app talks to the server through `/api/photo_studio` (address and token in Se
 | `GET` | `/sessions/:id/photos/:photo_id/file` | download a photo to disk |
 | `POST` | `/sessions/:id/photos` | announce a photo right after the shutter, then the file |
 | `PUT` | `/sessions/:id/photos/:photo_id` | the finished JPEG for an announced photo |
-| `DELETE` | `/sessions/:id/photos/:photo_id` | delete a photo (BACKSPACE) |
+| `DELETE` | `/sessions/:id/photos/:photo_id` | delete a photo (<kbd>Backspace</kbd>) |
 
 ## Installing on Windows
 
+Windows 10 or 11 with the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
+(Windows 11 has it built in).
+
 1. Download `CameraCapture-windows-vX.Y.Z.zip` from the latest release and unzip it anywhere.
 2. Put `EDSDK.dll` and `EdsImage.dll` (x64) from Canon EDSDK next to the `.exe`. They are not in the
-   repository because Canon's licence does not allow it.
-3. Copy `.env.example` to `.env` and enter the API token (`AUTOMAT_TOKEN`).
+   repository because Canon's licence does not allow it: download Canon EDSDK from Canon's developer
+   programme (a free account).
+3. Copy `.env.example` to `.env` and enter the API token (`AUTOMAT_TOKEN`). Photos go to `photos\` next to
+   the `.exe`.
+4. The `.exe` is not signed, so Windows SmartScreen may warn the first time: **More info → Run anyway**.
 
-Details, including camera settings and troubleshooting: [WINDOWS.md](WINDOWS.md) (in Polish).
+The first background cleanup downloads the background removal model (about 4.5 MB) to `%USERPROFILE%\.u2net\`,
+so it needs internet access once.
 
 ## Installing on macOS
 
@@ -153,7 +160,18 @@ A new version ships by itself: bump `APP_VERSION` in `src/version.py` and push t
 runs the tests, builds the Windows and macOS packages and publishes a release in this repository, where the
 app picks up its updates.
 
-## Running from source (macOS)
+## Camera notes
+
+- Exposure (ISO, aperture, shutter speed, white balance, AF mode) is set on the camera; the app changes only
+  exposure compensation.
+- The shot uses autofocus. If AF does not lock, the app says so: switch the lens to MF or fix the framing.
+- Clicking the live view sets the focus at that point.
+- Photos go straight to the app. If the camera does not hand the file over, after 8 seconds the app takes the
+  newest photo from the memory card instead.
+
+## Running from source
+
+macOS:
 
 ```bash
 python3 -m venv .venv
@@ -163,10 +181,25 @@ python3 gui.py              # app window
 python3 gui.py --browser    # the same in a browser
 ```
 
-On macOS the camera works only through Canon EDSDK: `EDSDK.framework` (from Canon's macOS package, not in
-the repository) must sit in the app folder. A framework downloaded with a browser has to be released from
-quarantine: `xattr -dr com.apple.quarantine EDSDK.framework`. Clicking the live view sets the focus at
-that point.
+Windows (Python 3.11 or newer):
+
+```bat
+python -m venv .venv-win
+.venv-win\Scripts\activate
+pip install -r requirements-windows.txt
+python gui.py
+```
+
+`requirements-windows.txt` swaps `onnxruntime` for `onnxruntime-directml`, so background removal runs on the
+graphics card. Canon EDSDK sits in the project folder: `EDSDK.framework` on macOS (released from quarantine
+with `xattr -dr com.apple.quarantine EDSDK.framework` if downloaded with a browser), `EDSDK.dll` and
+`EdsImage.dll` on Windows.
+
+Optional `.env` settings beyond `.env.example`: `EDSDK_DLL` (path to the SDK if it is not in the app folder)
+and `CLEAN_BG_GPU=false` (background removal on the CPU, for machines with graphics driver trouble).
+
+To build the Windows package by hand, run `build_windows.bat` on Windows: the result is
+`dist\CameraCapture\`, to be moved as a whole. Releases do not need this, CI builds them.
 
 ## Tests
 

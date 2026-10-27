@@ -118,12 +118,6 @@ def is_newer(version: str) -> bool:
     return remote is not None and current is not None and remote > current
 
 
-def check_for_update() -> dict | None:
-    """Najnowszy release, gdy jest nowszy od zainstalowanej wersji, inaczej None."""
-    rel = latest_release()
-    return rel if rel and is_newer(rel["version"]) else None
-
-
 # ---------------------------------------------------------------- pobranie
 
 

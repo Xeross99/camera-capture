@@ -1,5 +1,4 @@
-"""Wspolne narzedzia nazewnictwa — bez zaleznosci od TUI (termios jest
-unix-only, wiec webui/gui na Windowsie nie moga importowac src.tui)."""
+"""Wspolne narzedzia nazewnictwa plikow i sesji."""
 
 import re
 

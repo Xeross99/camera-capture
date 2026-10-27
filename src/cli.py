@@ -1,4 +1,4 @@
-"""Wspolne flagi CLI dla obu wejsc aplikacji: main.py (TUI) i gui.py (okno)."""
+"""Flagi wiersza polecen aplikacji okienkowej (gui.py)."""
 
 import argparse
 from pathlib import Path

@@ -83,7 +83,7 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[],
-    excludes=["gphoto2", "usb", "termios", "tty"],
+    excludes=["termios", "tty"],
     noarchive=False,
 )
 pyz = PYZ(a.pure)

@@ -48,12 +48,7 @@ LOGO_MARGIN_RATIO = 0.04
 LOGO_OPACITY = 0.5  # stale krycie watermarku — celowo bez mozliwosci zmiany w UI
 JPEG_QUALITY = 95
 
-CAMERA_IMAGE_FORMAT: str | None = "L"
-
-# Backend aparatu: "auto" (gphoto2 jesli dostepne; na Windows edsdk),
-# "gphoto2" lub "edsdk". Backend digiCamControl usuniety (1.1.0).
-CAMERA_BACKEND = os.environ.get("CAMERA_BACKEND", "auto").strip().lower()
-# Canon EDSDK (jedyny backend Windows): sciezka do EDSDK.dll albo katalogu
+# Canon EDSDK (jedyny sterownik aparatu): sciezka do EDSDK.dll albo katalogu
 # z nia; bez tego szukana obok aplikacji (PROJECT_DIR i PROJECT_DIR/edsdk).
 EDSDK_DLL = os.environ.get("EDSDK_DLL", "").strip() or None
 # EDSDK w osobnym procesie (src/camera_proc.py): zawieszke w DLL-u Canona

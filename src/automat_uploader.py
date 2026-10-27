@@ -33,20 +33,6 @@ def describe_opened_session(uploader: "AutomatUploader", name: str) -> tuple[str
     return f"{base} — produkt nie znaleziony, sesja luźna{suffix}", "warn"
 
 
-def find_existing_session(uploader: "AutomatUploader", name: str) -> dict | None:
-    """Najnowsza sesja photo_studio o tej nazwie (case-insensitive) albo None.
-    Blad listy (brak sieci itd.) -> None, flow po prostu otworzy sesje po nazwie."""
-    try:
-        sessions = uploader.list_sessions()
-    except Exception:
-        return None
-    matches = [s for s in sessions
-               if (s.get("name") or "").strip().lower() == name.strip().lower()]
-    if not matches:
-        return None
-    return max(matches, key=lambda s: s.get("created_at") or "")
-
-
 class AutomatUploader:
     def __init__(
         self,

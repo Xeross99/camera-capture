@@ -1,5 +1,4 @@
 pillow>=11
-rich>=14
 numpy>=2
 scipy>=1.15
 rembg>=2.0.60
@@ -7,7 +6,5 @@ onnxruntime>=1.20
 requests>=2.32
 python-dotenv>=1.0
 pywebview
-# Aparat na macOS i Windowsie: Canon EDSDK (EDSDK.framework / EDSDK.dll obok
-# aplikacji, licencja Canona — nie z pip). gphoto2 i pyusb tylko dla Linuksa
-# i starego trybu terminalowego (python main.py):
-#   pip install "gphoto2>=2.6" "pyusb>=1.2"
+# Aparat: Canon EDSDK (EDSDK.framework na macOS / EDSDK.dll na Windowsie obok
+# aplikacji, licencja Canona — nie z pip).

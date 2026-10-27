@@ -153,7 +153,7 @@ const switchOn = el => el.getAttribute("aria-checked") === "true";
 // ---------- kompensacja ekspozycji (liczby, nie tekst) ----------
 
 // Kompensacja ekspozycji. Backendy mówią różnymi słowami: „+2 2/3" (EDSDK),
-// „+3.0" (digiCamControl), „0.3" (gphoto2) — a bywa, że odczyt bieżącej
+// „+3.0", „0.3" — a bywa, że odczyt bieżącej
 // wartości i lista kroków są w RÓŻNYCH zapisach w obrębie jednego aparatu.
 // Dlatego liczymy na liczbach, a nie na tekście: `+` idzie do najbliższej
 // wartości WIĘKSZEJ, `−` do najbliższej mniejszej. Poprzednia wersja szukała

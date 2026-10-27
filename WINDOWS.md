@@ -1,8 +1,7 @@
 # Camera Capture na Windowsie
 
-Aplikacja okienkowa (`gui.py`) działa na Windowsie. Jedyna realna różnica
-względem macOS: **libgphoto2 nie istnieje na Windowsie**, więc aparatem steruje
-**Canon EDSDK** (`src/camera_edsdk.py`) — aplikacja rozmawia z aparatem
+Aplikacja okienkowa (`gui.py`) działa na Windowsie tak samo jak na macOS: aparatem
+steruje **Canon EDSDK** (`src/camera_edsdk.py`) — aplikacja rozmawia z aparatem
 bezpośrednio po USB przez oficjalne SDK Canona (ctypes), bez żadnego procesu
 obok. (Backend digiCamControl został usunięty w 1.1.0.)
 
@@ -42,9 +41,8 @@ pip install -r requirements-windows.txt
 python gui.py
 ```
 
-`requirements-windows.txt` = `requirements.txt` bez `gphoto2` i `pyusb`
-(niedostępne na tej platformie), z `onnxruntime-directml` zamiast
-`onnxruntime` (inferencja rembg na GPU). Flagi te same co na macOS
+`requirements-windows.txt` = `requirements.txt` z `onnxruntime-directml`
+zamiast `onnxruntime` (inferencja rembg na GPU). Flagi te same co na macOS
 (`--name`, `--no-upload`, `--port`, `--browser`, …).
 
 ## Konfiguracja (`.env`)
@@ -52,7 +50,6 @@ python gui.py
 Jak na macOS (`.env.example`), plus opcjonalnie:
 
 ```
-CAMERA_BACKEND=auto            # auto = edsdk na Windowsie; można wymusić: edsdk / gphoto2
 EDSDK_DLL=                     # ścieżka do EDSDK.dll lub jej katalogu (domyślnie szukana obok aplikacji)
 CLEAN_BG_GPU=true              # false = rembg na CPU (bez kompilacji shaderów DirectML przy starcie)
 ```
@@ -103,5 +100,3 @@ release z paczką.
   ostrości, dostaniesz czytelny błąd; przełącz obiektyw na MF albo popraw kadr.
 - Zdjęcia lecą prosto do aplikacji (`SaveTo=Host`); gdy aparat mimo to nie
   zgłosi pliku, aplikacja po 8 s sama szuka najnowszego zdjęcia na karcie.
-- TUI (`main.py` bez `--input`) pozostaje macOS/Linux-only (termios);
-  na Windowsie działa `gui.py` oraz `main.py --input plik.jpg`.

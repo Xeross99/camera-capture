@@ -371,8 +371,7 @@ class EdsdkSession:
                 pass
 
     def _log(self, text: str, kind: str = "info") -> None:
-        """Do logu w UI, jesli backend dostal kanal; inaczej na stdout (TUI/CLI
-        i tak go przechwytuje)."""
+        """Do logu w UI, jesli backend dostal kanal; inaczej na stdout."""
         if self.on_log is not None:
             try:
                 self.on_log(text, kind)

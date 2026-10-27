@@ -1,7 +1,7 @@
 """Backend web UI (1:1 z projektu Claude Design "Camera Capture.dc.html").
 
 Serwer HTTP (stdlib) + trzy watki jak w poprzednim GUI:
-- camera: JEDYNY wlasciciel gphoto2 (preview loop z throttlingiem do
+- camera: JEDYNY wlasciciel sesji aparatu (preview loop z throttlingiem do
   preview_fps, komendy: shoot / preview on-off),
 - worker: obrobka (rembg) + Automat (announce/upload/delete),
 - HTTP (ThreadingHTTPServer): index.html, MJPEG stream, /api/state,
@@ -39,7 +39,6 @@ from .automat_uploader import (AutomatNotFound, AutomatUploader,
 from .camera import CAMERA_ERRORS, make_camera_session
 from .config import (
     PROJECT_DIR,
-    CAMERA_BACKEND,
     CAMERA_EDSDK_ISOLATION,
     PREVIEW_FPS,
     CLEAN_BG_GPU,
@@ -148,7 +147,7 @@ def _bg_status(bg: tuple[int, int] | None) -> str:
 class _LogPipe(io.TextIOBase):
     """Przekierowanie stdout do logu UI na czas obrobki zdjecia.
 
-    TUI przechwytuje print()y z pipeline'u od zawsze; webui je gubil — a w
+    Bez tego print()y z pipeline'u ginely — w
     spakowanym .exe bez konsoli print leci w nicosc. Przez to ani pomiar
     czasu z `clean_background`, ani ostrzezenia (np. brak pliku logo) nie
     docieraly do operatora."""
@@ -201,11 +200,8 @@ def _record_warmup(seconds: float) -> None:
 
 
 def _edsdk_missing() -> bool:
-    """Windows/macOS bez Canon EDSDK: aparatem nie ma czym sterować, a plików
-    nie ma w paczce (licencja Canona) — UI pokazuje wtedy, skąd je wziąć.
-    Linux idzie przez gphoto2, więc nigdy."""
-    if sys.platform not in ("win32", "darwin"):
-        return False
+    """Brak Canon EDSDK: aparatem nie ma czym sterować, a plików nie ma
+    w paczce (licencja Canona) — UI pokazuje wtedy, skąd je wziąć."""
     from .camera_edsdk import find_edsdk_dll
     return find_edsdk_dll() is None
 
@@ -535,15 +531,12 @@ class WebUI:
             self._do_focus_at(*rest)
 
     # Kompensacja ekspozycji. Wszystko leci wątkiem camera — aparat ma JEDNEGO
-    # właściciela (gphoto2 nie jest thread-safe, EDSDK wymaga tego samego wątku
-    # co reszta wywołań).
+    # właściciela (EDSDK wymaga tego samego wątku co reszta wywołań).
     def _refresh_ev(self) -> None:
         """Odpytanie aparatu o bieżącą kompensację. Operator kręci też pokrętłem
         na aparacie, więc UI musi za tym nadążać, a nie tylko pamiętać, co samo
         ustawiło."""
         try:
-            # get_setting = jeden widget, nie cale drzewo konfiguracji —
-            # pelny get_config() co 2 s zjadal klatki live view na gphoto2
             ev = self.session.get_setting("exposurecompensation")
         except Exception:
             ev = None
@@ -1825,7 +1818,6 @@ class WebUI:
                 "warmup": None if self.warmup_done else int(time.monotonic() - self.warmup_t0),
                 "warmupEta": self.warmup_eta,
                 "focus": self.focus_result,
-                # ostrość w punkcie tylko przez EDSDK (gphoto2 tego nie umie)
                 "focusSupported": "edsdk" in str(getattr(getattr(self, "session", None), "backend_info", "")),
                 "fps": round(self.fps),
                 "previewOn": self.preview_on,
@@ -1992,8 +1984,8 @@ class WebUI:
 
     def stop(self) -> None:
         """Uporzadkowane zamkniecie: NAJPIERW czekamy az watek aparatu wyjdzie
-        z petli i zamknie sesje gphoto2 (porzucona otwarta sesja PTP to
-        zawieszki libusb przy wyjsciu procesu + BUSY przy nastepnym starcie),
+        z petli i zamknie sesje aparatu (porzucona otwarta sesja to
+        zawieszki SDK przy wyjsciu procesu + BUSY przy nastepnym starcie),
         dopiero potem ubijamy serwer."""
         if self._stop.is_set():
             return

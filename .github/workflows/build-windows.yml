@@ -11,6 +11,12 @@ on:
 permissions:
   contents: write
 
+# Nowy push na te sama galaz anuluje starszy, niedokonczony przebieg — przy
+# kilku szybkich pushach wydaje sie tylko najnowsza wersja, a nie kazda po kolei
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # Testy (pytest tests/) na tym samym systemie co operator. Build i wydanie
   # ruszaja TYLKO po zielonych testach. Pakiety testowe (requirements-dev.txt)

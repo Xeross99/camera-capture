@@ -1,168 +1,174 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/readme/hero_dark.svg">
-    <img src="assets/readme/hero.svg" width="540" alt="Camera Capture: Enter na laptopie, aparat robi zdjęcie, laptop wybiela tło">
+    <img src="assets/readme/hero.svg" width="540" alt="Camera Capture: Enter on the laptop, the camera takes a photo, the laptop whitens the background">
   </picture>
 </p>
 
 <h1 align="center">Camera Capture</h1>
 
-Aplikacja do zdjęć produktowych. Aparat stoi na statywie i jest podłączony przez USB, a operator
-naciska ENTER. Zdjęcie dostaje białe tło, produkt ląduje na środku kadru, w rogu pojawia się logo, a gotowy
-JPEG 3000 × 3000 trafia do sesji w API.
+A product photography app. The camera stands on a tripod, connected over USB, and the operator presses
+ENTER. The photo gets a white background, the product lands in the centre of the frame, a logo appears in
+the corner, and the finished 3000 × 3000 JPEG goes to the session in the API.
 
-## Efekt
+## Result
 
-Te same produkty prosto z aparatu i po obróbce w aplikacji, bez żadnej ręcznej poprawki.
+The same products straight from the camera and after processing in the app, with no manual retouching.
 
 <table>
-  <tr><th width="50%">Prosto z aparatu</th><th width="50%">Po obróbce</th></tr>
+  <tr><th width="50%">Straight from the camera</th><th width="50%">After processing</th></tr>
   <tr>
-    <td><img src="assets/readme/before-1.jpg" width="100%" alt="Zdjęcie 1 prosto z aparatu"></td>
-    <td><img src="assets/readme/after-1.jpg" width="100%" alt="Zdjęcie 1 po obróbce"></td>
+    <td><img src="assets/readme/before-1.jpg" width="100%" alt="Photo 1 straight from the camera"></td>
+    <td><img src="assets/readme/after-1.jpg" width="100%" alt="Photo 1 after processing"></td>
   </tr>
   <tr>
-    <td><img src="assets/readme/before-2.jpg" width="100%" alt="Zdjęcie 2 prosto z aparatu"></td>
-    <td><img src="assets/readme/after-2.jpg" width="100%" alt="Zdjęcie 2 po obróbce"></td>
+    <td><img src="assets/readme/before-2.jpg" width="100%" alt="Photo 2 straight from the camera"></td>
+    <td><img src="assets/readme/after-2.jpg" width="100%" alt="Photo 2 after processing"></td>
   </tr>
   <tr>
-    <td><img src="assets/readme/before-3.jpg" width="100%" alt="Zdjęcie 3 prosto z aparatu"></td>
-    <td><img src="assets/readme/after-3.jpg" width="100%" alt="Zdjęcie 3 po obróbce"></td>
+    <td><img src="assets/readme/before-3.jpg" width="100%" alt="Photo 3 straight from the camera"></td>
+    <td><img src="assets/readme/after-3.jpg" width="100%" alt="Photo 3 after processing"></td>
   </tr>
 </table>
 
-## Jak to działa
+## How it works
 
-1. **Zdjęcie.** Aplikacja sama wyzwala migawkę i pobiera plik po USB przez Canon EDSDK, na Windowsie i na
-   macOS. Nie ma programu producenta pośrodku ani obserwowanego folderu.
-2. **Obróbka**, każdy krok do włączenia w panelu Postprocessing:
-   - **Wyrównanie tła do bieli:** tło dociągane do czystej bieli, cienie pod produktem wygaszone.
-   - **Przybliżanie i centrowanie:** kadr dociąga się do produktu i stawia go na środku, zamiast tam, gdzie
-     wypadł na stole. Zdjęcie pod kątem zostaje pod kątem: niczego nie prostujemy.
-   - **Logo:** TRIXBRIX.eu albo TRIXBRIX.eu KIDS, w wybranym rogu kadru.
-3. **Zapis i wysyłka.** Gotowy plik leży w `photos/<sesja>/`, obok niego surowy oryginał z aparatu, a
-   przetworzone zdjęcie idzie do sesji w API. Surowy oryginał zostaje tylko na dysku.
+1. **The shot.** The app fires the shutter itself and downloads the file over USB through Canon EDSDK, on
+   Windows and on macOS. There is no vendor program in between and no watched folder.
+2. **Processing**, each step switchable in the post-processing panel:
+   - **White background:** the background is pushed to pure white and the shadows under the product fade out.
+   - **Zoom and centring:** the frame closes in on the product and puts it in the centre instead of wherever
+     it happened to land on the table. A photo taken at an angle stays at that angle: nothing is straightened.
+   - **Logo:** TRIXBRIX.eu or TRIXBRIX.eu KIDS, in the chosen corner of the frame.
+3. **Saving and upload.** The finished file is stored in `photos/<session>/` with the raw camera original
+   next to it, and the processed photo goes to the session in the API. The raw original stays on disk only.
 
-Jedno zdjęcie od migawki do pliku na dysku trwa kilka sekund. Między strzałami wystarczy obrócić produkt i
-nacisnąć ENTER jeszcze raz.
+One photo takes a few seconds from the shutter to the file on disk. Between shots, turn the product and press
+ENTER again.
 
-## Aplikacja
+## The app
 
-### Lista sesji
+The interface is in Polish.
 
-Ekran startowy pokazuje wszystkie sesje z API, pogrupowane po dniach, z okładką, dopasowanym produktem
-i liczbą zdjęć. U góry zakłada się nową sesję: nazwa produktu i ENTER. Listę da się przeszukać, zawęzić do
-dnia, tygodnia albo miesiąca i do liczby zdjęć, a strzałkami chodzi się po kafelkach.
+### Session list
 
-<img src="assets/readme/sessions.jpg" width="100%" alt="Lista sesji pogrupowana po dniach">
+The start screen shows every session from the API, grouped by day, with a cover, the matched product and
+the number of photos. A new session starts at the top: type the product name and press ENTER. The list can be
+searched and narrowed to a day, week or month and to a number of photos, and the arrow keys move between tiles.
 
-### Sesja
+<img src="assets/readme/sessions.jpg" width="100%" alt="Session list grouped by day">
 
-Podgląd na żywo z aparatu z siatką kadrowania jak w aparacie (3×3 albo 6×4), znaczkiem, czy tło jest
-wystarczająco jasne, i kompensacją ekspozycji. Po prawej kroki obróbki i wybór logo z rogiem kadru, na dole
-pasek zdjęć sesji (zielona kropka: zdjęcie jest już w API, pomarańczowa: czeka na wysyłkę). Zdjęcia
-zrobione na innym komputerze dociągają się z API same.
+### Session
 
-<img src="assets/readme/session.jpg" width="100%" alt="Sesja: podgląd z aparatu z siatką kadrowania, ustawienia obróbki i pasek zdjęć">
-<sub>Zrzut zrobiony bez podłączonego aparatu: w miejscu podglądu na żywo jest jedno ze zdjęć sesji.</sub>
+Live view from the camera with a framing grid like the camera's own (3×3 or 6×4), a badge telling whether the
+background is bright enough, and exposure compensation. On the right, the processing steps and the logo with
+its corner; at the bottom, the session's photo strip (green dot: the photo is already in the API, orange:
+waiting to upload). Photos taken on another computer are downloaded from the API automatically.
 
-### Podgląd i edycja zdjęcia
+<img src="assets/readme/session.jpg" width="100%" alt="Session: camera live view with a framing grid, processing settings and the photo strip">
+<sub>Captured without a camera connected: one of the session's photos stands in for the live view.</sub>
 
-SPACJA otwiera zdjęcie na całe okno, strzałki przechodzą między zdjęciami, BACKSPACE usuwa (do kosza na
-dysku i z API). „Edytuj” (klawisz E) pozwala zdjąć, dodać albo przestawić logo na gotowym zdjęciu.
-Podgląd obok pokazuje dokładnie to, co zostanie zapisane, a zmiana podmienia też to samo zdjęcie w API.
+### Photo viewer and editing
 
-<img src="assets/readme/review.jpg" width="100%" alt="Podgląd zdjęcia na całe okno">
+SPACE opens a photo full window, the arrow keys move between photos, BACKSPACE deletes (to the trash on disk
+and from the API). "Edit" (the E key) removes, adds or moves the logo on a finished photo. The preview next
+to it shows exactly what will be saved, and the change also replaces the same photo in the API.
 
-<img src="assets/readme/edit.jpg" width="100%" alt="Edycja logo na gotowym zdjęciu">
+<img src="assets/readme/review.jpg" width="100%" alt="A photo opened full window">
 
-Edycja działa na zdjęciach, które mają wersję bez logo: zapisuje ją każde zdjęcie zrobione tą aplikacją.
-Starsze robi się z oryginału z aparatu (`/raw`), jeśli został zachowany.
+<img src="assets/readme/edit.jpg" width="100%" alt="Editing the logo on a finished photo">
 
-### Ustawienia
+Editing works on photos that have a version without the logo: every photo taken with this app saves one.
+Older ones are rebuilt from the camera original (`/raw`) if it was kept.
 
-Aktualizacje z GitHub Releases, połączenie z API (wraz z listą endpointów), pliki (w tym po ilu dniach kasować oryginały z aparatu), podgląd i obróbka oraz skróty klawiszowe.
-Motyw jasny albo ciemny przełącza się ikoną w prawym górnym rogu.
+### Settings
 
-<img src="assets/readme/settings.jpg" width="100%" alt="Ustawienia: aktualizacje, API z endpointami, pliki">
+Updates from GitHub Releases, the API connection (with the list of endpoints), files (including after how
+many days camera originals are deleted), live view and processing, and keyboard shortcuts. The light or dark
+theme switches with the icon in the top right corner.
 
-<img src="assets/readme/session-dark.jpg" width="100%" alt="Sesja w ciemnym motywie, aparat rozłączony">
+<img src="assets/readme/settings.jpg" width="100%" alt="Settings: updates, API with endpoints, files">
 
-<sub>Ciemny motyw. Gdy aparat jest odłączony, w ramce podglądu animowana wtyczka próbuje się wpiąć, a aplikacja co kilka sekund łączy się ponownie.</sub>
+<img src="assets/readme/session-dark.jpg" width="100%" alt="Session in the dark theme, camera disconnected">
 
-### Klawiatura
+<sub>Dark theme. With the camera unplugged, an animated plug tries to connect in the preview frame and the app reconnects every few seconds.</sub>
 
-| Klawisz | Co robi |
+### Keyboard
+
+| Key | What it does |
 |---|---|
-| **ENTER** | robi zdjęcie (na liście sesji: otwiera zaznaczoną) |
-| **SPACJA** | otwiera podgląd zdjęć na całe okno |
-| **← →** | przechodzi między zdjęciami |
-| **E** | edytuje logo na oglądanym zdjęciu |
-| **BACKSPACE** | usuwa zdjęcie: trafia do kosza na dysku i znika z API |
-| **ESC** | zamyka podgląd albo wychodzi z sesji |
-| **P** | włącza i wyłącza podgląd z aparatu |
-| **⌘F / Ctrl+F** | szuka sesji |
-| **⌘N / Ctrl+N** | zakłada nową sesję |
+| **ENTER** | takes a photo (in the session list: opens the selected one) |
+| **SPACE** | opens the photo viewer full window |
+| **← →** | moves between photos |
+| **E** | edits the logo on the photo being viewed |
+| **BACKSPACE** | deletes the photo: it goes to the trash on disk and disappears from the API |
+| **ESC** | closes the viewer or leaves the session |
+| **P** | turns the camera live view on and off |
+| **⌘F / Ctrl+F** | searches sessions |
+| **⌘N / Ctrl+N** | starts a new session |
 
 ## API
 
-Aplikacja rozmawia z serwerem przez `/api/photo_studio` (adres i token w Ustawieniach albo w `.env`: `AUTOMAT_URL`, `AUTOMAT_TOKEN`):
+The app talks to the server through `/api/photo_studio` (address and token in Settings or in `.env`:
+`AUTOMAT_URL`, `AUTOMAT_TOKEN`):
 
-| Metoda | Endpoint | Do czego |
+| Method | Endpoint | What for |
 |---|---|---|
-| `GET` | `/sessions` | lista sesji na ekranie startowym |
-| `POST` | `/sessions` | nowa sesja (albo istniejąca o tej nazwie) |
-| `GET` | `/sessions/:id` | zdjęcia sesji do pobrania przy wejściu |
-| `GET` | `/sessions/:id/photos/:photo_id/file` | pobranie zdjęcia na dysk |
-| `POST` | `/sessions/:id/photos` | zapowiedź zdjęcia zaraz po migawce, potem plik |
-| `PUT` | `/sessions/:id/photos/:photo_id` | gotowy JPEG do zapowiedzianego zdjęcia |
-| `DELETE` | `/sessions/:id/photos/:photo_id` | usunięcie zdjęcia (BACKSPACE) |
+| `GET` | `/sessions` | session list on the start screen |
+| `POST` | `/sessions` | new session (or the existing one with that name) |
+| `GET` | `/sessions/:id` | the session's photos to download when it opens |
+| `GET` | `/sessions/:id/photos/:photo_id/file` | download a photo to disk |
+| `POST` | `/sessions/:id/photos` | announce a photo right after the shutter, then the file |
+| `PUT` | `/sessions/:id/photos/:photo_id` | the finished JPEG for an announced photo |
+| `DELETE` | `/sessions/:id/photos/:photo_id` | delete a photo (BACKSPACE) |
 
-## Instalacja na Windowsie
+## Installing on Windows
 
-1. Pobierz `CameraCapture-windows-vX.Y.Z.zip` z ostatniego wydania i rozpakuj w dowolnym katalogu.
-2. Dołóż obok `.exe` pliki `EDSDK.dll` i `EdsImage.dll` (x64) z Canon EDSDK. Nie ma ich w repozytorium,
-   bo nie pozwala na to licencja Canona.
-3. Skopiuj `.env.example` jako `.env` i wpisz token API (`AUTOMAT_TOKEN`).
+1. Download `CameraCapture-windows-vX.Y.Z.zip` from the latest release and unzip it anywhere.
+2. Put `EDSDK.dll` and `EdsImage.dll` (x64) from Canon EDSDK next to the `.exe`. They are not in the
+   repository because Canon's licence does not allow it.
+3. Copy `.env.example` to `.env` and enter the API token (`AUTOMAT_TOKEN`).
 
-Szczegóły, w tym ustawienia aparatu i rozwiązywanie problemów: [WINDOWS.md](WINDOWS.md).
+Details, including camera settings and troubleshooting: [WINDOWS.md](WINDOWS.md) (in Polish).
 
-## Instalacja na macOS
+## Installing on macOS
 
-1. Pobierz `CameraCapture-macos-vX.Y.Z.zip` z ostatniego wydania (Mac z procesorem Apple, M1 i nowsze)
-   i rozpakuj. Powstanie katalog `Camera Capture` z aplikacją `Camera Capture.app`.
-2. Dołóż do tego katalogu, obok `Camera Capture.app`, `EDSDK.framework` z Canon EDSDK dla macOS.
-3. Skopiuj `.env.example` jako `.env` i wpisz token API (`AUTOMAT_TOKEN`). Zdjęcia trafią do `photos/`
-   w tym samym katalogu.
-4. Aplikacja nie jest podpisana przez Apple, więc przy pierwszym uruchomieniu kliknij ją prawym przyciskiem
-   i wybierz **Otwórz** albo zdejmij kwarantannę:
-   `xattr -dr com.apple.quarantine "Camera Capture.app" EDSDK.framework`.
+1. Download `CameraCapture-macos-vX.Y.Z.zip` from the latest release (a Mac with Apple silicon, M1 or newer)
+   and unzip it. You get a `Camera Capture` folder with `Camera Capture.app` inside.
+2. Put `EDSDK.framework` from Canon EDSDK for macOS into that folder, next to `Camera Capture.app`.
+3. Copy `.env.example` to `.env` and enter the API token (`AUTOMAT_TOKEN`). Photos go to `photos/` in the
+   same folder.
+4. The app is not signed by Apple, so the first time right-click it and choose **Open**, or remove the
+   quarantine: `xattr -dr com.apple.quarantine "Camera Capture.app" EDSDK.framework`.
 
-Na macOS aplikacja tylko informuje o nowej wersji. Nową paczkę rozpakowuje się ręcznie w miejsce starej `Camera Capture.app`.
+On macOS the app only tells you a new version is out. Unzip the new package in place of the old
+`Camera Capture.app`.
 
-## Aktualizacje
+## Updates
 
-Aplikacja sama sprawdza przy starcie, czy jest nowsza wersja, a w Ustawieniach można sprawdzić to ręcznie.
-Jeden przycisk pobiera paczkę, podmienia pliki i uruchamia aplikację ponownie. `.env`, `photos/` i pliki
-EDSDK zostają nietknięte.
+The app checks for a newer version at start, and Settings can check on demand. One button downloads the
+package, replaces the files and restarts the app. `.env`, `photos/` and the EDSDK files are left untouched.
 
-Nowa wersja wychodzi sama: wystarczy podbić `APP_VERSION` w `src/version.py` i wypchnąć to na `main`.
-GitHub Actions uruchomi testy, zbuduje `.exe` i opublikuje wydanie w tym repozytorium
-(publicznym), skąd aplikacja sama pobiera aktualizacje.
+A new version ships by itself: bump `APP_VERSION` in `src/version.py` and push to `main`. GitHub Actions
+runs the tests, builds the Windows and macOS packages and publishes a release in this repository, where the
+app picks up its updates.
 
-## Uruchomienie z kodu (macOS)
+## Running from source (macOS)
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python3 gui.py              # okno aplikacji
-python3 gui.py --browser    # to samo w przeglądarce
+python3 gui.py              # app window
+python3 gui.py --browser    # the same in a browser
 ```
 
-Na macOS aparat działa wyłącznie przez Canon EDSDK: `EDSDK.framework` (z paczki Canona dla macOS, poza repozytorium) musi leżeć w katalogu aplikacji. Framework pobrany przez przeglądarkę trzeba zwolnić z kwarantanny: `xattr -dr com.apple.quarantine EDSDK.framework`. Kliknięcie w podgląd ustawia ostrość w tym miejscu.
+On macOS the camera works only through Canon EDSDK: `EDSDK.framework` (from Canon's macOS package, not in
+the repository) must sit in the app folder. A framework downloaded with a browser has to be released from
+quarantine: `xattr -dr com.apple.quarantine EDSDK.framework`. Clicking the live view sets the focus at
+that point.
 
-## Testy
+## Tests
 
 ```bash
 pip install -r requirements-dev.txt
@@ -170,20 +176,22 @@ python -m playwright install chromium
 python -m pytest -q
 ```
 
-Testy działają bez aparatu (atrapa w `tests/conftest.py`) i bez sieci. CI uruchamia je na Windowsie przed każdym buildem — gdy nie przejdą, nowa wersja się nie buduje.
+The tests run without a camera (a fake one in `tests/conftest.py`) and without network access. CI runs them
+on Windows and macOS before every build; if they fail, no new version is built.
 
-## Dokumentacja
+## Documentation
 
-Wszystko techniczne, czyli jak działa obróbka, kolejka zdjęć, połączenie z aparatem, aktualizator i
-konfiguracja w `.env`, jest opisane w [CLAUDE.md](CLAUDE.md).
+Everything technical, such as how processing works, the photo queue, the camera connection, the updater and
+the `.env` configuration, is described in [CLAUDE.md](CLAUDE.md) (in Polish).
 
-## Autor
+## Author
 
 <a href="https://github.com/Xeross99"><img src="assets/readme/author.png" width="48" alt="" align="left"></a>
 **Michał Krzysteczko**<br>
 [@Xeross99](https://github.com/Xeross99)
 <br clear="left">
 
-## Licencja
+## License
 
-Wszelkie prawa zastrzeżone. Kod jest udostępniony do wglądu; kopiowanie, zmiany i używanie wymagają pisemnej zgody autora. Szczegóły w [LICENSE](LICENSE).
+All rights reserved. The code is published for viewing only; copying, changing or using it requires the
+author's written permission. See [LICENSE](LICENSE).

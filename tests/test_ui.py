@@ -144,3 +144,26 @@ def test_new_photo_does_not_rebuild_session_screen(app, make_app, page: Page, mo
     running = page.evaluate("""document.querySelector('.live-empty.sdk').getAnimations()
         .filter(a => a.animationName === 'liveEmptyIn' && a.playState === 'running').length""")
     assert running == 0, "animacja wejścia karty odpaliła się drugi raz"
+
+
+def test_ctrl_k_opens_session_search_everywhere(app, ui):
+    """⌘K / Ctrl+K otwiera wyszukiwarkę z każdego ekranu; wpisana nazwa bez
+    pasującej sesji daje „Nowa sesja”, ENTER ją zakłada, ESC zamyka okno."""
+    ui.locator("#tab-ustawienia").click()
+    ui.keyboard.press("Control+k")
+    expect(ui.locator("#palette")).to_be_visible()
+    expect(ui.locator("#pal-input")).to_be_focused()
+    ui.keyboard.press("Escape")
+    expect(ui.locator("#palette")).to_have_count(0)
+    ui.keyboard.press("Control+k")
+    ui.locator("#pal-input").fill("paleta test")
+    expect(ui.locator("#pal-results .pal-item")).to_have_count(1)
+    ui.keyboard.press("Enter")
+    expect(ui.locator("#palette")).to_have_count(0)
+    wait_for(lambda: app.state()["session"]["name"] == "paleta test", 5, "sesja z wyszukiwarki")
+    expect(ui.locator("#shoot-label")).to_be_visible()
+    # otwarta wyszukiwarka połyka ENTER — nie może zrobić zdjęcia zza okna
+    ui.keyboard.press("Control+k")
+    ui.keyboard.press("Enter")
+    ui.wait_for_timeout(300)
+    assert app.state()["session"]["count"] == 0

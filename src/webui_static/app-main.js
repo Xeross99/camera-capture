@@ -1,4 +1,27 @@
 "use strict";
+// Tłumaczenia EN tekstów z tego pliku (klucz = polski tekst, patrz i18n.js;
+// „Aktualizuję…", „Ustawienia", „brak tokenu" i „połączono" są w bloku app-settings.js).
+Object.assign(I18N_EN, {
+  "Później": "Later",
+  "Zaktualizuj i uruchom ponownie": "Update and restart",
+  "Uruchomienie ze źródeł: zaktualizuj przez <b class=\"mono\" style=\"font-weight: 500; color: var(--text-2);\">git pull</b>": "Running from source: update with <b class=\"mono\" style=\"font-weight: 500; color: var(--text-2);\">git pull</b>",
+  "Ukryj": "Hide",
+  "Dostępna wersja <span class=\"mono\">{v}</span>": "Version <span class=\"mono\">{v}</span> available",
+  "masz <span class=\"mono\">{v}</span>": "you have <span class=\"mono\">{v}</span>",
+  "brak połączenia": "no connection",
+  "wysyłanie {n}": "uploading {n}",
+  "odświeżam…": "refreshing…",
+  "Główne": "Main",
+  "Sesje": "Sessions",
+  "Ścieżka": "Breadcrumb",
+  "Aparat połączony": "Camera connected",
+  "Aparat rozłączony": "Camera disconnected",
+  "Zrób zdjęcie": "Take photo",
+  "brak odpowiedzi aplikacji": "no response from the app",
+  "Motyw ciemny": "Dark theme",
+  "Motyw jasny": "Light theme",
+  "brak połączenia z backendem": "no connection to the backend",
+});
 // Shell aplikacji, render keyowany (anti-flicker), klawiatura i petla stanu.
 // MUSI byc ladowany OSTATNI: tick() na dole rusza od razu.
 
@@ -11,16 +34,16 @@ function updateBanner() {
   if (!u || !u.available || S.updateDismissed === u.available) return "";
   const hide = `S.updateDismissed = '${u.available}'; renderShell(true)`;
   const right = u.canApply
-    ? `<button type="button" class="btn btn-sm" onclick="${hide}" ${u.busy ? "disabled" : ""}>Później</button>
-       <button type="button" class="btn btn-primary btn-sm" onclick="applyUpdate()" ${u.busy ? "disabled" : ""}>${u.busy ? `<span class="spinner" style="border-color: rgba(255,255,255,.35); border-top-color: #fff;"></span>Aktualizuję…` : `${icon("download", 14, 2)}Zaktualizuj i uruchom ponownie`}</button>`
-    : `<span style="font-size: 12px; color: var(--muted);">Uruchomienie ze źródeł: zaktualizuj przez <b class="mono" style="font-weight: 500; color: var(--text-2);">git pull</b></span>
-       <button type="button" class="btn btn-sm" onclick="${hide}">Ukryj</button>`;
+    ? `<button type="button" class="btn btn-sm" onclick="${hide}" ${u.busy ? "disabled" : ""}>${t("Później")}</button>
+       <button type="button" class="btn btn-primary btn-sm" onclick="applyUpdate()" ${u.busy ? "disabled" : ""}>${u.busy ? `<span class="spinner" style="border-color: rgba(255,255,255,.35); border-top-color: #fff;"></span>${t("Aktualizuję…")}` : `${icon("download", 14, 2)}${t("Zaktualizuj i uruchom ponownie")}`}</button>`
+    : `<span style="font-size: 12px; color: var(--muted);">${t('Uruchomienie ze źródeł: zaktualizuj przez <b class="mono" style="font-weight: 500; color: var(--text-2);">git pull</b>')}</span>
+       <button type="button" class="btn btn-sm" onclick="${hide}">${t("Ukryj")}</button>`;
   return `
   <div class="update-banner">
     <span class="update-icon">${icon("download", 16, 2)}</span>
     <div style="flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-      <span style="font-size: 13px; font-weight: 600; color: var(--text);">Dostępna wersja <span class="mono">${u.available}</span></span>
-      <span style="font-size: 12px; color: var(--muted);">masz <span class="mono">${u.current}</span></span>
+      <span style="font-size: 13px; font-weight: 600; color: var(--text);">${t('Dostępna wersja <span class="mono">{v}</span>', {v: u.available})}</span>
+      <span style="font-size: 12px; color: var(--muted);">${t('masz <span class="mono">{v}</span>', {v: u.current})}</span>
       <span id="update-progress" class="mono" style="font-size: 12px; color: var(--accent-fg);">${u.busy && u.progress ? u.progress + "%" : ""}</span>
     </div>
     ${right}
@@ -32,12 +55,12 @@ function updateBanner() {
 // zdjecia sesji czekajace na wysylke / polaczono. Latany po id w updateVolatile.
 function automatStatus(st) {
   const a = st.automat || {};
-  if (!a.hasToken) return { cls: "", text: "brak tokenu" };
-  if (a.error) return { cls: "err", text: "brak połączenia" };
+  if (!a.hasToken) return { cls: "", text: t("brak tokenu") };
+  if (a.error) return { cls: "err", text: t("brak połączenia") };
   const waiting = st.session.name ? st.shots.filter(s => !s.uploaded && s.status !== "rejected").length : 0;
-  if (waiting) return { cls: "warn", text: `wysyłanie ${plPhotos(waiting)}` };
-  if (refreshingNow(st)) return { cls: "warn", text: "odświeżam…" };
-  return { cls: "ok", text: "połączono" };
+  if (waiting) return { cls: "warn", text: t("wysyłanie {n}", {n: plPhotos(waiting)}) };
+  if (refreshingNow(st)) return { cls: "warn", text: t("odświeżam…") };
+  return { cls: "ok", text: t("połączono") };
 }
 
 // Plakietka API w pasku: po połączeniu favicon serwera w miejscu kropki
@@ -55,6 +78,10 @@ function syncApiChip(au) {
   const fav = au.cls === "ok" && !S.apiFavBroken && !!af;
   if (ad) { ad.className = `dot ${au.cls}`; ad.style.display = fav ? "none" : ""; }
   if (af) af.style.display = fav ? "block" : "none";
+  // z faviconem w miejscu kropki stan „połączono" dalej ma swoją zieloną
+  // kropkę — mniejszą, tuż przed tekstem stanu
+  const sm = $("automat-dot-sm");
+  if (sm) { sm.className = `dot dot-sm ${au.cls}`; sm.style.display = fav ? "" : "none"; }
 }
 
 function shell() {
@@ -67,19 +94,20 @@ function shell() {
   ${updateBanner()}
 
   <header class="topbar">
-    <nav class="seg" aria-label="Główne">
+    <nav class="seg" aria-label="${t("Główne")}">
       <div id="tab-pill" class="seg-pill"></div>
-      <button type="button" id="tab-sesja" class="${tab("sesja")}" onclick="go('sesja')">${icon("camera")}Sesje</button>
-      <button type="button" id="tab-ustawienia" class="${tab("ustawienia")}" onclick="go('ustawienia')">${icon("sliders")}Ustawienia</button>
+      <button type="button" id="tab-sesja" class="${tab("sesja")}" onclick="go('sesja')">${icon("camera")}${t("Sesje")}</button>
+      <button type="button" id="tab-ustawienia" class="${tab("ustawienia")}" onclick="go('ustawienia')">${icon("sliders")}${t("Ustawienia")}</button>
     </nav>
     ${st.session.name ? `
-    <nav class="crumbs" aria-label="Ścieżka">
-      <a onclick="showLeaveConfirm()">Sesje</a><span aria-hidden="true">/</span>
+    <nav class="crumbs" aria-label="${t("Ścieżka")}">
+      <a onclick="showLeaveConfirm()">${t("Sesje")}</a><span aria-hidden="true">/</span>
       <span aria-current="page" style="font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${st.session.name}</span>
     </nav>` : ""}
     <div style="flex: 1;"></div>
-    <div class="chip"><span class="dot ${conn ? "ok" : "err"}"></span><span id="conn-label">${conn ? "Aparat połączony" : "Aparat rozłączony"}</span>${conn ? `<span id="conn-fps" class="fps">${st.fps} fps</span>` : ""}</div>
-    <div class="chip"><span id="automat-dot" class="dot ${au.cls}"></span><span id="automat-fav-slot"></span>API<span id="automat-text" class="sub">${au.text}</span></div>
+    <div class="chip"><span class="dot ${conn ? "ok" : "err"}"></span><span id="conn-label">${conn ? t("Aparat połączony") : t("Aparat rozłączony")}</span>${conn ? `<span id="conn-fps" class="fps">${st.fps} fps</span>` : ""}</div>
+    <div class="chip"><span id="automat-dot" class="dot ${au.cls}"></span><span id="automat-fav-slot"></span>API<span id="automat-dot-sm" class="dot dot-sm ${au.cls}" style="display: none;"></span><span id="automat-text" class="sub">${au.text}</span></div>
+    <button type="button" id="search-btn" class="search-btn" onclick="showPalette()" title="${t("Szukaj sesji")} (${modKey("K")})" aria-label="${t("Szukaj sesji")}">${icon("search", 16, 1.8)}<span class="kbd">${modKey("K")}</span></button>
     <button type="button" id="theme-toggle" class="icon-btn" onclick="toggleTheme()" title="${themeToggleTitle()}" aria-label="${themeToggleTitle()}">${themeToggleIcon()}</button>
   </header>
 
@@ -159,7 +187,7 @@ function updateVolatile(st) {
   afReconcile(st);
   const sl = $("shoot-label");
   if (sl && performance.now() - shootErrAt > 4000) {
-    sl.textContent = st.busy || "Zrób zdjęcie";
+    sl.textContent = st.busy || t("Zrób zdjęcie");
   }
   // Spinner obok tekstu fazy — widoczny zawsze, gdy przycisk nie strzeli od
   // reki (takze podczas komunikatu bledu po odmowie: busy jest wtedy false,
@@ -291,7 +319,9 @@ function renderScreens(force) {
       lastStrip = stripSig(st);
       S.lastLogLen = logSig(st);
       snapshotSegs($("screen-sesja"));
+      const cards = snapshotCards($("screen-sesja"));
       $("screen-sesja").innerHTML = sesjaScreen();
+      restoreCards($("screen-sesja"), cards);
       S.stripItems = stripItemCount(st);
       placeSegPill($("grid-seg"), true);
       if (fromStart) playScreenIn();
@@ -322,6 +352,7 @@ function renderScreens(force) {
       if ($("settings-scroll")) $("settings-scroll").scrollTop = sc;
       placeSegPill($("fps-seg"), true);
       placeSegPill($("raw-seg"), true);
+      placeSegPill($("lang-seg"), true);
     }
   }
 }
@@ -341,7 +372,7 @@ function go(screen) {
   placeTabBar(true);
   lastSesja = lastUstawienia = "";
   renderScreens(true);
-  ["period-seg", "fps-seg", "raw-seg", "grid-seg"].forEach(id => placeSegPill($(id), false));
+  ["period-seg", "fps-seg", "raw-seg", "lang-seg", "grid-seg"].forEach(id => placeSegPill($(id), false));
   playScreenIn(`screen-${screen}`);
 }
 
@@ -379,7 +410,7 @@ function shoot() {
   // patrzy operator po naciśnięciu ENTER.
   post({ action: "shoot" }).then(r => r.json()).then(res => {
     if (res && res.ok === false) shootError(res.error);
-  }).catch(e => shootError("brak odpowiedzi aplikacji"));
+  }).catch(e => shootError(t("brak odpowiedzi aplikacji")));
 }
 
 // Napis wraca sam: `updateVolatile()` przepisuje etykietę przy każdym pollu
@@ -428,6 +459,32 @@ function setGrid(i) {
 // pamietana per id kontrolki, wiec po przebudowie ekranu (filtr listy, zapis
 // ustawienia) tlo PRZEJEZDZA ze starego miejsca, zamiast pojawic sie od razu.
 const segPos = {};
+// Karta na podglądzie („Aparat rozłączony", rozgrzewka, brak SDK) przeżywa
+// przebudowę ekranu sesji (wyjście z podglądu zdjęcia, zmiana siatki, logo):
+// nowa karta tej samej klasy nie odgrywa drugi raz wejścia, a zapętlone
+// animacje w środku (wtyczka, iskry, dioda) jadą dalej od tej samej chwili.
+function snapshotCards(root) {
+  const out = new Map();
+  if (!root) return out;
+  root.querySelectorAll(".live-empty").forEach(c =>
+    out.set(c.className, c.getAnimations({ subtree: true }).map(a => [a.animationName, a.currentTime])));
+  return out;
+}
+function restoreCards(root, cards) {
+  if (!root || !cards.size) return;
+  root.querySelectorAll(".live-empty").forEach(c => {
+    const old = cards.get(c.className);
+    if (!old) return;
+    const times = {};
+    old.forEach(([name, ct]) => { (times[name] = times[name] || []).push(ct); });
+    c.getAnimations({ subtree: true }).forEach(a => {
+      if (a.animationName === "liveEmptyIn") { a.finish(); return; }
+      const list = times[a.animationName];
+      if (list && list.length) a.currentTime = list.shift();
+    });
+  });
+}
+
 function placeSegPill(seg, animate) {
   if (!seg) return;
   const pill = seg.querySelector(".overlay-pill, .seg-pill"), btn = seg.querySelector("button.on");
@@ -491,6 +548,15 @@ function reviewSelected(verdict) {
 // ---------- klawiatura ----------
 
 document.addEventListener("keydown", e => {
+  // ⌘K / Ctrl+K z każdego ekranu (także z pola tekstowego): wyszukiwarka sesji.
+  // Gdy jest otwarta, klawisze obsługuje jej pole (paletteKey) — nic nie może
+  // strzelać zza okna (ENTER = zdjęcie, BACKSPACE = usuń).
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+    e.preventDefault();
+    togglePalette();
+    return;
+  }
+  if (S.palette) return;
   // ⌘F / ⌘N na liscie sesji: fokus na wyszukiwarke / pole nowej sesji
   if ((e.metaKey || e.ctrlKey) && S.screen === "sesja" && S.state && !S.state.session.name
       && ["f", "n"].includes(e.key.toLowerCase())) {
@@ -588,7 +654,7 @@ function mergeLog(tail) {
 // przelaczy (slonce w ciemnym, ksiezyc w jasnym). Lata sie w miejscu — pelny
 // rebuild ekranu sesji zerwalby stream live view.
 const curTheme = () => document.documentElement.dataset.theme === "light" ? "light" : "dark";
-const themeToggleTitle = () => curTheme() === "light" ? "Motyw ciemny" : "Motyw jasny";
+const themeToggleTitle = () => curTheme() === "light" ? t("Motyw ciemny") : t("Motyw jasny");
 function themeToggleIcon() {
   return icon(curTheme() === "light" ? "moon" : "sun");
 }
@@ -617,6 +683,28 @@ function applyTheme(theme) {
   }
 }
 
+// Język interfejsu: przy zmianie wszystko renderuje się od nowa (teksty siedzą
+// w szablonach), a <html lang> idzie za wyborem. Przewinięte obszary wracają
+// na swoje miejsce, a nowy tekst wchodzi krótkim przenikaniem (.lang-swap).
+const LANG_SCROLLERS = ["settings-scroll", "start-scroll", "filmstrip", "review-strip", "log-panel"];
+function applyLang(lang) {
+  const k = lang === "en" ? "en" : "pl";
+  if (k === LANG || S.langSwitching) return;
+  LANG = k;
+  document.documentElement.lang = k;
+  if (!S.state) return;
+  const scroll = {};
+  LANG_SCROLLERS.forEach(id => { const el = $(id); if (el) scroll[id] = [el.scrollTop, el.scrollLeft]; });
+  snapshotSegs($("app"));
+  lastShellKey = "";
+  renderShell(true);
+  LANG_SCROLLERS.forEach(id => { const el = $(id); if (el && scroll[id]) [el.scrollTop, el.scrollLeft] = scroll[id]; });
+  const app = $("app");
+  app.classList.remove("lang-swap");
+  void app.offsetWidth;   // restart animacji przy szybkim przełączaniu tam i z powrotem
+  app.classList.add("lang-swap");
+}
+
 async function tick() {
   try {
     const r = await fetch(`/api/state?since=${S.logSeq || 0}`);
@@ -628,11 +716,12 @@ async function tick() {
     st.log = mergeLog(st.log);
     S.state = st;
     applyTheme(st.settings && st.settings.uiTheme);
+    applyLang(st.settings && st.settings.uiLang);
     if (!lastShellKey) renderShell(true);
     else renderShell(false);
   } catch (e) {
     const el = $("conn-label");
-    if (el) el.textContent = "brak połączenia z backendem";
+    if (el) el.textContent = t("brak połączenia z backendem");
   }
   setTimeout(tick, 500);
 }

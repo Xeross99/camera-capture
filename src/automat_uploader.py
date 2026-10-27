@@ -12,6 +12,28 @@ from pathlib import Path
 import requests
 
 from .config import AUTOMAT_API_TOKEN, AUTOMAT_BASE_URL
+from .i18n import EN, tr
+
+EN.update({
+    " — podłączono do istniejącej ({n} zdjęć)": " — attached to the existing one ({n} photos)",
+    "↑ API: sesja {id} ({name})": "↑ API: session {id} ({name})",
+    "{base} — produkt nie znaleziony, sesja luźna{suffix}":
+        "{base} — product not found, loose session{suffix}",
+    "AUTOMAT_TOKEN nie ustawiony — uzupelnij .env (patrz .env.example).":
+        "AUTOMAT_TOKEN not set — fill in .env (see .env.example).",
+    "<HTML z Rails dev mode — sprawdz log/development.log>":
+        "<HTML from Rails dev mode — check log/development.log>",
+    # rodzaj zapytania w bledzie "API {kind} {status} …"
+    "lista sesji": "session list",
+    "zdjecia sesji": "session photos",
+    "pobranie zdjecia": "photo download",
+    "sesja": "session",
+    "open_session()/attach_session() musi byc zawolane wczesniej.":
+        "open_session()/attach_session() must be called first.",
+    "open_session() musi byc zawolane wczesniej.": "open_session() must be called first.",
+    "Sesja zniknela, ale brak product_name do odtworzenia.":
+        "The session disappeared, but there is no product_name to recreate it.",
+})
 
 
 class AutomatNotFound(RuntimeError):
@@ -23,14 +45,15 @@ class AutomatNotFound(RuntimeError):
 def describe_opened_session(uploader: "AutomatUploader", name: str) -> tuple[str, str]:
     """Komunikat do logu po open_session() -> (tekst, poziom 'ok'|'warn')."""
     suffix = (
-        f" — podłączono do istniejącej ({uploader.photos_count} zdjęć)"
+        tr(" — podłączono do istniejącej ({n} zdjęć)", n=uploader.photos_count)
         if uploader.reattached
         else ""
     )
-    base = f"↑ API: sesja {uploader.session_id} ({name})"
+    base = tr("↑ API: sesja {id} ({name})", id=uploader.session_id, name=name)
     if uploader.product_found:
         return f"{base}{suffix}", "ok"
-    return f"{base} — produkt nie znaleziony, sesja luźna{suffix}", "warn"
+    return tr("{base} — produkt nie znaleziony, sesja luźna{suffix}",
+              base=base, suffix=suffix), "warn"
 
 
 class AutomatUploader:
@@ -44,7 +67,7 @@ class AutomatUploader:
         token = token or AUTOMAT_API_TOKEN
         if not token:
             raise RuntimeError(
-                "AUTOMAT_TOKEN nie ustawiony — uzupelnij .env (patrz .env.example)."
+                tr("AUTOMAT_TOKEN nie ustawiony — uzupelnij .env (patrz .env.example).")
             )
         self.base = (base_url or AUTOMAT_BASE_URL).rstrip("/")
         self.headers = {"Authorization": f"Bearer {token}"}
@@ -66,7 +89,7 @@ class AutomatUploader:
         text = (r.text or "").lstrip()
         low = text[:20].lower()
         if low.startswith("<!doctype") or low.startswith("<html"):
-            return "<HTML z Rails dev mode — sprawdz log/development.log>"
+            return tr("<HTML z Rails dev mode — sprawdz log/development.log>")
         return text.strip().replace("\n", " ")[:400] or "<empty>"
 
     def _err(self, kind: str, r) -> RuntimeError:
@@ -74,7 +97,7 @@ class AutomatUploader:
         # lapia jak dotad) — wolajacy musi umiec odroznic "znikneło po drugiej
         # stronie" od zwyklego bledu HTTP, np. zeby sprzatnac lokalna sesje.
         cls = AutomatNotFound if r.status_code == 404 else RuntimeError
-        return cls(f"API {kind} {r.status_code} {r.reason} — {self._strip_body(r)}")
+        return cls(f"API {tr(kind)} {r.status_code} {r.reason} — {self._strip_body(r)}")
 
     def list_sessions(self) -> list[dict]:
         """GET wszystkich sesji photo_studio: [{id, name, product, created_at,
@@ -97,7 +120,7 @@ class AutomatUploader:
         zrodlo prawdy przy otwarciu sesji na maszynie bez jej lokalnych plikow."""
         sid = session_id if session_id is not None else self.session_id
         if sid is None:
-            raise RuntimeError("open_session()/attach_session() musi byc zawolane wczesniej.")
+            raise RuntimeError(tr("open_session()/attach_session() musi byc zawolane wczesniej."))
         r = self.http.get(
             f"{self.base}/api/photo_studio/sessions/{sid}",
             timeout=self.timeout_open,
@@ -112,7 +135,7 @@ class AutomatUploader:
         filmstrip pokazalby jako zdjecie sesji."""
         sid = session_id if session_id is not None else self.session_id
         if sid is None:
-            raise RuntimeError("open_session()/attach_session() musi byc zawolane wczesniej.")
+            raise RuntimeError(tr("open_session()/attach_session() musi byc zawolane wczesniej."))
         r = self.http.get(
             f"{self.base}/api/photo_studio/sessions/{sid}/photos/{photo_id}/file",
             timeout=self.timeout_upload,
@@ -165,7 +188,7 @@ class AutomatUploader:
 
     def _reopen(self) -> None:
         if not self.product_name:
-            raise RuntimeError("Sesja zniknela, ale brak product_name do odtworzenia.")
+            raise RuntimeError(tr("Sesja zniknela, ale brak product_name do odtworzenia."))
         self.open_session(self.product_name)
 
     def _post_announce(self, filename: str):
@@ -180,7 +203,7 @@ class AutomatUploader:
         bedzie gotowy. Browser pokazuje od razu kafelek ze spinnerem.
         Przy 404 odtwarza sesje i ponawia raz."""
         if self.session_id is None:
-            raise RuntimeError("open_session() musi byc zawolane wczesniej.")
+            raise RuntimeError(tr("open_session() musi byc zawolane wczesniej."))
         r = self._post_announce(filename)
         if r.status_code == 404:
             self._reopen()
@@ -208,7 +231,7 @@ class AutomatUploader:
         """DELETE zdjecia z sesji — operator skasowal je w aplikacji.
         404 (zdjecie/sesja juz nie istnieje) traktowane jako sukces."""
         if self.session_id is None:
-            raise RuntimeError("open_session() musi byc zawolane wczesniej.")
+            raise RuntimeError(tr("open_session() musi byc zawolane wczesniej."))
         r = self.http.delete(
             f"{self.base}/api/photo_studio/sessions/{self.session_id}/photos/{photo_id}",
             timeout=self.timeout_open,
@@ -223,7 +246,7 @@ class AutomatUploader:
         istniejacego placeholdera (PUT). W innym razie tworzy nowy rekord (POST).
         Przy 404 odtwarza sesje i ponawia jako POST bez photo_id (stary id jest martwy)."""
         if self.session_id is None:
-            raise RuntimeError("open_session() musi byc zawolane wczesniej.")
+            raise RuntimeError(tr("open_session() musi byc zawolane wczesniej."))
         r = self._do_upload(processed_path, photo_id)
         if r.status_code == 404:
             self._reopen()

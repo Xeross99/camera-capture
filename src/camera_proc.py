@@ -45,6 +45,18 @@ from collections import deque
 from pathlib import Path
 
 from .config import PROJECT_DIR
+from .i18n import EN, tr
+
+EN.update({
+    "proces EDSDK nie działa": "the EDSDK process is not running",
+    "proces EDSDK nie przyjął komendy ({e})": "the EDSDK process did not accept the command ({e})",
+    "aparat nie odpowiada ({op}, {s:.0f} s bez reakcji) — restartuję sterownik Canon i łączę od nowa":
+        "the camera is not responding ({op}, no reaction for {s:.0f} s) — restarting the Canon "
+        "driver and reconnecting",
+    "brak szczegółów": "no details",
+    "proces EDSDK zakończył się ({tail})": "the EDSDK process exited ({tail})",
+    "nieznany błąd EDSDK": "unknown EDSDK error",
+})
 
 # Ile czekamy na odpowiedz dziecka, zanim uznamy je za zawieszone i zabijemy.
 # open: init SDK + konfiguracja aparatu; capture: wlasne timeouty EDSDK
@@ -208,7 +220,7 @@ class EdsdkProxy:
 
     def _call(self, op: str, **kw):
         if self._proc is None or self._proc.poll() is not None:
-            raise CameraProcError("proces EDSDK nie działa")
+            raise CameraProcError(tr("proces EDSDK nie działa"))
         self._req_id += 1
         req = {"id": self._req_id, "op": op, **kw}
         try:
@@ -216,7 +228,7 @@ class EdsdkProxy:
             self._proc.stdin.flush()
         except OSError as e:
             self._kill()
-            raise CameraProcError(f"proces EDSDK nie przyjął komendy ({e})") from e
+            raise CameraProcError(tr("proces EDSDK nie przyjął komendy ({e})", e=e)) from e
         import time as _time
         started = _time.monotonic()
         # komenda bez wpisu w _TIMEOUTS dostaje 30 s — brak wpisu nie może
@@ -242,16 +254,16 @@ class EdsdkProxy:
                 # reconnect i dostanie SWIEZY proces ze swiezym EdsInitializeSDK.
                 self._kill()
                 waited = _time.monotonic() - started
-                raise CameraProcError(
-                    f"aparat nie odpowiada ({op}, {waited:.0f} s bez reakcji) — "
-                    "restartuję sterownik Canon i łączę od nowa")
+                raise CameraProcError(tr(
+                    "aparat nie odpowiada ({op}, {s:.0f} s bez reakcji) — "
+                    "restartuję sterownik Canon i łączę od nowa", op=op, s=waited))
             if frame is None:
                 continue
             last_frame = _time.monotonic()
             if frame is None:
-                tail = self._stderr_tail[-1] if self._stderr_tail else "brak szczegółów"
+                tail = self._stderr_tail[-1] if self._stderr_tail else tr("brak szczegółów")
                 self._kill()
-                raise CameraProcError(f"proces EDSDK zakończył się ({tail})")
+                raise CameraProcError(tr("proces EDSDK zakończył się ({tail})", tail=tail))
             if "event" in frame:
                 self._dispatch_event(frame)
                 continue
@@ -259,7 +271,7 @@ class EdsdkProxy:
                 continue        # spozniona odpowiedz po timeoucie — ignoruj
             if frame.get("ok"):
                 return frame.get("result")
-            raise CameraProcError(frame.get("error") or "nieznany błąd EDSDK")
+            raise CameraProcError(frame.get("error") or tr("nieznany błąd EDSDK"))
 
     def _dispatch_event(self, frame: dict) -> None:
         try:

@@ -38,7 +38,24 @@ from datetime import datetime
 from pathlib import Path
 
 from .config import PROJECT_DIR
+from .i18n import EN, tr
 from .version import APP_VERSION, GITHUB_REPO, parse_version
+
+EN.update({
+    "{base} jest w uzyciu": "{base} is in use",
+    "nie ma gdzie rozpakowac paczki aktualizacji: {last}": "nowhere to unpack the update package: {last}",
+    "podejrzana sciezka w archiwum: {member!r}": "suspicious path in the archive: {member!r}",
+    "paczka aktualizacji nie zawiera pliku .exe": "the update package contains no .exe file",
+    "paczka aktualizacji nie zawiera katalogu _internal": "the update package contains no _internal folder",
+    "samo-aktualizacja dziala tylko dla .exe na Windowsie": "self-update works only for the .exe on Windows",
+    "aktualizator nie wystartowal (kod {rc}) — log: {log}": "the updater did not start (code {rc}) — log: {log}",
+    "po kopiowaniu brak {exe}": "{exe} missing after copying",
+    "Aktualizacja Camera Capture nie powiodła się.\n\n{e}\n\nSzczegóły: {log}\n\nUruchamiam "
+    "poprzednią wersję — aktualizację można pobrać ręcznie z GitHub Releases.":
+        "The Camera Capture update failed.\n\n{e}\n\nDetails: {log}\n\nStarting the previous "
+        "version — you can download the update manually from GitHub Releases.",
+    "Camera Capture — aktualizacja": "Camera Capture — update",
+})
 
 try:
     from .update_token import UPDATE_TOKEN  # wpisany przez CI przy budowie .exe
@@ -134,7 +151,7 @@ def _staging_root() -> Path:
             if base.exists() and _in_use(base):
                 # aktualizator wciaz stamtad dziala — skasowanie tego katalogu
                 # wyrwaloby mu biblioteki spod nog; bierzemy nastepny
-                last = RuntimeError(f"{base} jest w uzyciu")
+                last = RuntimeError(tr("{base} jest w uzyciu", base=base))
                 continue
             shutil.rmtree(base, ignore_errors=True)
             base.mkdir(parents=True, exist_ok=True)
@@ -144,7 +161,7 @@ def _staging_root() -> Path:
             return base
         except OSError as e:
             last = e
-    raise RuntimeError(f"nie ma gdzie rozpakowac paczki aktualizacji: {last}")
+    raise RuntimeError(tr("nie ma gdzie rozpakowac paczki aktualizacji: {last}", last=last))
 
 
 def download_and_stage(url: str, progress=None) -> Path:
@@ -194,7 +211,7 @@ def _extract(zip_path: Path, dest: Path) -> None:
         for member in zf.namelist():
             target = (dest / member).resolve()
             if not str(target).startswith(str(root)):
-                raise ValueError(f"podejrzana sciezka w archiwum: {member!r}")
+                raise ValueError(tr("podejrzana sciezka w archiwum: {member!r}", member=member))
         zf.extractall(dest)
 
 
@@ -213,9 +230,9 @@ def _validate_staging(staging: Path) -> Path:
     instalacje (a przy sprzataniu `_internal` wycialby jej biblioteki)."""
     exe = next((p for p in staging.glob("*.exe")), None)
     if exe is None:
-        raise ValueError("paczka aktualizacji nie zawiera pliku .exe")
+        raise ValueError(tr("paczka aktualizacji nie zawiera pliku .exe"))
     if not (staging / "_internal").is_dir():
-        raise ValueError("paczka aktualizacji nie zawiera katalogu _internal")
+        raise ValueError(tr("paczka aktualizacji nie zawiera katalogu _internal"))
     return exe
 
 
@@ -253,7 +270,7 @@ def apply_update_and_restart(staging) -> Path:
 
     Zwraca sciezke logu aktualizacji."""
     if not can_self_update():
-        raise RuntimeError("samo-aktualizacja dziala tylko dla .exe na Windowsie")
+        raise RuntimeError(tr("samo-aktualizacja dziala tylko dla .exe na Windowsie"))
     staging = Path(staging)
     helper = _validate_staging(staging)
     target = PROJECT_DIR
@@ -287,7 +304,7 @@ def apply_update_and_restart(staging) -> Path:
             return log
         say(f"aktualizator zakonczyl sie natychmiast (proba {attempt}, kod {rc})")
         time.sleep(2.0)
-    raise RuntimeError(f"aktualizator nie wystartowal (kod {rc}) — log: {log}")
+    raise RuntimeError(tr("aktualizator nie wystartowal (kod {rc}) — log: {log}", rc=rc, log=log))
 
 
 # ---------------------------------------------------------------- tryb aktualizatora
@@ -314,7 +331,7 @@ def run_apply_update(argv: list[str]) -> int:
         copied = _install(staging, target, say)
         target_exe = target / helper.name
         if not target_exe.is_file():
-            raise RuntimeError(f"po kopiowaniu brak {target_exe}")
+            raise RuntimeError(tr("po kopiowaniu brak {exe}", exe=target_exe))
         say(f"skopiowano {copied} plikow, uruchamiam {target_exe}")
         _spawn(target_exe, say)
         say("gotowe")
@@ -326,11 +343,11 @@ def run_apply_update(argv: list[str]) -> int:
                 f"{e}\nLog: {log}\n", encoding="utf-8", errors="replace")
         except OSError:
             pass
-        _message_box(
+        _message_box(tr(
             "Aktualizacja Camera Capture nie powiodła się.\n\n"
-            f"{e}\n\nSzczegóły: {log}\n\n"
+            "{e}\n\nSzczegóły: {log}\n\n"
             "Uruchamiam poprzednią wersję — aktualizację można pobrać ręcznie "
-            "z GitHub Releases.")
+            "z GitHub Releases.", e=e, log=log))
         fallback = next((p for p in target.glob("*.exe")), None)
         if fallback is not None:
             _spawn(fallback, say)
@@ -433,7 +450,7 @@ def _message_box(text: str) -> None:
         return
     try:
         ctypes.windll.user32.MessageBoxW(
-            None, text, "Camera Capture — aktualizacja", 0x10)
+            None, text, tr("Camera Capture — aktualizacja"), 0x10)
     except Exception:
         pass
 

@@ -1,5 +1,16 @@
 import sys
 
+from .i18n import EN, tr
+
+EN.update({
+    "BRAK EDSDK.framework w katalogu aplikacji": "EDSDK.framework MISSING from the app folder",
+    "BRAK EDSDK.dll obok aplikacji — połóż EDSDK.dll + EdsImage.dll (x64) obok .exe, patrz README":
+        "EDSDK.dll MISSING next to the app — put EDSDK.dll + EdsImage.dll (x64) next to the .exe, "
+        "see README",
+    "znaleziono {dll}": "found {dll}",
+    "; SDK w osobnym procesie": "; SDK in a separate process",
+})
+
 # Bledy aparatu: EdsdkError dziedziczy po RuntimeError, a proces-dziecko
 # (camera_proc) zglasza zawieszke tez jako RuntimeError.
 CAMERA_ERRORS: tuple = (RuntimeError, OSError)
@@ -16,16 +27,16 @@ def make_camera_session():
     from .camera_edsdk import find_edsdk_dll
     from .config import CAMERA_EDSDK_ISOLATION
     dll = find_edsdk_dll()
-    missing = ("BRAK EDSDK.framework w katalogu aplikacji" if sys.platform == "darwin"
-               else "BRAK EDSDK.dll obok aplikacji — połóż EDSDK.dll "
-                    "+ EdsImage.dll (x64) obok .exe, patrz README")
-    reason = f"znaleziono {dll}" if dll else missing
+    missing = (tr("BRAK EDSDK.framework w katalogu aplikacji") if sys.platform == "darwin"
+               else tr("BRAK EDSDK.dll obok aplikacji — połóż EDSDK.dll "
+                       "+ EdsImage.dll (x64) obok .exe, patrz README"))
+    reason = tr("znaleziono {dll}", dll=dll) if dll else missing
     if CAMERA_EDSDK_ISOLATION:
         # SDK w osobnym procesie: zawieszka w DLL-u = kill dziecka +
         # swiezy EdsInitializeSDK, nie martwa aplikacja (patrz camera_proc)
         from .camera_proc import EdsdkProxy
         session = EdsdkProxy()
-        reason += "; SDK w osobnym procesie"
+        reason += tr("; SDK w osobnym procesie")
     else:
         from .camera_edsdk import EdsdkSession
         session = EdsdkSession()

@@ -34,6 +34,9 @@ os.environ.update({
     "RAW_RETENTION_DAYS": "0",
     "LOGO": "kids",
     "UI_THEME": "light",
+    # testy porównują polskie komunikaty — język z .env (np. po przełączeniu
+    # aplikacji na angielski) nie może ich zmieniać
+    "UI_LANG": "pl",
     "PREVIEW_FPS": "10",
 })
 sys.path.insert(0, str(ROOT))

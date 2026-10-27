@@ -80,6 +80,12 @@ UI_THEMES = ("dark", "light")
 UI_THEME = os.environ.get("UI_THEME", "dark").strip().lower()
 if UI_THEME not in UI_THEMES:
     UI_THEME = "dark"
+# Jezyk interfejsu i komunikatow: "pl" (domyslny) / "en". Zmiana w Ustawieniach
+# zapisuje sie tutaj (patrz src/i18n.py).
+UI_LANGS = ("pl", "en")
+UI_LANG = os.environ.get("UI_LANG", "pl").strip().lower()
+if UI_LANG not in UI_LANGS:
+    UI_LANG = "pl"
 CLEAN_BG_COLOR = (255, 255, 255)
 CLEAN_BG_MASK_THRESHOLD = 80
 CLEAN_BG_EDGE_BLUR = 0.6

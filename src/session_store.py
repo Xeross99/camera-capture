@@ -13,6 +13,11 @@ from pathlib import Path
 from PIL import Image
 
 from .config import TRASH_RETENTION_DAYS
+from .i18n import EN, tr
+
+EN.update({
+    "kosz: nie mogę założyć katalogu na usunięte pliki": "trash: cannot create a folder for deleted files",
+})
 
 TRASH_DIR = ".trash"        # photos/.trash/<data>-<godzina>_<sesja>/
 TRASH_STAMP = "%Y%m%d-%H%M%S"
@@ -141,7 +146,7 @@ def trash_batch(base_output: Path, session: str) -> Path:
         if not cand.exists():
             cand.mkdir(parents=True)
             return cand
-    raise RuntimeError("kosz: nie mogę założyć katalogu na usunięte pliki")
+    raise RuntimeError(tr("kosz: nie mogę założyć katalogu na usunięte pliki"))
 
 
 def retry_locked(fn, attempts: int = 20, delay: float = 0.1):

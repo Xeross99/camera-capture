@@ -22,6 +22,67 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from .config import EDSDK_DLL, PROJECT_DIR
+from .i18n import EN, tr
+
+EN.update({
+    "EDSDK: {where} → blad 0x{code:04X}": "EDSDK: {where} → error 0x{code:04X}",
+    "blad wewnetrzny SDK — zwykle chwilowy": "internal SDK error — usually temporary",
+    "aparat zajety (BUSY) — odczekaj chwile lub power-cycle":
+        "camera busy (BUSY) — wait a moment or power-cycle it",
+    "AF nie zlapal ostrosci — popraw kadr lub przelacz na MF":
+        "AF could not focus — adjust the framing or switch to MF",
+    "obiekt jeszcze nie gotowy": "object not ready yet",
+    "Nie znaleziono EDSDK.framework. Pobierz Canon EDSDK dla macOS z programu deweloperskiego "
+    "Canona i poloz EDSDK.framework w katalogu aplikacji (albo ustaw EDSDK_DLL w .env).":
+        "EDSDK.framework not found. Download Canon EDSDK for macOS from Canon's developer "
+        "program and put EDSDK.framework in the app folder (or set EDSDK_DLL in .env).",
+    "Nie znaleziono EDSDK.dll. Pobierz Canon EDSDK (x64) z programu deweloperskiego Canona i "
+    "poloz EDSDK.dll + EdsImage.dll obok aplikacji (albo ustaw EDSDK_DLL w .env). Szczegoly: README.":
+        "EDSDK.dll not found. Download Canon EDSDK (x64) from Canon's developer program and put "
+        "EDSDK.dll + EdsImage.dll next to the app (or set EDSDK_DLL in .env). Details: README.",
+    "Nie udalo sie zaladowac {dll}: {exc}. Jesli macOS blokuje framework pobrany z internetu: "
+    "xattr -dr com.apple.quarantine EDSDK.framework.":
+        "Could not load {dll}: {exc}. If macOS blocks a framework downloaded from the internet: "
+        "xattr -dr com.apple.quarantine EDSDK.framework.",
+    "{dll} jest 32-bitowa — 64-bitowy Python jej nie zaladuje. Potrzebna wersja x64 z "
+    "oficjalnego SDK Canona (paczka zawiera obie).":
+        "{dll} is 32-bit — 64-bit Python cannot load it. You need the x64 version from Canon's "
+        "official SDK (the package contains both).",
+    "Nie udalo sie zaladowac {dll}: {exc}. Sprawdz, czy obok lezy EdsImage.dll z tej samej "
+    "paczki SDK.":
+        "Could not load {dll}: {exc}. Check that EdsImage.dll from the same SDK package is next to it.",
+    "backend edsdk dziala tylko na Windows i macOS": "the edsdk backend works only on Windows and macOS",
+    "EDSDK nie widzi zadnego aparatu — sprawdz kabel USB i czy aparat jest wlaczony (nie w "
+    "trybie odtwarzania).":
+        "EDSDK does not see any camera — check the USB cable and that the camera is on (not in "
+        "playback mode).",
+    "Aparat nie przyjął podglądu równolegle na PC i LCD — ekran aparatu zostaje wygaszony.":
+        "The camera did not accept live view on both the PC and the LCD — the camera screen stays off.",
+    "EDSDK: klatka live view nie jest JPEG-iem": "EDSDK: the live view frame is not a JPEG",
+    "podgląd jeszcze nie podał układu współrzędnych — kliknij ponownie za chwilę":
+        "live view has not reported its coordinate system yet — click again in a moment",
+    "{x},{y} z {w}×{h}": "{x},{y} of {w}×{h}",
+    "Aparat nie zglosil pliku — szukam na karcie…": "The camera did not report the file — searching the card…",
+    "Aparat nie zglosil pliku po USB — zdjęcie pobrane z karty ({name}).":
+        "The camera did not report the file over USB — photo downloaded from the card ({name}).",
+    "ZADNYCH": "NONE",
+    "EDSDK: migawka zadzialala, ale aparat nie oddal pliku w {s} s (na karcie tez nic nowego "
+    "nie znalazlem). Zdarzenia od aparatu: {seen}; SaveTo={save_to} (2 = do komputera). "
+    "Sprobuj wypiac i wpiac kabel USB.":
+        "EDSDK: the shutter fired, but the camera did not deliver the file within {s} s (nothing "
+        "new on the card either). Camera events: {seen}; SaveTo={save_to} (2 = to computer). "
+        "Try unplugging and replugging the USB cable.",
+    "Czekam na plik z aparatu… {s} s": "Waiting for the file from the camera… {s} s",
+    "EDSDK: połączenie z aparatem zerwane w trakcie zdjęcia (0x{code:04X}) — aparat wypadł z USB":
+        "EDSDK: connection to the camera lost during the photo (0x{code:04X}) — the camera "
+        "dropped off USB",
+    "Pobieram zdjecie z aparatu…": "Downloading the photo from the camera…",
+    "✗ Nie udało się pobrać zdjęcia z karty: {exc}": "✗ Could not download the photo from the card: {exc}",
+    "zmiana '{key}' niedostepna przez backend edsdk — ustaw na aparacie":
+        "changing '{key}' is not available through the edsdk backend — set it on the camera",
+    "nieznana kompensacja ekspozycji: {value!r}": "unknown exposure compensation: {value!r}",
+    "kontrast niedostepny przez backend edsdk": "contrast not available through the edsdk backend",
+})
 
 # --- stale EDSDK (EDSDK.h, SDK 13.x) ---
 _EDS_ERR_OK = 0
@@ -194,7 +255,8 @@ def _run_loop_once() -> None:
 class EdsdkError(RuntimeError):
     def __init__(self, code: int, where: str) -> None:
         hint = _ERROR_HINTS.get(code)
-        msg = f"EDSDK: {where} → blad 0x{code:04X}"
+        hint = tr(hint) if hint else hint
+        msg = tr("EDSDK: {where} → blad 0x{code:04X}", where=where, code=code)
         super().__init__(f"{msg} ({hint})" if hint else msg)
         self.code = code
 
@@ -220,40 +282,40 @@ class EdsdkSession:
             return _SDK
         dll = find_edsdk_dll()
         if dll is None and sys.platform == "darwin":
-            raise RuntimeError(
+            raise RuntimeError(tr(
                 "Nie znaleziono EDSDK.framework. Pobierz Canon EDSDK dla macOS z "
                 "programu deweloperskiego Canona i poloz EDSDK.framework w katalogu "
                 "aplikacji (albo ustaw EDSDK_DLL w .env)."
-            )
+            ))
         if dll is None:
-            raise RuntimeError(
+            raise RuntimeError(tr(
                 "Nie znaleziono EDSDK.dll. Pobierz Canon EDSDK (x64) z programu "
                 "deweloperskiego Canona i poloz EDSDK.dll + EdsImage.dll obok "
                 "aplikacji (albo ustaw EDSDK_DLL w .env). Szczegoly: README."
-            )
+            ))
         if sys.platform == "darwin":
             try:
                 sdk = ctypes.CDLL(str(dll))
             except OSError as exc:
-                raise RuntimeError(
-                    f"Nie udalo sie zaladowac {dll}: {exc}. Jesli macOS blokuje "
+                raise RuntimeError(tr(
+                    "Nie udalo sie zaladowac {dll}: {exc}. Jesli macOS blokuje "
                     "framework pobrany z internetu: xattr -dr com.apple.quarantine "
-                    "EDSDK.framework."
-                ) from exc
+                    "EDSDK.framework.", dll=dll, exc=exc
+                )) from exc
         else:
             if not _dll_is_64bit(dll):
-                raise RuntimeError(
-                    f"{dll} jest 32-bitowa — 64-bitowy Python jej nie zaladuje. "
-                    "Potrzebna wersja x64 z oficjalnego SDK Canona (paczka zawiera obie)."
-                )
+                raise RuntimeError(tr(
+                    "{dll} jest 32-bitowa — 64-bitowy Python jej nie zaladuje. "
+                    "Potrzebna wersja x64 z oficjalnego SDK Canona (paczka zawiera obie).",
+                    dll=dll))
             os.add_dll_directory(str(dll.parent))
             try:
                 sdk = ctypes.WinDLL(str(dll))
             except OSError as exc:
-                raise RuntimeError(
-                    f"Nie udalo sie zaladowac {dll}: {exc}. Sprawdz, czy obok lezy "
-                    "EdsImage.dll z tej samej paczki SDK."
-                ) from exc
+                raise RuntimeError(tr(
+                    "Nie udalo sie zaladowac {dll}: {exc}. Sprawdz, czy obok lezy "
+                    "EdsImage.dll z tej samej paczki SDK.", dll=dll, exc=exc
+                )) from exc
         # argtypes MUSZA byc kompletne: bez nich ctypes przepycha Pythonowy int
         # jako 32-bitowy `int`, a uchwyty EDSDK (EdsBaseRef) na x64 to wskazniki
         # powyzej 4 GB. Ucinaly sie po drodze, wiec kazde wywolanie z uchwytem
@@ -385,7 +447,7 @@ class EdsdkSession:
     def open(self) -> None:
         global _SDK_INITIALIZED
         if sys.platform not in ("win32", "darwin"):
-            raise RuntimeError("backend edsdk dziala tylko na Windows i macOS")
+            raise RuntimeError(tr("backend edsdk dziala tylko na Windows i macOS"))
         self._init_com()
         self._sdk = self._load()
         if not _SDK_INITIALIZED:
@@ -401,10 +463,10 @@ class EdsdkSession:
             self._check(self._sdk.EdsGetChildCount(cam_list, ctypes.byref(count)),
                         "EdsGetChildCount")
             if count.value == 0:
-                raise RuntimeError(
+                raise RuntimeError(tr(
                     "EDSDK nie widzi zadnego aparatu — sprawdz kabel USB i czy "
                     "aparat jest wlaczony (nie w trybie odtwarzania)."
-                )
+                ))
             camera = ctypes.c_void_p()
             self._check(self._sdk.EdsGetChildAtIndex(cam_list, 0, ctypes.byref(camera)),
                         "EdsGetChildAtIndex")
@@ -451,8 +513,8 @@ class EdsdkSession:
             self._set_u32(_PROP_EVF_OUTPUT_DEVICE, _EVF_OUTPUT_PC,
                           "Evf_OutputDevice=PC")
             self._evf_out = _EVF_OUTPUT_PC
-            self._log("Aparat nie przyjął podglądu równolegle na PC i LCD — "
-                      "ekran aparatu zostaje wygaszony.", "warn")
+            self._log(tr("Aparat nie przyjął podglądu równolegle na PC i LCD — "
+                         "ekran aparatu zostaje wygaszony."), "warn")
 
         # pierwsza klatka potwierdza, ze aparat naprawde streamuje
         deadline = time.monotonic() + _FIRST_FRAME_TIMEOUT_S
@@ -508,7 +570,7 @@ class EdsdkSession:
                 self._sdk.EdsRelease(evf)
             self._sdk.EdsRelease(stream)
         if not data.startswith(_JPEG_MAGIC):
-            raise RuntimeError("EDSDK: klatka live view nie jest JPEG-iem")
+            raise RuntimeError(tr("EDSDK: klatka live view nie jest JPEG-iem"))
         return data
 
     def focus_at(self, fx: float, fy: float) -> str:
@@ -518,8 +580,8 @@ class EdsdkSession:
         DoEvfAf ON → OFF. Działa tylko w trybie AF z wybieranym punktem —
         w trybie twarz+śledzenie albo przy MF aparat to ignoruje."""
         if not self._evf_coords:
-            raise RuntimeError("podgląd jeszcze nie podał układu współrzędnych — "
-                               "kliknij ponownie za chwilę")
+            raise RuntimeError(tr("podgląd jeszcze nie podał układu współrzędnych — "
+                                  "kliknij ponownie za chwilę"))
         w, h = self._evf_coords
         x = int(max(0.0, min(1.0, fx)) * w)
         y = int(max(0.0, min(1.0, fy)) * h)
@@ -540,7 +602,7 @@ class EdsdkSession:
             self._pump()
             time.sleep(0.03)
         self._sdk.EdsSendCommand(self._camera, _CMD_DO_EVF_AF, 0)
-        return f"{x},{y} z {w}×{h}"
+        return tr("{x},{y} z {w}×{h}", x=x, y=y, w=w, h=h)
 
     def capture_to(self, workdir: Path) -> Path:
         try:
@@ -590,32 +652,33 @@ class EdsdkSession:
             # zamiast konczyc bledem po 30 s ciszy.
             if now >= card_at:
                 card_at = float("inf")
-                self._status("Aparat nie zglosil pliku — szukam na karcie…")
+                self._status(tr("Aparat nie zglosil pliku — szukam na karcie…"))
                 found = self._download_newest_from_card(workdir)
                 if found is not None:
-                    self._log(f"Aparat nie zglosil pliku po USB — zdjęcie pobrane "
-                              f"z karty ({found.name}).", "warn")
+                    self._log(tr("Aparat nie zglosil pliku po USB — zdjęcie pobrane "
+                                 "z karty ({name}).", name=found.name), "warn")
                     return found
             if now >= deadline:
                 # ostatnia szansa: przy pierwszym skanie (8 s) plik mogl sie
                 # jeszcze zapisywac na wolnej karcie
                 found = self._download_newest_from_card(workdir)
                 if found is not None:
-                    self._log(f"Aparat nie zglosil pliku po USB — zdjęcie pobrane "
-                              f"z karty ({found.name}).", "warn")
+                    self._log(tr("Aparat nie zglosil pliku po USB — zdjęcie pobrane "
+                                 "z karty ({name}).", name=found.name), "warn")
                     return found
-                seen = ", ".join(f"0x{e:04X}" for e in self._seen_events) or "ZADNYCH"
+                seen = ", ".join(f"0x{e:04X}" for e in self._seen_events) or tr("ZADNYCH")
                 save_to = self._get_u32(_PROP_SAVE_TO)
-                raise RuntimeError(
-                    f"EDSDK: migawka zadzialala, ale aparat nie oddal pliku w "
-                    f"{_CAPTURE_TIMEOUT_S} s (na karcie tez nic nowego nie "
-                    f"znalazlem). Zdarzenia od aparatu: {seen}; "
-                    f"SaveTo={save_to} (2 = do komputera). "
-                    "Sprobuj wypiac i wpiac kabel USB."
-                )
+                raise RuntimeError(tr(
+                    "EDSDK: migawka zadzialala, ale aparat nie oddal pliku w "
+                    "{s} s (na karcie tez nic nowego nie "
+                    "znalazlem). Zdarzenia od aparatu: {seen}; "
+                    "SaveTo={save_to} (2 = do komputera). "
+                    "Sprobuj wypiac i wpiac kabel USB.",
+                    s=_CAPTURE_TIMEOUT_S, seen=seen, save_to=save_to
+                ))
             if now - last_status >= 1.0:
                 last_status = now
-                self._status(f"Czekam na plik z aparatu… {int(now - started)} s")
+                self._status(tr("Czekam na plik z aparatu… {s} s", s=int(now - started)))
             self._pump()
             # Podglad jest ciagniety dalej, mimo ze klatki lecą do kosza. W GUI
             # Canona petla EVF chodzi przez caly czas robienia zdjecia i to ona
@@ -633,17 +696,17 @@ class EdsdkSession:
                     # Czekanie pelnych 30 s + skan karty na martwym uchwycie
                     # to strata pol minuty na cos, co widac po sekundach.
                     if exc.code in _FATAL_LINK_CODES:
-                        raise RuntimeError(
+                        raise RuntimeError(tr(
                             "EDSDK: połączenie z aparatem zerwane w trakcie "
-                            f"zdjęcia (0x{exc.code:04X}) — aparat wypadł z USB"
-                        ) from exc
+                            "zdjęcia (0x{code:04X}) — aparat wypadł z USB", code=exc.code
+                        )) from exc
                 except Exception:
                     pass
             time.sleep(0.05)
 
         item = self._pending_item
         self._pending_item = None
-        self._status("Pobieram zdjecie z aparatu…")
+        self._status(tr("Pobieram zdjecie z aparatu…"))
         try:
             return self._download_item(item, workdir)
         finally:
@@ -699,7 +762,7 @@ class EdsdkSession:
                     return None
                 return self._download_item(item, workdir)
         except (EdsdkError, OSError) as exc:
-            self._log(f"✗ Nie udało się pobrać zdjęcia z karty: {exc}", "err")
+            self._log(tr("✗ Nie udało się pobrać zdjęcia z karty: {exc}", exc=exc), "err")
             return None
         finally:
             if item is not None:
@@ -773,11 +836,11 @@ class EdsdkSession:
 
     def set_setting(self, key: str, value: str) -> None:
         if key != "exposurecompensation":
-            raise RuntimeError(
-                f"zmiana '{key}' niedostepna przez backend edsdk — ustaw na aparacie")
+            raise RuntimeError(tr(
+                "zmiana '{key}' niedostepna przez backend edsdk — ustaw na aparacie", key=key))
         code = _EV_LABEL_TO_CODE.get(str(value).strip())
         if code is None:
-            raise RuntimeError(f"nieznana kompensacja ekspozycji: {value!r}")
+            raise RuntimeError(tr("nieznana kompensacja ekspozycji: {value!r}", value=value))
         # Aparat odrzuca wartosc spoza swojego zakresu/kroku (np. 1/3 EV, gdy
         # ustawiony jest krok 1/2) — niech to wyjdzie jako czytelny blad,
         # zamiast cicho nie zrobic nic.
@@ -787,7 +850,7 @@ class EdsdkSession:
         return None
 
     def set_contrast(self, value) -> str:
-        raise RuntimeError("kontrast niedostepny przez backend edsdk")
+        raise RuntimeError(tr("kontrast niedostepny przez backend edsdk"))
 
     def close(self) -> None:
         """Zamyka SESJE aparatu — SDK i COM zostaja zainicjalizowane na stale.

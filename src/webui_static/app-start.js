@@ -1,4 +1,39 @@
 "use strict";
+// Tłumaczenia EN tekstów z tego pliku (klucz = polski tekst, patrz i18n.js;
+// „7 dni", „30 dni" i „nowa sesja" są w bloku app-settings.js).
+Object.assign(I18N_EN, {
+  "Bez daty": "No date",
+  "bez daty": "no date",
+  "Dziś": "Today",
+  "Wczoraj": "Yesterday",
+  "bez zdjęć": "no photos",
+  "Sesja luźna": "Unlinked session",
+  "Żadna sesja nie pasuje do filtrów.": "No session matches the filters.",
+  "Brak tokenu API (.env albo Ustawienia). Sesje z API są niedostępne, możesz utworzyć lokalną.": "No API token (.env or Settings). Sessions from the API are unavailable; you can create a local one.",
+  "Ładuję sesje z API…": "Loading sessions from the API…",
+  "Sesja <b>{name}</b> już istnieje w API ({date}, zdjęć: {n}).": "Session <b>{name}</b> already exists in the API ({date}, photos: {n}).",
+  "Podłącz do istniejącej": "Use the existing one",
+  "Utwórz nową": "Create a new one",
+  "Anuluj": "Cancel",
+  "Nowa sesja": "New session",
+  "Nazwa trafia do folderu i do API. Produkt dopasuje się sam.": "The name goes to the folder and the API. The product is matched automatically.",
+  "Nazwa produktu": "Product name",
+  "np. right switch r148": "e.g. right switch r148",
+  "Rozpocznij sesję": "Start session",
+  "Szukaj sesji": "Search sessions",
+  "Szukaj sesji lub produktu": "Search sessions or products",
+  "Okres": "Period",
+  "Wszystkie": "All",
+  "Zdjęć": "Photos",
+  "Najmniej zdjęć": "Fewest photos",
+  "Najwięcej zdjęć": "Most photos",
+  "od": "from",
+  "do": "to",
+  "Odśwież listę z API": "Refresh the list from the API",
+  "wybór sesji": "select session",
+  "otwórz": "open",
+  "szukaj": "search",
+});
 // Ekran startowy: lista sesji photo_studio z Automatu, układ jak Photo Studio
 // (lewa oś dni + kafelki grupowane nagłówkami dat) i pole „Rozpocznij sesję".
 
@@ -26,13 +61,13 @@ const PL_MONTHS_NOM = ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwi
 
 // Nagłówek dnia w liście: „Dziś" / „Wczoraj" / data, obok dzień tygodnia.
 function dayHeading(g) {
-  if (isNaN(g.date)) return { title: "Bez daty", sub: plSessions(g.items.length) };
-  const t = new Date(), y = new Date(t.getFullYear(), t.getMonth(), t.getDate() - 1);
+  if (isNaN(g.date)) return { title: t("Bez daty"), sub: plSessions(g.items.length) };
+  const today = new Date(), y = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
   const same = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-  const wd = PL_WEEKDAYS[g.date.getDay()];
-  const title = same(g.date, t) ? "Dziś" : same(g.date, y) ? "Wczoraj" : plDay(g.date);
+  const wd = (LANG === "en" ? EN_WEEKDAYS : PL_WEEKDAYS)[g.date.getDay()];
+  const title = same(g.date, today) ? t("Dziś") : same(g.date, y) ? t("Wczoraj") : plDay(g.date);
   const sub = title === plDay(g.date) ? `${wd} · ${plSessions(g.items.length)}`
-    : `${wd}, ${g.date.getDate()} ${PL_MONTHS[g.date.getMonth()]} · ${plSessions(g.items.length)}`;
+    : `${wd}, ${g.date.getDate()} ${monthName(g.date.getMonth())} · ${plSessions(g.items.length)}`;
   return { title, sub };
 }
 
@@ -41,8 +76,8 @@ function sessionCard(s, idx) {
   // szkielet i wypełni się sam przy kolejnym poll-u
   const cover = s.cover
     ? `<img src="/img?cover=${s.id}" alt="" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;" />`
-    : `<div class="${s.photos_count ? "skeleton" : ""}" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; ${mono} font-size: 11px; color: var(--muted-2); background-color: var(--surface-2);">${s.photos_count ? "" : "bez zdjęć"}</div>`;
-  const product = s.product ? s.product.name : "Sesja luźna";
+    : `<div class="${s.photos_count ? "skeleton" : ""}" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; ${mono} font-size: 11px; color: var(--muted-2); background-color: var(--surface-2);">${s.photos_count ? "" : t("bez zdjęć")}</div>`;
+  const product = s.product ? s.product.name : t("Sesja luźna");
   const pColor = s.product ? "var(--ok-fg)" : "var(--muted-2)";
   const d = new Date(s.created_at);
   // podswietlenie (hover i zaznaczenie klawiatura) idzie JEDNYM stanem:
@@ -51,7 +86,7 @@ function sessionCard(s, idx) {
   <div data-pick="${idx}" class="session-card${idx === S.pickIdx ? " picked" : ""}" onclick='pickSession(${s.id}, ${JSON.stringify(s.name)})' onmouseover="pickTo(${idx})">
     <div class="cover">
       ${cover}
-      ${s.photos_count ? `<span class="cover-badge">${s.photos_count} zdj.</span>` : ""}
+      ${s.photos_count ? `<span class="cover-badge">${nWord(s.photos_count, ["zdj.", "zdj.", "zdj."], ["photo", "photos"])}</span>` : ""}
     </div>
     <div style="padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0;">
       <div style="font-size: 13.5px; font-weight: 600; line-height: 1.3; color: var(--text); overflow-wrap: anywhere;">${s.name}</div>
@@ -67,15 +102,15 @@ function sessionCard(s, idx) {
 function dayRail(groups) {
   let month = "";
   return groups.map(g => {
-    const m = isNaN(g.date) ? "Bez daty" : `${PL_MONTHS_NOM[g.date.getMonth()]} ${g.date.getFullYear()}`;
+    const m = isNaN(g.date) ? t("Bez daty") : `${(LANG === "en" ? EN_MONTHS : PL_MONTHS_NOM)[g.date.getMonth()]} ${g.date.getFullYear()}`;
     const headHtml = m !== month
       ? `<div class="eyebrow" style="padding: ${month ? "16px" : "0"} 10px 8px;">${m}</div>` : "";
     month = m;
     return `${headHtml}
     <div class="day-row${S.dayFocus === g.key ? " on" : ""}" onclick="focusDay('${g.key}')">
-      <span class="cal" aria-hidden="true"><span class="cal-m">${isNaN(g.date) ? "" : PL_MONTHS_SHORT[g.date.getMonth()]}</span><span class="cal-d">${isNaN(g.date) ? "—" : g.date.getDate()}</span></span>
-      <span class="day-wd">${isNaN(g.date) ? "bez daty" : PL_WEEKDAYS[g.date.getDay()]}</span>
-      <span class="count">${g.items.length} ${plForm(g.items.length, "sesja", "sesje", "sesji")}</span>
+      <span class="cal" aria-hidden="true"><span class="cal-m">${isNaN(g.date) ? "" : (LANG === "en" ? EN_MONTHS_SHORT : PL_MONTHS_SHORT)[g.date.getMonth()]}</span><span class="cal-d">${isNaN(g.date) ? "—" : g.date.getDate()}</span></span>
+      <span class="day-wd">${isNaN(g.date) ? t("bez daty") : (LANG === "en" ? EN_WEEKDAYS : PL_WEEKDAYS)[g.date.getDay()]}</span>
+      <span class="count">${nWord(g.items.length, ["sesja", "sesje", "sesji"], ["session", "sessions"])}</span>
     </div>`;
   }).join("");
 }
@@ -239,23 +274,23 @@ function startScreen() {
     </section>`;
   }).join("")
     || (anyFilter() && a.sessions.length
-        ? `<div style="font-size: 13px; color: var(--muted-2);">Żadna sesja nie pasuje do filtrów.</div>`
+        ? `<div style="font-size: 13px; color: var(--muted-2);">${t("Żadna sesja nie pasuje do filtrów.")}</div>`
         : "");
   const info = !a.hasToken
-    ? `<div style="font-size: 12.5px; color: var(--warn-fg-3);">Brak tokenu API (.env albo Ustawienia). Sesje z API są niedostępne, możesz utworzyć lokalną.</div>`
+    ? `<div style="font-size: 12.5px; color: var(--warn-fg-3);">${t("Brak tokenu API (.env albo Ustawienia). Sesje z API są niedostępne, możesz utworzyć lokalną.")}</div>`
     : a.error
       ? `<div style="font-size: 12.5px; color: var(--err-fg);">✗ ${a.error}</div>`
       : a.sessions.length === 0
-        ? `<div style="font-size: 12.5px; color: var(--muted-2);">Ładuję sesje z API…</div>`
+        ? `<div style="font-size: 12.5px; color: var(--muted-2);">${t("Ładuję sesje z API…")}</div>`
         : "";
   const p = S.pendingNew;
   const pend = !p ? "" : `
     <div style="background: var(--warn-soft); border: 1px solid var(--warn-border); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;">
-      <div style="font-size: 13px; color: var(--text);">Sesja <b>${p.match.name}</b> już istnieje w API (${fmtDate(p.match.created_at)}, zdjęć: ${p.match.photos_count}).</div>
+      <div style="font-size: 13px; color: var(--text);">${t("Sesja <b>{name}</b> już istnieje w API ({date}, zdjęć: {n}).", {name: p.match.name, date: fmtDate(p.match.created_at), n: p.match.photos_count})}</div>
       <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-        <button type="button" class="btn btn-primary btn-sm" onclick="resolvePending(true)">Podłącz do istniejącej</button>
-        <button type="button" class="btn btn-sm" onclick="resolvePending(false)">Utwórz nową</button>
-        <button type="button" class="btn btn-sm" onclick="S.pendingNew = null; renderScreens(true)">Anuluj</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="resolvePending(true)">${t("Podłącz do istniejącej")}</button>
+        <button type="button" class="btn btn-sm" onclick="resolvePending(false)">${t("Utwórz nową")}</button>
+        <button type="button" class="btn btn-sm" onclick="S.pendingNew = null; renderScreens(true)">${t("Anuluj")}</button>
       </div>
     </div>`;
   const total = visible.reduce((n, s) => n + (s.photos_count || 0), 0);
@@ -270,17 +305,17 @@ function startScreen() {
     <div style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
       <div id="start-scroll" style="flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 24px 32px 28px; display: flex; flex-direction: column; gap: 20px;">
 
-        <section aria-label="Nowa sesja" class="panel" style="padding: 20px 22px; display: flex; flex-direction: column; gap: 12px;">
+        <section aria-label="${t("Nowa sesja")}" class="panel" style="padding: 20px 22px; display: flex; flex-direction: column; gap: 12px;">
           <div style="display: flex; align-items: flex-end; gap: 20px;">
             <div style="display: flex; flex-direction: column; gap: 4px; width: 210px; flex-shrink: 0; align-self: center;">
-              <div style="font-size: 17px; font-weight: 700; letter-spacing: -.01em; color: var(--text);">Nowa sesja</div>
-              <div style="font-size: 12.5px; line-height: 1.45; color: var(--muted);">Nazwa trafia do folderu i do API. Produkt dopasuje się sam.</div>
+              <div style="font-size: 17px; font-weight: 700; letter-spacing: -.01em; color: var(--text);">${t("Nowa sesja")}</div>
+              <div style="font-size: 12.5px; line-height: 1.45; color: var(--muted);">${t("Nazwa trafia do folderu i do API. Produkt dopasuje się sam.")}</div>
             </div>
             <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px;">
-              <label for="new-session-input" style="font-size: 12px; font-weight: 500; color: var(--text-2);">Nazwa produktu</label>
-              <input id="new-session-input" class="field" placeholder="np. right switch r148" style="height: 44px; border-radius: 10px; font-size: 14px; padding: 0 14px;" />
+              <label for="new-session-input" style="font-size: 12px; font-weight: 500; color: var(--text-2);">${t("Nazwa produktu")}</label>
+              <input id="new-session-input" class="field" placeholder="${t("np. right switch r148")}" style="height: 44px; border-radius: 10px; font-size: 14px; padding: 0 14px;" />
             </div>
-            <button type="button" class="btn btn-primary" onclick="commitNewSession()" tabindex="-1" style="height: 44px; padding: 0 20px; border-radius: 10px; font-size: 14px;">Rozpocznij sesję <span class="kbd">ENTER</span></button>
+            <button type="button" class="btn btn-primary" onclick="commitNewSession()" tabindex="-1" style="height: 44px; padding: 0 20px; border-radius: 10px; font-size: 14px;">${t("Rozpocznij sesję")} <span class="kbd">ENTER</span></button>
           </div>
           ${info}
           ${pend}
@@ -289,31 +324,31 @@ function startScreen() {
         <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
           <div style="position: relative; width: 280px;">
             <span style="position: absolute; left: 11px; top: 10px; color: var(--muted-2);">${icon("search", 16, 1.8)}</span>
-            <input id="session-filter" class="field" type="search" aria-label="Szukaj sesji" placeholder="Szukaj sesji lub produktu" value="${(S.sessionFilter || "").replace(/"/g, "&quot;")}" oninput="filterSessions(this.value)" style="width: 100%; padding-left: 34px; font-family: inherit; font-size: 13px;" />
+            <input id="session-filter" class="field" type="search" aria-label="${t("Szukaj sesji")}" placeholder="${t("Szukaj sesji lub produktu")}" value="${(S.sessionFilter || "").replace(/"/g, "&quot;")}" oninput="filterSessions(this.value)" style="width: 100%; padding-left: 34px; font-family: inherit; font-size: 13px;" />
           </div>
-          <div id="period-seg" class="seg seg-sm has-pill" role="group" aria-label="Okres">
+          <div id="period-seg" class="seg seg-sm has-pill" role="group" aria-label="${t("Okres")}">
             <span class="seg-pill"></span>
-            ${period("", "Wszystkie")}${period("today", "Dziś")}${period("7", "7 dni")}${period("30", "30 dni")}
+            ${period("", t("Wszystkie"))}${period("today", t("Dziś"))}${period("7", t("7 dni"))}${period("30", t("30 dni"))}
           </div>
           <div style="display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted);">
-            Zdjęć
-            <input id="photos-min" class="field" inputmode="numeric" aria-label="Najmniej zdjęć" placeholder="od" value="${S.photosMin}" oninput="setStartFilter('min', this.value)" tabindex="-1" style="width: 56px; height: 34px; text-align: center; padding: 0 6px;" />
+            ${t("Zdjęć")}
+            <input id="photos-min" class="field" inputmode="numeric" aria-label="${t("Najmniej zdjęć")}" placeholder="${t("od")}" value="${S.photosMin}" oninput="setStartFilter('min', this.value)" tabindex="-1" style="width: 56px; height: 34px; text-align: center; padding: 0 6px;" />
             –
-            <input id="photos-max" class="field" inputmode="numeric" aria-label="Najwięcej zdjęć" placeholder="do" value="${S.photosMax}" oninput="setStartFilter('max', this.value)" tabindex="-1" style="width: 56px; height: 34px; text-align: center; padding: 0 6px;" />
+            <input id="photos-max" class="field" inputmode="numeric" aria-label="${t("Najwięcej zdjęć")}" placeholder="${t("do")}" value="${S.photosMax}" oninput="setStartFilter('max', this.value)" tabindex="-1" style="width: 56px; height: 34px; text-align: center; padding: 0 6px;" />
           </div>
           <div style="flex: 1;"></div>
-          <span style="font-size: 12px; color: var(--muted-2);">${visible.length} ${plForm(visible.length, "sesja", "sesje", "sesji")} · ${plPhotos(total)}</span>
-          <button type="button" id="refresh-btn" class="icon-btn" onclick="refreshSessions()" tabindex="-1" aria-label="Odśwież listę z API" title="Odśwież listę z API" data-busy="${refreshingNow(S.state) ? "1" : ""}" style="width: 36px; height: 36px; border-color: var(--border-strong); border-radius: 9px;">${refreshBtnHtml()}</button>
+          <span style="font-size: 12px; color: var(--muted-2);">${nWord(visible.length, ["sesja", "sesje", "sesji"], ["session", "sessions"])} · ${plPhotos(total)}</span>
+          <button type="button" id="refresh-btn" class="icon-btn" onclick="refreshSessions()" tabindex="-1" aria-label="${t("Odśwież listę z API")}" title="${t("Odśwież listę z API")}" data-busy="${refreshingNow(S.state) ? "1" : ""}" style="width: 36px; height: 36px; border-color: var(--border-strong); border-radius: 9px;">${refreshBtnHtml()}</button>
         </div>
 
         ${feed}
       </div>
 
       <footer class="hints" style="flex: 0 0 auto; padding: 10px 32px 12px; border-top: 1px solid var(--border); font-size: 12px;">
-        <span>${kHint("← → ↑ ↓")}wybór sesji</span>
-        <span>${kHint("ENTER")}otwórz</span>
-        <span>${kHint(modKey("F"))}szukaj</span>
-        <span>${kHint(modKey("N"))}nowa sesja</span>
+        <span>${kHint("← → ↑ ↓")}${t("wybór sesji")}</span>
+        <span>${kHint("ENTER")}${t("otwórz")}</span>
+        <span>${kHint(modKey("F"))}${t("szukaj")}</span>
+        <span>${kHint(modKey("N"))}${t("nowa sesja")}</span>
       </footer>
     </div>
   </div>`;

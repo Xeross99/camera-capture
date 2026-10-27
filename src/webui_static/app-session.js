@@ -1,4 +1,117 @@
 "use strict";
+Object.assign(I18N_EN, {
+  // ekran sesji i live view
+  "Podgląd z aparatu": "Camera preview",
+  "Podgląd na żywo": "Live view",
+  "Kliknij, żeby ustawić ostrość w tym miejscu": "Click to focus at this point",
+  "Siatka kadrowania": "Framing grid",
+  "bez siatki": "no grid",
+  "Przygotowuję silnik czyszczenia tła": "Preparing the background cleanup engine",
+  "Karta graficzna kompiluje model do usuwania tła. Zdjęcia można robić już teraz: poczekają w kolejce.": "The graphics card is compiling the background removal model. You can take photos now: they will wait in the queue.",
+  'Zwykle ok. {eta} na tym komputerze · zostało ok. <span class="mono">{left}</span>': 'Usually about {eta} on this computer · about <span class="mono">{left}</span> left',
+  'Trwa dłużej niż zwykle (ok. {eta}) · <span class="mono">{elapsed}</span>': 'Taking longer than usual (about {eta}) · <span class="mono">{elapsed}</span>',
+  "Ustawienia zdjęcia": "Photo settings",
+  "Wróć do listy sesji (ESC)": "Back to the session list (ESC)",
+  "Sesje": "Sessions",
+  "Sesja luźna": "Unlinked session",
+  "Aparat": "Camera",
+  "Kompensacja ekspozycji": "Exposure compensation",
+  "Jaśniej, gdy tło wychodzi szare.": "Go brighter when the background comes out grey.",
+  "Ciemniej": "Darker",
+  "Jaśniej": "Brighter",
+  "Obróbka po zdjęciu": "Processing after the shot",
+  "Białe tło": "White background",
+  "Tło do czystej bieli, cienie wygaszone": "Background to pure white, shadows removed",
+  "Przybliżanie": "Zoom",
+  "Kadr dociąga się do produktu": "The frame tightens around the product",
+  "Centrowanie": "Centering",
+  "Produkt na środku kadru": "Product in the centre of the frame",
+  "Logo w rogu": "Corner logo",
+  "Zrób zdjęcie": "Take photo",
+  // brak Canon EDSDK
+  "Brak sterownika aparatu Canon": "Canon camera driver missing",
+  "{a} i {b}": "{a} and {b}",
+  'Dodaj <span class="mono">EDSDK.framework</span> do katalogu aplikacji, obok <span class="mono">Camera Capture.app</span>.': 'Put <span class="mono">EDSDK.framework</span> in the app folder, next to <span class="mono">Camera Capture.app</span>.',
+  'Dodaj oba pliki do katalogu aplikacji, obok pliku <span class="mono">.exe</span>.': 'Put both files in the app folder, next to the <span class="mono">.exe</span> file.',
+  "Aplikacja steruje aparatem przez Canon EDSDK: robi zdjęcia, pobiera je po USB i pokazuje podgląd na żywo. Framework {files} wymaga licencji Canona, dlatego nie ma go w paczce aplikacji.": "The app controls the camera through Canon EDSDK: it takes photos, downloads them over USB and shows live view. The {files} framework is under Canon's licence, so it is not bundled with the app.",
+  "Aplikacja steruje aparatem przez Canon EDSDK: robi zdjęcia, pobiera je po USB i pokazuje podgląd na żywo. Pliki {files} wymagają licencji Canona, dlatego nie ma ich w paczce aplikacji.": "The app controls the camera through Canon EDSDK: it takes photos, downloads them over USB and shows live view. The files {files} are under Canon's licence, so they are not bundled with the app.",
+  "Pobierz Canon EDSDK {platform} z programu deweloperskiego Canona (darmowe konto).": "Download Canon EDSDK {platform} from Canon's developer program (free account).",
+  "dla macOS": "for macOS",
+  "dla Windows (x64)": "for Windows (x64)",
+  "Uruchom aplikację ponownie.": "Restart the app.",
+  "Program deweloperski Canona": "Canon developer program",
+  // pusty podgląd
+  "Aparat rozłączony": "Camera disconnected",
+  "Sprawdź kabel USB i czy aparat jest włączony.": "Check the USB cable and that the camera is on.",
+  "Łączę ponownie…": "Reconnecting…",
+  "Czekam na obraz z aparatu": "Waiting for the camera image",
+  "Pierwsze klatki podglądu za chwilę.": "The first preview frames are on their way.",
+  "Uruchamiam podgląd…": "Starting live view…",
+  "Podgląd wyłączony": "Live view off",
+  "Zdjęcia dalej można robić klawiszem ENTER.": "You can still take photos with ENTER.",
+  'Włącz klawiszem <span class="hint-key">P</span>': 'Turn on with <span class="hint-key">P</span>',
+  // kompensacja niedostępna
+  "<b>Brak Canon EDSDK.</b> Bez tych plików aplikacja nie połączy się z aparatem. Szczegóły w ramce podglądu.": "<b>Canon EDSDK missing.</b> Without these files the app cannot connect to the camera. Details in the preview area.",
+  "<b>Aparat rozłączony.</b> Kompensacja wróci po połączeniu.": "<b>Camera disconnected.</b> Compensation will be back once it reconnects.",
+  "<b>Kompensacja niedostępna</b> w tym trybie. Ustaw pokrętło aparatu na P, Av albo Tv.": "<b>Compensation unavailable</b> in this mode. Set the camera dial to P, Av or Tv.",
+  // jasność tła
+  "Tło jasne i równe": "Background bright and even",
+  "Tło za ciemne · rozjaśnij w aparacie": "Background too dark · brighten on the camera",
+  "Tło —": "Background —",
+  "Jasność tła — czekam na klatkę z aparatu.": "Background brightness — waiting for a camera frame.",
+  "Zmierzona jasność tła: {bg} ze skali 0–255 (im bliżej 255, tym bielszy stół; poniżej 230 robi się szaro).": "Measured background brightness: {bg} on a 0–255 scale (the closer to 255, the whiter the table; below 230 it turns grey).",
+  // podgląd zdjęcia
+  "odrzucone": "rejected",
+  "w API": "in API",
+  "czeka na wysyłkę": "waiting to upload",
+  "{i} z {n}": "{i} of {n}",
+  "Wróć do sesji": "Back to session",
+  "Edytuj": "Edit",
+  "Usuń": "Delete",
+  "Poprzednie zdjęcie": "Previous photo",
+  "Następne zdjęcie": "Next photo",
+  "Edycja zdjęcia": "Edit photo",
+  // edycja logo
+  "Zamknij edycję": "Close editing",
+  "Przygotowuję wersję bez logo z oryginału z aparatu…": "Preparing a logo-free version from the camera original…",
+  "Robię to raz dla tego zdjęcia, z bieżącymi ustawieniami obróbki.": "This is done once for this photo, with the current processing settings.",
+  "To zdjęcie nie ma ani wersji bez logo, ani oryginału z aparatu, więc nie da się zmienić logo.": "This photo has neither a logo-free version nor a camera original, so its logo cannot be changed.",
+  "Logo da się zmieniać na zdjęciach robionych od tej wersji aplikacji i na tych, których oryginał leży w /raw.": "The logo can be changed on photos taken with this version of the app or later, and on those whose original is in /raw.",
+  "Podgląd obok pokazuje zdjęcie dokładnie tak, jak zostanie zapisane.": "The preview shows the photo exactly as it will be saved.",
+  "Anuluj": "Cancel",
+  "Zapisz zdjęcie": "Save photo",
+  "Zmiana trafi też do API.": "The change will also be sent to the API.",
+  "Bez logo": "No logo",
+  "Pozycja": "Position",
+  "Róg kadru": "Frame corner",
+  "prawy dolny róg": "bottom-right corner",
+  "lewy dolny róg": "bottom-left corner",
+  "prawy górny róg": "top-right corner",
+  "lewy górny róg": "top-left corner",
+  // pasek zdjęć i log
+  "zmiana zdjęcia": "change photo",
+  "edytuj": "edit",
+  "usuń": "delete",
+  "SPACJA": "SPACE",
+  "podgląd": "preview",
+  "wybór": "select",
+  "Zdjęcia w sesji": "Photos in session",
+  "w API {n}": "in API {n}",
+  "wysyłanie {n}": "uploading {n}",
+  "odrzucone {n}": "rejected {n}",
+  "obróbka 1": "processing 1",
+  "Ukryj log": "Hide log",
+  "Pokaż log": "Show log",
+  "Zdjęcie {n}": "Photo {n}",
+  "Obróbka…": "Processing…",
+  "Pobieranie…": "Downloading…",
+  "Brak zdjęć. Naciśnij ENTER, żeby zrobić pierwsze.": "No photos yet. Press ENTER to take the first one.",
+  // potwierdzenie wyjścia
+  "Wrócić do listy sesji?": "Back to the session list?",
+  "Sesja zostanie zamknięta. Zdjęcia są zapisane.": "The session will be closed. Your photos are saved.",
+  "Zostań": "Stay",
+  "Wróć do listy": "Back to list",
+});
 // Zakladka Sesja: live view z siatka i badge'ami, kontrolka EV, filmstrip,
 // overlay podgladu zdjec (SPACJA) i kasowanie (BACKSPACE).
 
@@ -18,18 +131,18 @@ function sesjaScreen() {
     <div style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
     <div style="flex: 1; min-height: 0; display: flex;">
     <main style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
-      <section aria-label="Podgląd z aparatu" style="flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 16px; background: var(--live-bg);">
+      <section aria-label="${t("Podgląd z aparatu")}" style="flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 16px; background: var(--live-bg);">
         <div style="position: relative; height: 100%; max-width: 100%; aspect-ratio: 3 / 2; border-radius: 12px; overflow: hidden; background: repeating-linear-gradient(135deg, var(--stripe-a) 0 10px, var(--stripe-b) 10px 20px); box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 0 0 1px var(--border); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">
           ${liveEmptyHtml(st)}
           <!-- obraz PO karcie: pierwsza klatka zawsze ją przykrywa (przed nią
                <img> MJPEG jest przezroczysty i karta jest widoczna) -->
-          ${liveOn ? `<img id="live" src="/stream" alt="Podgląd na żywo" ${st.focusSupported ? `class="live-focusable" title="Kliknij, żeby ustawić ostrość w tym miejscu" onclick="focusAt(event)"` : ""} style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;" />` : ""}
+          ${liveOn ? `<img id="live" src="/stream" alt="${t("Podgląd na żywo")}" ${st.focusSupported ? `class="live-focusable" title="${t("Kliknij, żeby ustawić ostrość w tym miejscu")}" onclick="focusAt(event)"` : ""} style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;" />` : ""}
           ${afBoxHtml(st)}
           <div id="grid-overlay" style="position: absolute; inset: 0; pointer-events: none; display: ${grid.cols && liveOn ? "block" : "none"}; background: ${gridBackground(grid.cols, grid.rows)};"></div>
 
-          <div id="grid-seg" class="overlay-seg" role="group" aria-label="Siatka kadrowania" style="left: 14px; top: 14px;">
+          <div id="grid-seg" class="overlay-seg" role="group" aria-label="${t("Siatka kadrowania")}" style="left: 14px; top: 14px;">
             <span class="overlay-pill"></span>
-            ${[2, 1, 0].map(i => `<button type="button" data-grid="${i}" class="${S.grid === i ? "on" : ""}" aria-pressed="${S.grid === i}" onclick="setGrid(${i})">${GRIDS[i].cols ? `${GRIDS[i].cols}×${GRIDS[i].rows}` : "bez siatki"}</button>`).join("")}
+            ${[2, 1, 0].map(i => `<button type="button" data-grid="${i}" class="${S.grid === i ? "on" : ""}" aria-pressed="${S.grid === i}" onclick="setGrid(${i})">${GRIDS[i].cols ? `${GRIDS[i].cols}×${GRIDS[i].rows}` : t("bez siatki")}</button>`).join("")}
           </div>
           ${liveOn ? `
           <div class="overlay-box mono" style="right: 14px; top: 14px; font-size: 11.5px;">
@@ -43,8 +156,8 @@ function sesjaScreen() {
           <div id="warmup-overlay" class="warmup-overlay" style="display: ${st.warmup != null ? "flex" : "none"};">
             <div class="live-empty warm">
               <div class="live-empty-art">${WARMUP_SVG}</div>
-              <div class="live-empty-title">Przygotowuję silnik czyszczenia tła</div>
-              <div class="live-empty-text">Karta graficzna kompiluje model do usuwania tła. Zdjęcia można robić już teraz: poczekają w kolejce.</div>
+              <div class="live-empty-title">${t("Przygotowuję silnik czyszczenia tła")}</div>
+              <div class="live-empty-text">${t("Karta graficzna kompiluje model do usuwania tła. Zdjęcia można robić już teraz: poczekają w kolejce.")}</div>
               <div class="warm-progress"><span id="warmup-bar" style="width: ${warmupPct(st)}%;"></span></div>
               <div id="warmup-text" class="warm-meta">${warmupText(st)}</div>
             </div>
@@ -54,45 +167,45 @@ function sesjaScreen() {
       </section>
     </main>
 
-    <aside class="session-side" aria-label="Ustawienia zdjęcia">
+    <aside class="session-side" aria-label="${t("Ustawienia zdjęcia")}">
       <div class="session-side-scroll">
 
         <div style="display: flex; flex-direction: column; gap: 8px; min-width: 0;">
           <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
             <h1 title="${st.session.name}" style="flex: 1; min-width: 0; margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -.015em; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${st.session.name}</h1>
-            <button type="button" class="btn btn-sm" onclick="showLeaveConfirm()" title="Wróć do listy sesji (ESC)">${icon("arrowLeft", 14, 1.9)}Sesje</button>
+            <button type="button" class="btn btn-sm" onclick="showLeaveConfirm()" title="${t("Wróć do listy sesji (ESC)")}">${icon("arrowLeft", 14, 1.9)}${t("Sesje")}</button>
           </div>
           <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-            ${match && match.product ? `<span style="display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 12px; background: var(--ok-soft); color: var(--ok-fg); font-size: 12px; font-weight: 500;"><span style="width: 6px; height: 6px; border-radius: 50%; background: var(--ok-fg);"></span>${match.product.name}</span>` : `<span style="font-size: 12px; color: var(--muted-2);">Sesja luźna</span>`}
+            ${match && match.product ? `<span style="display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 12px; background: var(--ok-soft); color: var(--ok-fg); font-size: 12px; font-weight: 500;"><span style="width: 6px; height: 6px; border-radius: 50%; background: var(--ok-fg);"></span>${match.product.name}</span>` : `<span style="font-size: 12px; color: var(--muted-2);">${t("Sesja luźna")}</span>`}
             <span id="sess-count" style="font-size: 12px; color: var(--muted-2);">${sessCountText(st)}</span>
           </div>
         </div>
 
         <section class="side-card">
-          <h2 class="eyebrow" style="margin-bottom: 12px;">Aparat</h2>
+          <h2 class="eyebrow" style="margin-bottom: 12px;">${t("Aparat")}</h2>
           <div id="ev-row" style="display: ${evActive ? "flex" : "none"}; align-items: center; gap: 12px;">
             <div style="flex: 1; min-width: 0;">
-              <div class="row-title">Kompensacja ekspozycji</div>
-              <div id="ev-hint" class="row-desc">Jaśniej, gdy tło wychodzi szare.</div>
+              <div class="row-title">${t("Kompensacja ekspozycji")}</div>
+              <div id="ev-hint" class="row-desc">${t("Jaśniej, gdy tło wychodzi szare.")}</div>
             </div>
             <div class="ev-stepper">
-              <button type="button" class="ev-step" aria-label="Ciemniej" onclick="stepEv(-1)">−</button>
+              <button type="button" class="ev-step" aria-label="${t("Ciemniej")}" onclick="stepEv(-1)">−</button>
               <span id="ev-value" class="mono">${evValueHtml(cam.ev)}</span>
-              <button type="button" class="ev-step" aria-label="Jaśniej" onclick="stepEv(1)">+</button>
+              <button type="button" class="ev-step" aria-label="${t("Jaśniej")}" onclick="stepEv(1)">+</button>
             </div>
           </div>
           <div id="ev-off" class="cam-off" style="display: ${evActive ? "none" : "flex"};">${camOffHtml(st)}</div>
         </section>
 
         <section class="side-card" style="padding: 4px 14px;">
-          <h2 class="eyebrow" style="margin: 10px 0 4px;">Obróbka po zdjęciu</h2>
-          ${optRow("cleanbg", post_.cleanBg, "Białe tło", "Tło do czystej bieli, cienie wygaszone")}
-          ${optRow("zoom", post_.zoom, "Przybliżanie", "Kadr dociąga się do produktu")}
-          ${optRow("center", post_.center, "Centrowanie", "Produkt na środku kadru")}
+          <h2 class="eyebrow" style="margin: 10px 0 4px;">${t("Obróbka po zdjęciu")}</h2>
+          ${optRow("cleanbg", post_.cleanBg, t("Białe tło"), t("Tło do czystej bieli, cienie wygaszone"))}
+          ${optRow("zoom", post_.zoom, t("Przybliżanie"), t("Kadr dociąga się do produktu"))}
+          ${optRow("center", post_.center, t("Centrowanie"), t("Produkt na środku kadru"))}
           <div style="padding: 10px 0 14px; display: flex; flex-direction: column; gap: 10px;">
             <div style="display: flex; align-items: center; gap: 12px;">
-              <div style="flex: 1;" class="row-title">Logo w rogu</div>
-              ${switchHtml(post_.logo, "toggle('logo', switchOn(this))", "Logo w rogu")}
+              <div style="flex: 1;" class="row-title">${t("Logo w rogu")}</div>
+              ${switchHtml(post_.logo, "toggle('logo', switchOn(this))", t("Logo w rogu"))}
             </div>
             ${logoPicker(post_)}
           </div>
@@ -100,7 +213,7 @@ function sesjaScreen() {
       </div>
 
       <div class="shutter-bar">
-        <button type="button" class="shutter" onclick="shoot()"><span id="shoot-spin" class="spinner" style="flex: 0 0 auto; border-color: rgba(255,255,255,.35); border-top-color: #fff; display: ${shootBusy(st) ? "inline-block" : "none"};"></span>${icon("camera", 20, 1.8)}<span id="shoot-label">${st.busy || "Zrób zdjęcie"}</span><span class="kbd">ENTER</span></button>
+        <button type="button" class="shutter" onclick="shoot()"><span id="shoot-spin" class="spinner" style="flex: 0 0 auto; border-color: rgba(255,255,255,.35); border-top-color: #fff; display: ${shootBusy(st) ? "inline-block" : "none"};"></span>${icon("camera", 20, 1.8)}<span id="shoot-label">${st.busy || t("Zrób zdjęcie")}</span><span class="kbd">ENTER</span></button>
       </div>
     </aside>
     </div>
@@ -141,19 +254,22 @@ const UNPLUGGED_SVG = `
 // w paczce aplikacji — karta mówi, po co są, skąd je wziąć i gdzie położyć.
 function edsdkMissingHtml(st) {
   const mac = st.platform === "darwin";
-  const files = mac ? `<span class="mono">EDSDK.framework</span>` : `<span class="mono">EDSDK.dll</span> i <span class="mono">EdsImage.dll</span>`;
-  const where = mac ? `Dodaj <span class="mono">EDSDK.framework</span> do katalogu aplikacji, obok <span class="mono">Camera Capture.app</span>.` : `Dodaj oba pliki do katalogu aplikacji, obok pliku <span class="mono">.exe</span>.`;
+  const files = mac ? `<span class="mono">EDSDK.framework</span>` : t("{a} i {b}", { a: `<span class="mono">EDSDK.dll</span>`, b: `<span class="mono">EdsImage.dll</span>` });
+  const where = mac ? t('Dodaj <span class="mono">EDSDK.framework</span> do katalogu aplikacji, obok <span class="mono">Camera Capture.app</span>.') : t('Dodaj oba pliki do katalogu aplikacji, obok pliku <span class="mono">.exe</span>.');
+  const why = mac
+    ? t("Aplikacja steruje aparatem przez Canon EDSDK: robi zdjęcia, pobiera je po USB i pokazuje podgląd na żywo. Framework {files} wymaga licencji Canona, dlatego nie ma go w paczce aplikacji.", { files })
+    : t("Aplikacja steruje aparatem przez Canon EDSDK: robi zdjęcia, pobiera je po USB i pokazuje podgląd na żywo. Pliki {files} wymagają licencji Canona, dlatego nie ma ich w paczce aplikacji.", { files });
   return `
     <div class="live-empty sdk">
       <div class="live-empty-icon">${icon("puzzle", 26, 1.6)}</div>
-      <div class="live-empty-title">Brak sterownika aparatu Canon</div>
-      <div class="live-empty-text">Aplikacja steruje aparatem przez Canon EDSDK: robi zdjęcia, pobiera je po USB i pokazuje podgląd na żywo. ${mac ? "Framework" : "Pliki"} ${files} ${mac ? "wymaga" : "wymagają"} licencji Canona, dlatego nie ma ${mac ? "go" : "ich"} w paczce aplikacji.</div>
+      <div class="live-empty-title">${t("Brak sterownika aparatu Canon")}</div>
+      <div class="live-empty-text">${why}</div>
       <div class="sdk-steps">
-        <div><span class="sdk-n">1</span><span>Pobierz Canon EDSDK ${mac ? "dla macOS" : "dla Windows (x64)"} z programu deweloperskiego Canona (darmowe konto).</span></div>
+        <div><span class="sdk-n">1</span><span>${t("Pobierz Canon EDSDK {platform} z programu deweloperskiego Canona (darmowe konto).", { platform: mac ? t("dla macOS") : t("dla Windows (x64)") })}</span></div>
         <div><span class="sdk-n">2</span><span>${where}</span></div>
-        <div><span class="sdk-n">3</span><span>Uruchom aplikację ponownie.</span></div>
+        <div><span class="sdk-n">3</span><span>${t("Uruchom aplikację ponownie.")}</span></div>
       </div>
-      <button type="button" class="btn btn-sm" onclick="post({action:'open_url', url: 'https://developercommunity.usa.canon.com/s/'})">Program deweloperski Canona${icon("external", 13, 1.8)}</button>
+      <button type="button" class="btn btn-sm" onclick="post({action:'open_url', url: 'https://developercommunity.usa.canon.com/s/'})">${t("Program deweloperski Canona")}${icon("external", 13, 1.8)}</button>
     </div>`;
 }
 
@@ -185,17 +301,17 @@ const fmtSec = s => s >= 60 ? `${Math.floor(s / 60)} min${s % 60 ? ` ${s % 60} s
 function warmupText(st) {
   const s = st.warmup || 0, eta = warmupEta(st), left = eta - s;
   return left > 0
-    ? `Zwykle ok. ${fmtSec(eta)} na tym komputerze · zostało ok. <span class="mono">${fmtSec(left)}</span>`
-    : `Trwa dłużej niż zwykle (ok. ${fmtSec(eta)}) · <span class="mono">${fmtSec(s)}</span>`;
+    ? t('Zwykle ok. {eta} na tym komputerze · zostało ok. <span class="mono">{left}</span>', { eta: fmtSec(eta), left: fmtSec(left) })
+    : t('Trwa dłużej niż zwykle (ok. {eta}) · <span class="mono">{elapsed}</span>', { eta: fmtSec(eta), elapsed: fmtSec(s) });
 }
 
 function liveEmptyHtml(st) {
   if (st.edsdkMissing) return edsdkMissingHtml(st);
   const v = !st.connected
-    ? { cls: "err", ic: "cameraOff", title: "Aparat rozłączony", text: "Sprawdź kabel USB i czy aparat jest włączony.", foot: `<span class="live-empty-foot"><span class="spinner"></span>Łączę ponownie…</span>` }
+    ? { cls: "err", ic: "cameraOff", title: t("Aparat rozłączony"), text: t("Sprawdź kabel USB i czy aparat jest włączony."), foot: `<span class="live-empty-foot"><span class="spinner"></span>${t("Łączę ponownie…")}</span>` }
     : st.previewOn
-      ? { cls: "wait", ic: "camera", title: "Czekam na obraz z aparatu", text: "Pierwsze klatki podglądu za chwilę.", foot: `<span class="live-empty-foot"><span class="spinner"></span>Uruchamiam podgląd…</span>` }
-      : { cls: "off", ic: "eyeSlash", title: "Podgląd wyłączony", text: "Zdjęcia dalej można robić klawiszem ENTER.", foot: `<span class="live-empty-foot">Włącz klawiszem <span class="hint-key">P</span></span>` };
+      ? { cls: "wait", ic: "camera", title: t("Czekam na obraz z aparatu"), text: t("Pierwsze klatki podglądu za chwilę."), foot: `<span class="live-empty-foot"><span class="spinner"></span>${t("Uruchamiam podgląd…")}</span>` }
+      : { cls: "off", ic: "eyeSlash", title: t("Podgląd wyłączony"), text: t("Zdjęcia dalej można robić klawiszem ENTER."), foot: `<span class="live-empty-foot">${t('Włącz klawiszem <span class="hint-key">P</span>')}</span>` };
   const art = v.cls === "err"
     ? `<div class="live-empty-art">${UNPLUGGED_SVG}</div>`
     : `<div class="live-empty-icon"><span class="ring"></span><span class="ring r2"></span>${icon(v.ic, 26, 1.6)}</div>`;
@@ -296,9 +412,9 @@ const BG_DOT = { ok: "ok", dark: "warn", unknown: "" };
 // Stan, w którym nie ma czego ustawiać: rozłączony aparat albo tryb bez
 // kompensacji (M). Zamiast wyszarzonych −/+ mówi wprost, co się dzieje.
 function camOffHtml(st) {
-  if (st.edsdkMissing) return `<span class="dot warn"></span><span><b>Brak Canon EDSDK.</b> Bez tych plików aplikacja nie połączy się z aparatem. Szczegóły w ramce podglądu.</span>`;
-  if (!st.connected) return `<span class="dot err"></span><span><b>Aparat rozłączony.</b> Kompensacja wróci po połączeniu.</span>`;
-  return `<span class="dot warn"></span><span><b>Kompensacja niedostępna</b> w tym trybie. Ustaw pokrętło aparatu na P, Av albo Tv.</span>`;
+  if (st.edsdkMissing) return `<span class="dot warn"></span><span>${t("<b>Brak Canon EDSDK.</b> Bez tych plików aplikacja nie połączy się z aparatem. Szczegóły w ramce podglądu.")}</span>`;
+  if (!st.connected) return `<span class="dot err"></span><span>${t("<b>Aparat rozłączony.</b> Kompensacja wróci po połączeniu.")}</span>`;
+  return `<span class="dot warn"></span><span>${t("<b>Kompensacja niedostępna</b> w tym trybie. Ustaw pokrętło aparatu na P, Av albo Tv.")}</span>`;
 }
 
 // Kompensacja z debounce: każdy klik od razu przesuwa WARTOŚĆ DOCELOWĄ
@@ -400,11 +516,11 @@ function evReconcile(st) {
 const shootBusy = st => !!st.busy;
 
 const bgStatus = st => (st.connected && BG_LABEL[st.camera.bgStatus]) ? st.camera.bgStatus : "unknown";
-const histLabel = st => BG_LABEL[bgStatus(st)];
+const histLabel = st => t(BG_LABEL[bgStatus(st)]);
 const histDot = st => BG_DOT[bgStatus(st)];
 const histTitle = st => bgStatus(st) === "unknown"
-  ? "Jasność tła — czekam na klatkę z aparatu."
-  : `Zmierzona jasność tła: ${st.camera.bg} ze skali 0–255 (im bliżej 255, tym bielszy stół; poniżej 230 robi się szaro).`;
+  ? t("Jasność tła — czekam na klatkę z aparatu.")
+  : t("Zmierzona jasność tła: {bg} ze skali 0–255 (im bliżej 255, tym bielszy stół; poniżej 230 robi się szaro).", { bg: st.camera.bg });
 
 // ---------- podglad zdjec (overlay) ----------
 
@@ -417,9 +533,9 @@ function reviewShot() {
 
 // Stan zdjęcia w Automacie (chip w pasku podglądu i kropka na kafelku).
 function shotState(shot) {
-  if (shot.status === "rejected") return { cls: "err", text: "odrzucone" };
-  if (shot.uploaded) return { cls: "ok", text: "w API" };
-  if (S.state.automat && S.state.automat.hasToken) return { cls: "warn", text: "czeka na wysyłkę" };
+  if (shot.status === "rejected") return { cls: "err", text: t("odrzucone") };
+  if (shot.uploaded) return { cls: "ok", text: t("w API") };
+  if (S.state.automat && S.state.automat.hasToken) return { cls: "warn", text: t("czeka na wysyłkę") };
   return { cls: "", text: "" };
 }
 
@@ -439,7 +555,7 @@ function reviewStatusHtml(shot) {
 function updateReviewHeader(shot) {
   const n = S.state.shots.length;
   const c = $("review-count");
-  if (c) c.textContent = `${shot.i + 1} z ${n}`;
+  if (c) c.textContent = t("{i} z {n}", { i: shot.i + 1, n });
   const f = $("review-file");
   if (f) f.textContent = shot.file;
   const s = $("review-status");
@@ -496,24 +612,24 @@ function reviewOverlay() {
   <div id="review-wrap" class="ui" style="position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column;">
     <div id="review-main" style="flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--viewer); transition: opacity .24s cubic-bezier(0.32, 0.72, 0, 1);">
       <div class="viewer-bar">
-        <button type="button" class="vbtn" onclick="closeReview()">${icon("arrowLeft", 16, 1.8)}Wróć do sesji<span class="kbd">ESC</span></button>
+        <button type="button" class="vbtn" onclick="closeReview()">${icon("arrowLeft", 16, 1.8)}${t("Wróć do sesji")}<span class="kbd">ESC</span></button>
         <div style="display: flex; align-items: baseline; gap: 10px;">
-          <span id="review-count" style="font-size: 15px; font-weight: 700;">${shot.i + 1} z ${n}</span>
+          <span id="review-count" style="font-size: 15px; font-weight: 700;">${t("{i} z {n}", { i: shot.i + 1, n })}</span>
           <span id="review-file" class="mono" style="font-size: 12.5px; color: var(--viewer-fg-2);">${shot.file}</span>
         </div>
         <span id="review-size" class="vtag" style="display: none;"></span>
         <span id="review-status">${reviewStatusHtml(shot)}</span>
         <div style="flex: 1;"></div>
-        <button type="button" id="edit-btn" class="vbtn" onclick="toggleEdit()">${icon("pencil", 16, 1.8)}Edytuj<span class="kbd">E</span></button>
-        <button type="button" class="vbtn vbtn-danger" onclick="deleteReviewed()">${icon("trash", 16, 1.8)}Usuń<span class="kbd">BACKSPACE</span></button>
+        <button type="button" id="edit-btn" class="vbtn" onclick="toggleEdit()">${icon("pencil", 16, 1.8)}${t("Edytuj")}<span class="kbd">E</span></button>
+        <button type="button" class="vbtn vbtn-danger" onclick="deleteReviewed()">${icon("trash", 16, 1.8)}${t("Usuń")}<span class="kbd">BACKSPACE</span></button>
       </div>
       <div style="flex: 1; min-height: 0; display: flex;">
       <div style="flex: 1; min-width: 0; position: relative;">
         <img id="review-img" src="${shotUrl(shot, "view")}" alt="" onload="reviewLoaded(this)" style="position: absolute; left: 88px; right: 88px; top: 20px; bottom: 20px; width: calc(100% - 176px); height: calc(100% - 40px); object-fit: contain; animation: reviewIn .32s cubic-bezier(0.32, 0.72, 0, 1);" />
-        <button type="button" id="review-prev" class="vnav" aria-label="Poprzednie zdjęcie" onclick="navShot(-1)" style="left: 20px;" ${shot.i <= 0 ? "disabled" : ""}>${icon("chevL", 20, 2)}</button>
-        <button type="button" id="review-next" class="vnav" aria-label="Następne zdjęcie" onclick="navShot(1)" style="right: 20px;" ${shot.i >= n - 1 ? "disabled" : ""}>${icon("chevR", 20, 2)}</button>
+        <button type="button" id="review-prev" class="vnav" aria-label="${t("Poprzednie zdjęcie")}" onclick="navShot(-1)" style="left: 20px;" ${shot.i <= 0 ? "disabled" : ""}>${icon("chevL", 20, 2)}</button>
+        <button type="button" id="review-next" class="vnav" aria-label="${t("Następne zdjęcie")}" onclick="navShot(1)" style="right: 20px;" ${shot.i >= n - 1 ? "disabled" : ""}>${icon("chevR", 20, 2)}</button>
       </div>
-      <aside id="edit-panel" class="edit-panel ui" aria-label="Edycja zdjęcia" hidden></aside>
+      <aside id="edit-panel" class="edit-panel ui" aria-label="${t("Edycja zdjęcia")}" hidden></aside>
       </div>
     </div>
     ${stripPanel("review-strip")}
@@ -535,21 +651,21 @@ function editPanelHtml() {
     : (shot.edit === "raw" ? "preparing" : "none");
   const head = `
     <div style="display: flex; align-items: center; gap: 10px;">
-      <h2 class="panel-title" style="flex: 1;">Edycja zdjęcia</h2>
-      <button type="button" class="icon-btn" aria-label="Zamknij edycję" onclick="closeEdit()" style="width: 28px; height: 28px; font-size: 16px;">×</button>
+      <h2 class="panel-title" style="flex: 1;">${t("Edycja zdjęcia")}</h2>
+      <button type="button" class="icon-btn" aria-label="${t("Zamknij edycję")}" onclick="closeEdit()" style="width: 28px; height: 28px; font-size: 16px;">×</button>
     </div>
     <div class="row-desc mono" style="margin-top: -6px;">${S.edit.file}</div>`;
   if (status === "preparing") {
     return `${head}
       <div style="display: flex; align-items: center; gap: 10px; padding: 12px; border-radius: 10px; background: var(--accent-soft); color: var(--accent-fg); font-size: 13px;">
-        <span class="spinner"></span><span>Przygotowuję wersję bez logo z oryginału z aparatu…</span>
+        <span class="spinner"></span><span>${t("Przygotowuję wersję bez logo z oryginału z aparatu…")}</span>
       </div>
-      <div class="row-desc">Robię to raz dla tego zdjęcia, z bieżącymi ustawieniami obróbki.</div>`;
+      <div class="row-desc">${t("Robię to raz dla tego zdjęcia, z bieżącymi ustawieniami obróbki.")}</div>`;
   }
   if (status !== "ready") {
     return `${head}
-      <div style="padding: 12px; border-radius: 10px; background: var(--warn-soft); color: var(--warn-fg-3); font-size: 13px; line-height: 1.45;">To zdjęcie nie ma ani wersji bez logo, ani oryginału z aparatu, więc nie da się zmienić logo.</div>
-      <div class="row-desc">Logo da się zmieniać na zdjęciach robionych od tej wersji aplikacji i na tych, których oryginał leży w /raw.</div>`;
+      <div style="padding: 12px; border-radius: 10px; background: var(--warn-soft); color: var(--warn-fg-3); font-size: 13px; line-height: 1.45;">${t("To zdjęcie nie ma ani wersji bez logo, ani oryginału z aparatu, więc nie da się zmienić logo.")}</div>
+      <div class="row-desc">${t("Logo da się zmieniać na zdjęciach robionych od tej wersji aplikacji i na tych, których oryginał leży w /raw.")}</div>`;
   }
   return `${head}
     <div style="display: flex; flex-direction: column; gap: 8px;">
@@ -559,13 +675,13 @@ function editPanelHtml() {
     <div id="edit-corner" style="${S.edit.logo ? "" : "opacity: .4; pointer-events: none;"}">
       ${cornerRow(post_.logoPositions, S.edit.pos, "editPickPos", "data-ecorner", "edit-pos-text")}
     </div>
-    <div class="row-desc">Podgląd obok pokazuje zdjęcie dokładnie tak, jak zostanie zapisane.</div>
+    <div class="row-desc">${t("Podgląd obok pokazuje zdjęcie dokładnie tak, jak zostanie zapisane.")}</div>
     <div style="flex: 1;"></div>
     <div style="display: flex; gap: 8px;">
-      <button type="button" class="btn" onclick="closeEdit()" style="flex: 1;">Anuluj</button>
-      <button type="button" class="btn btn-primary" onclick="saveEdit()" style="flex: 2;">Zapisz zdjęcie</button>
+      <button type="button" class="btn" onclick="closeEdit()" style="flex: 1;">${t("Anuluj")}</button>
+      <button type="button" class="btn btn-primary" onclick="saveEdit()" style="flex: 2;">${t("Zapisz zdjęcie")}</button>
     </div>
-    <div class="row-desc" style="text-align: center;">Zmiana trafi też do API.</div>`;
+    <div class="row-desc" style="text-align: center;">${t("Zmiana trafi też do API.")}</div>`;
 }
 
 function renderEditPanel() {
@@ -635,8 +751,8 @@ function editPickPos(pos) {
     b.classList.toggle("on", on);
     b.setAttribute("aria-checked", on);
   });
-  const t = $("edit-pos-text");
-  if (t) t.textContent = cap(LOGO_POS_PL[pos] || pos);
+  const txt = $("edit-pos-text");
+  if (txt) txt.textContent = cap(t(LOGO_POS_PL[pos] || pos));
   editPreview();
 }
 
@@ -674,10 +790,10 @@ function editReconcile(st) {
 // logu i naglowka, co klulo w oczy.
 function stripPanel(id) {
   const hints = id === "review-strip"
-    ? `<span>${kHint("← →")}zmiana zdjęcia</span><span>${kHint("E")}edytuj</span><span>${kHint("BACKSPACE")}usuń</span>`
-    : `<span>${kHint("SPACJA")}podgląd</span><span>${kHint("← →")}wybór</span><span>${kHint("BACKSPACE")}usuń</span>`;
+    ? `<span>${kHint("← →")}${t("zmiana zdjęcia")}</span><span>${kHint("E")}${t("edytuj")}</span><span>${kHint("BACKSPACE")}${t("usuń")}</span>`
+    : `<span>${kHint(t("SPACJA"))}${t("podgląd")}</span><span>${kHint("← →")}${t("wybór")}</span><span>${kHint("BACKSPACE")}${t("usuń")}</span>`;
   return `
-    <section aria-label="Zdjęcia w sesji" class="strip-panel">
+    <section aria-label="${t("Zdjęcia w sesji")}" class="strip-panel">
       <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 10px;">
         <div id="${id}-legend" style="display: flex; align-items: center; gap: 14px;">${stripLegend()}</div>
         <div style="flex: 1;"></div>
@@ -694,11 +810,11 @@ function stripLegend() {
     ? shots.filter(s => !s.uploaded && s.status !== "rejected").length : 0;
   const rej = shots.filter(s => s.status === "rejected").length;
   const item = (cls, text) => `<span class="legend"><span class="dot ${cls}"></span>${text}</span>`;
-  return `<h2 style="margin: 0; font-size: 13px; font-weight: 700; color: var(--text);">Zdjęcia w sesji <span style="font-weight: 500; color: var(--muted-2);">· ${shots.length}</span></h2>
-    ${up ? item("ok", `w API ${up}`) : ""}
-    ${wait ? item("warn", `wysyłanie ${wait}`) : ""}
-    ${rej ? item("err", `odrzucone ${rej}`) : ""}
-    ${st.processing ? `<span class="legend"><span class="dot" style="background: var(--accent);"></span>obróbka 1</span>` : ""}`;
+  return `<h2 style="margin: 0; font-size: 13px; font-weight: 700; color: var(--text);">${t("Zdjęcia w sesji")} <span style="font-weight: 500; color: var(--muted-2);">· ${shots.length}</span></h2>
+    ${up ? item("ok", t("w API {n}", { n: up })) : ""}
+    ${wait ? item("warn", t("wysyłanie {n}", { n: wait })) : ""}
+    ${rej ? item("err", t("odrzucone {n}", { n: rej })) : ""}
+    ${st.processing ? `<span class="legend"><span class="dot" style="background: var(--accent);"></span>${t("obróbka 1")}</span>` : ""}`;
 }
 
 // `prefix` rozroznia dwa egzemplarze (ekran sesji i podglad) — oba sa w DOM
@@ -710,7 +826,7 @@ function logBar(prefix) {
       <div id="${prefix}-panel" class="log-panel" style="display: ${S.logOpen ? "block" : "none"};">${logLines()}</div>
       <div class="statusbar-line">
         <span id="${prefix}-line" style="flex: 1; min-width: 0; display: flex; gap: 10px; align-items: center; overflow: hidden;">${lastLogLine()}</span>
-        <button type="button" class="btn btn-sm log-toggle" onclick="toggleLog()" style="height: 24px; font-size: 11.5px;">${S.logOpen ? "Ukryj log" : "Pokaż log"}</button>
+        <button type="button" class="btn btn-sm log-toggle" onclick="toggleLog()" style="height: 24px; font-size: 11.5px;">${S.logOpen ? t("Ukryj log") : t("Pokaż log")}</button>
       </div>
     </div>`;
 }
@@ -727,7 +843,7 @@ function logoTiles(logos, cur, onPick, attr = "data-logo", withNone = false) {
   const n = logos.length + (withNone ? 1 : 0);
   return `
     <div role="radiogroup" aria-label="Logo" style="display: grid; grid-template-columns: repeat(${n}, minmax(0, 1fr)); gap: 8px;">
-      ${withNone ? tile("", `<span style="font-size: 12.5px; font-weight: 500; color: #5e5e66;">Bez logo</span>`, "Bez logo") : ""}
+      ${withNone ? tile("", `<span style="font-size: 12.5px; font-weight: 500; color: #5e5e66;">${t("Bez logo")}</span>`, t("Bez logo")) : ""}
       ${logos.map(l => tile(l.key, `<img src="/logo?k=${l.key}" alt="" />`, l.label)).join("")}
     </div>`;
 }
@@ -736,11 +852,11 @@ function cornerRow(positions, cur, onPick, attr = "data-corner", textId = "logo-
   return `
     <div style="display: flex; align-items: center; gap: 12px;">
       <div style="flex: 1; min-width: 0;">
-        <div class="row-title">Pozycja</div>
-        <div id="${textId}" class="row-desc">${cap(LOGO_POS_PL[cur] || cur)}</div>
+        <div class="row-title">${t("Pozycja")}</div>
+        <div id="${textId}" class="row-desc">${cap(t(LOGO_POS_PL[cur] || cur))}</div>
       </div>
-      <div class="corner-pick" role="radiogroup" aria-label="Róg kadru">
-        ${positions.map(p => `<button type="button" role="radio" ${attr}="${p}" aria-checked="${p === cur}" aria-label="${LOGO_POS_PL[p] || p}" title="${LOGO_POS_PL[p] || p}" class="${p === cur ? "on" : ""}" onclick="${onPick}('${p}')" style="${LOGO_CORNERS[p] || ""}"></button>`).join("")}
+      <div class="corner-pick" role="radiogroup" aria-label="${t("Róg kadru")}">
+        ${positions.map(p => `<button type="button" role="radio" ${attr}="${p}" aria-checked="${p === cur}" aria-label="${t(LOGO_POS_PL[p] || p)}" title="${t(LOGO_POS_PL[p] || p)}" class="${p === cur ? "on" : ""}" onclick="${onPick}('${p}')" style="${LOGO_CORNERS[p] || ""}"></button>`).join("")}
       </div>
     </div>`;
 }
@@ -773,8 +889,8 @@ function setLogoPos(pos) {
     b.classList.toggle("on", on);
     b.setAttribute("aria-checked", on);
   });
-  const t = $("logo-pos-text");
-  if (t) t.textContent = cap(LOGO_POS_PL[pos] || pos);
+  const txt = $("logo-pos-text");
+  if (txt) txt.textContent = cap(t(LOGO_POS_PL[pos] || pos));
   lastSesja = sesjaKey(S.state);
   post({ action: "set_post", key: "logo_position", value: pos });
 }
@@ -783,7 +899,7 @@ function setLogoPos(pos) {
 // animacje wejscia zdjecia.
 function toggleLog() {
   S.logOpen = !S.logOpen;
-  document.querySelectorAll(".log-toggle").forEach(b => { b.textContent = S.logOpen ? "Ukryj log" : "Pokaż log"; });
+  document.querySelectorAll(".log-toggle").forEach(b => { b.textContent = S.logOpen ? t("Ukryj log") : t("Pokaż log"); });
   document.querySelectorAll(".log-panel").forEach(lp => {
     lp.style.display = S.logOpen ? "block" : "none";
     lp.scrollTop = lp.scrollHeight;
@@ -800,7 +916,7 @@ function toggleLog() {
 // odpalał animację hover — przy każdej zmianie zdjęcia coś podskakiwało.
 const stripContentSig = () => JSON.stringify([stripSig(S.state), S.editSaved && S.editSaved.file, S.justEdited]);
 
-const sessCountText = st => `${plPhotos(st.session.count)}${st.session.rejected ? ` · odrzucone ${st.session.rejected}` : ""}`;
+const sessCountText = st => `${plPhotos(st.session.count)}${st.session.rejected ? ` · ${t("odrzucone {n}", { n: st.session.rejected })}` : ""}`;
 // kafelki paska: zdjęcia + skeleton obróbki + skeletony pobierania z API
 const stripItemCount = st => st.shots.length + (st.processing ? 1 : 0) + (st.downloading || []).length;
 
@@ -868,13 +984,13 @@ function showLeaveConfirm() {
       <div style="display: flex; align-items: flex-start; gap: 16px; padding: 22px 24px 18px;">
         <div class="modal-icon">${icon("leave", 22, 1.6)}</div>
         <div style="min-width: 0; padding-top: 2px;">
-          <h3 id="leave-title" style="margin: 0; font-size: 16px; font-weight: 700; color: var(--text);">Wrócić do listy sesji?</h3>
-          <p style="margin: 8px 0 0; font-size: 13px; line-height: 1.5; color: var(--muted);">Sesja zostanie zamknięta. Zdjęcia są zapisane.</p>
+          <h3 id="leave-title" style="margin: 0; font-size: 16px; font-weight: 700; color: var(--text);">${t("Wrócić do listy sesji?")}</h3>
+          <p style="margin: 8px 0 0; font-size: 13px; line-height: 1.5; color: var(--muted);">${t("Sesja zostanie zamknięta. Zdjęcia są zapisane.")}</p>
         </div>
       </div>
       <div class="modal-foot">
-        <button type="button" class="btn" onclick="hideLeaveConfirm()">Zostań <span class="kbd">ESC</span></button>
-        <button type="button" class="btn btn-primary" onclick="confirmLeave()">Wróć do listy <span class="kbd">ENTER</span></button>
+        <button type="button" class="btn" onclick="hideLeaveConfirm()">${t("Zostań")} <span class="kbd">ESC</span></button>
+        <button type="button" class="btn btn-primary" onclick="confirmLeave()">${t("Wróć do listy")} <span class="kbd">ENTER</span></button>
       </div>
     </div>`;
   // klik w przyciemnione tlo = anuluj (ten sam gest co ESC)
@@ -1067,17 +1183,17 @@ function filmstrip() {
     if (S.justEdited === s.file) fx = " edited";
     const cls = `shot${i === S.selShot ? " on" : ""}${s.status === "rejected" ? " rejected" : ""}${fx}`;
     return `
-    <button type="button" data-shot="${i}" class="${cls}" title="${s.file}${ss.text ? ` · ${ss.text}` : ""}" aria-label="Zdjęcie ${i + 1}" onclick="openShot(${i})" style="background-image: url('${shotUrl(s, true)}');">
+    <button type="button" data-shot="${i}" class="${cls}" title="${s.file}${ss.text ? ` · ${ss.text}` : ""}" aria-label="${t("Zdjęcie {n}", { n: i + 1 })}" onclick="openShot(${i})" style="background-image: url('${shotUrl(s, true)}');">
       <span class="shot-n">#${i + 1}</span>
       ${ss.cls ? `<span class="dot ${ss.cls}"></span>` : ""}
     </button>`;
   });
   if (st.processing) {
-    items.push(`<div class="shot-wait" title="${st.processing}">Obróbka…<span class="indet"></span></div>`);
+    items.push(`<div class="shot-wait" title="${st.processing}">${t("Obróbka…")}<span class="indet"></span></div>`);
   }
   // pobieranie zdjec sesji z Automatu — kafelek-skeleton az plik wyladuje na dysku
   (st.downloading || []).forEach(() => {
-    items.push(`<div class="skeleton shot-skel">Pobieranie…</div>`);
+    items.push(`<div class="skeleton shot-skel">${t("Pobieranie…")}</div>`);
   });
-  return items.join("") || `<div style="font-size: 12.5px; color: var(--muted-2); align-self: center;">Brak zdjęć. Naciśnij ENTER, żeby zrobić pierwsze.</div>`;
+  return items.join("") || `<div style="font-size: 12.5px; color: var(--muted-2); align-self: center;">${t("Brak zdjęć. Naciśnij ENTER, żeby zrobić pierwsze.")}</div>`;
 }

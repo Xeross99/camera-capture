@@ -48,7 +48,8 @@ One photo takes a few seconds from the shutter to the file on disk. Between shot
 
 ## The app
 
-The interface is in Polish.
+The app is available in Polish and English: switch in Settings → Language, it changes immediately and
+the choice is saved. The screenshots below show the Polish version.
 
 ### Session list
 
@@ -84,7 +85,8 @@ Older ones are rebuilt from the camera original (`/raw`) if it was kept.
 ### Settings
 
 Updates from GitHub Releases, the API connection (with the list of endpoints), files (including after how
-many days camera originals are deleted), live view and processing, and keyboard shortcuts. The light or dark
+many days camera originals are deleted), live view and processing, language (Polish or English) and keyboard
+shortcuts. The light or dark
 theme switches with the icon in the top right corner.
 
 <img src="assets/readme/settings.jpg" width="100%" alt="Settings: updates, API with endpoints, files">
@@ -104,7 +106,8 @@ theme switches with the icon in the top right corner.
 | <kbd>Backspace</kbd> | deletes the photo: it goes to the trash on disk and disappears from the API |
 | <kbd>Esc</kbd> | closes the viewer or leaves the session |
 | <kbd>P</kbd> | turns the camera live view on and off |
-| <kbd>⌘</kbd> <kbd>F</kbd> / <kbd>Ctrl</kbd> <kbd>F</kbd> | searches sessions |
+| <kbd>⌘</kbd> <kbd>K</kbd> / <kbd>Ctrl</kbd> <kbd>K</kbd> | opens the session search from any screen |
+| <kbd>⌘</kbd> <kbd>F</kbd> / <kbd>Ctrl</kbd> <kbd>F</kbd> | searches sessions | (in the session list) |
 | <kbd>⌘</kbd> <kbd>N</kbd> / <kbd>Ctrl</kbd> <kbd>N</kbd> | starts a new session |
 
 ## API

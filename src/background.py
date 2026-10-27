@@ -31,6 +31,17 @@ from .config import (
     SHADOW_STRENGTH,
     SHARPEN_PERCENT,
 )
+from .i18n import EN, tr
+
+EN.update({
+    "rembg: inferencja na GPU ({provider})": "rembg: inference on the GPU ({provider})",
+    "rembg: GPU nie wstało ({e}) — liczę na CPU": "rembg: the GPU did not start ({e}) — computing on the CPU",
+    # etapy w linii "Czyszczenie tła: …" (rembg zostaje bez tlumaczenia)
+    "maska": "mask",
+    "kadr": "framing",
+    "kompozyt": "composite",
+    "Czyszczenie tła: {total:.1f} s ({detail})": "Background cleaning: {total:.1f} s ({detail})",
+})
 
 Bbox = tuple[int, int, int, int]  # (left, top, right, bottom)
 Window = tuple[int, int, int, int]  # okno cropu w pikselach source (sl, st, sr, sb)
@@ -87,11 +98,11 @@ def _session(model_name: str):
     if providers:
         try:
             session = new_session(model_name, providers=providers)
-            print(f"rembg: inferencja na GPU ({providers[0]})")
+            print(tr("rembg: inferencja na GPU ({provider})", provider=providers[0]))
             return session
         except Exception as e:
             # DirectML potrafi polec na starych sterownikach — CPU zawsze dziala
-            print(f"rembg: GPU nie wstało ({e}) — liczę na CPU")
+            print(tr("rembg: GPU nie wstało ({e}) — liczę na CPU", e=e))
     return new_session(model_name)
 
 
@@ -723,7 +734,7 @@ def clean_background(
     _mark("rembg")
 
     alpha, binary, img_lum = _product_alpha(image, rembg_alpha)
-    _mark("maska")
+    _mark(tr("maska"))
     img = _lift_internal_shadows(image.convert("RGB"), alpha, SHADOW_STRENGTH)
 
     bbox = _mask_bbox(binary)
@@ -733,10 +744,10 @@ def clean_background(
     window = _select_crop_window(
         image, alpha, bbox, canvas_w / canvas_h, auto_center, auto_zoom, img_lum
     )
-    _mark("kadr")
+    _mark(tr("kadr"))
     result = _compose_on_canvas(img, alpha, window, canvas_size)
-    _mark("kompozyt")
+    _mark(tr("kompozyt"))
     total = sum(dt for _, dt in times)
     detail = ", ".join(f"{label} {dt:.1f} s" for label, dt in times)
-    print(f"Czyszczenie tła: {total:.1f} s ({detail})")
+    print(tr("Czyszczenie tła: {total:.1f} s ({detail})", total=total, detail=detail))
     return result

@@ -482,3 +482,37 @@ html[data-theme="dark"] .theme-light, html:not([data-theme]) .theme-light { disp
 /* favicon serwera API w plakietce „API połączono" (syncApiChip) */
 #automat-fav-slot { display: contents; }
 .chip-fav { width: 14px; height: 14px; border-radius: 3px; object-fit: contain; flex-shrink: 0; display: none; }
+/* zmiana języka (applyLang): nowy tekst wchodzi krótkim przenikaniem */
+#app.lang-swap { animation: langSwap .32s cubic-bezier(0.32, 0.72, 0, 1); }
+@keyframes langSwap { from { opacity: .25; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { #app.lang-swap { animation: none; } }
+/* mała kropka stanu przy faviconie API (syncApiChip) */
+.dot.dot-sm { width: 6px; height: 6px; margin-left: 2px; }
+/* Wyszukiwarka sesji ⌘K (app-palette.js): okno przy górze ekranu jak command
+   palette Tailwind Plus, ta sama animacja co modal wyjścia z sesji */
+.palette-root { align-items: flex-start; padding-top: 12vh; }
+.palette-panel { max-width: 580px; }
+.pal-search { display: flex; align-items: center; gap: 12px; height: 54px; padding: 0 16px; border-bottom: 1px solid var(--hair); color: var(--muted-2); }
+.pal-search input { flex: 1; min-width: 0; height: 100%; border: none; outline: none; background: transparent; color: var(--text); font: inherit; font-size: 15px; }
+.pal-search input::placeholder { color: var(--muted-2); }
+.pal-results { max-height: min(420px, 56vh); overflow-y: auto; padding: 8px; scroll-padding: 8px; }
+.pal-head { padding: 6px 10px 6px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-2); }
+.pal-item { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 10px; cursor: default; user-select: none; }
+.pal-item.on { background: var(--seg); }
+.pal-thumb { position: relative; width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 9px; background: var(--accent-soft); color: var(--accent); }
+.pal-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #fff; }
+.pal-thumb-new { background: var(--ok-soft); color: var(--ok-fg); }
+.pal-text { min-width: 0; flex: 1; }
+.pal-title { font-size: 14px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pal-sub { margin-top: 2px; font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pal-tag { margin-left: 6px; padding: 1px 7px; border-radius: 9px; font-size: 11px; font-weight: 500; background: var(--accent-soft); color: var(--accent); vertical-align: 1px; }
+.pal-empty { display: flex; flex-direction: column; align-items: center; padding: 40px 24px; text-align: center; color: var(--muted-2); }
+.pal-empty-title { margin: 12px 0 0; font-size: 14px; font-weight: 600; color: var(--text); }
+.pal-empty-text { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+.pal-foot { display: flex; gap: 16px; padding: 10px 16px; border-top: 1px solid var(--hair); background: var(--surface-2); font-size: 12px; color: var(--muted); }
+.pal-foot .kbd { margin-right: 3px; }
+/* przycisk wyszukiwarki ⌘K w górnym pasku: lupa + skrót, bez pola tekstowego */
+.search-btn { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px 0 10px; border-radius: 16px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; }
+.search-btn:hover { color: var(--text); background: var(--surface-2); }
+.search-btn .kbd { font-size: 10.5px; }
+.pal-mark { background: rgba(250, 204, 21, .32); color: inherit; border-radius: 3px; padding: 0 1px; }

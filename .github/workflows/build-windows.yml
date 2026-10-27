@@ -87,6 +87,20 @@ jobs:
           # bez tego .env.example (dotfile) wypada z paczki
           include-hidden-files: true
 
+  # Wydanie dopiero po zielonym buildzie, i tylko z main — reczny run na innej
+  # galezi to same testy + build. Paczka przychodzi z artefaktu buildu.
+  release:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: CameraCapture-windows
+          path: dist/CameraCapture
+
       # Wydanie leci SAMO z pushu na main: bierzemy APP_VERSION i publikujemy
       # v<APP_VERSION>, o ile takiego release'a jeszcze nie ma. Dzieki temu
       # "commit and push" = nowa wersja u operatora, bez recznego tagowania
@@ -96,8 +110,6 @@ jobs:
       # updater kopiuje zawartosc obok istniejacego .exe, wiec .env i photos/
       # operatora zostaja nietkniete.
       - name: Publish release for APP_VERSION
-        # wydanie tylko z main — reczny run na innej galezi = same testy + build
-        if: github.ref == 'refs/heads/main'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -125,8 +137,6 @@ jobs:
       # zabiera. Krok idzie tez wtedy, gdy wydanie juz istnialo (push bez
       # podbicia wersji), wiec sprzata zalegle.
       - name: Remove older releases
-        # wydanie tylko z main — reczny run na innej galezi = same testy + build
-        if: github.ref == 'refs/heads/main'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

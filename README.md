@@ -107,7 +107,7 @@ theme switches with the icon in the top right corner.
 | <kbd>Esc</kbd> | closes the viewer or leaves the session |
 | <kbd>P</kbd> | turns the camera live view on and off |
 | <kbd>⌘</kbd> <kbd>K</kbd> / <kbd>Ctrl</kbd> <kbd>K</kbd> | opens the session search from any screen |
-| <kbd>⌘</kbd> <kbd>F</kbd> / <kbd>Ctrl</kbd> <kbd>F</kbd> | searches sessions | (in the session list) |
+| <kbd>⌘</kbd> <kbd>F</kbd> / <kbd>Ctrl</kbd> <kbd>F</kbd> | searches sessions in the session list |
 | <kbd>⌘</kbd> <kbd>N</kbd> / <kbd>Ctrl</kbd> <kbd>N</kbd> | starts a new session |
 
 ## API

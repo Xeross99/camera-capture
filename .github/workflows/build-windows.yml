@@ -69,17 +69,6 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-windows.txt pyinstaller
 
-      # repo wydan jest prywatne, wiec .exe pyta o aktualizacje z tokenem tylko
-      # do odczytu (fine-grained, Contents: read na trixbrix/CameraCapture);
-      # plik jest poza gitem, trafia wylacznie do zbudowanej paczki
-      - name: Embed update token
-        shell: pwsh
-        env:
-          UPDATE_TOKEN: ${{ secrets.UPDATE_TOKEN }}
-        run: |
-          if (-not $env:UPDATE_TOKEN) { throw "Brak sekretu UPDATE_TOKEN — bez niego .exe nie zobaczy zadnej aktualizacji." }
-          Set-Content -Path src/update_token.py -Encoding utf8 -Value "UPDATE_TOKEN = `"$env:UPDATE_TOKEN`""
-
       - name: Build with PyInstaller
         run: pyinstaller --noconfirm CameraCapture.spec
 

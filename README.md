@@ -100,8 +100,8 @@ Jeden przycisk pobiera paczkę, podmienia pliki i uruchamia aplikację ponownie.
 EDSDK zostają nietknięte.
 
 Nowa wersja wychodzi sama: wystarczy podbić `APP_VERSION` w `src/version.py` i wypchnąć to na `main`.
-GitHub Actions zbuduje `.exe` i opublikuje wydanie. Repozytorium jest prywatne, więc aplikacja pyta o
-aktualizacje tokenem tylko do odczytu, który CI wpisuje do `.exe` z sekretu `UPDATE_TOKEN`.
+GitHub Actions uruchomi testy, zbuduje `.exe` i opublikuje wydanie w tym repozytorium
+(publicznym), skąd aplikacja sama pobiera aktualizacje.
 
 ## Uruchomienie z kodu (macOS)
 

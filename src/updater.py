@@ -1,12 +1,11 @@
 """Auto-aktualizacja z GitHub Releases.
 
-Kanal wydan: prywatne repo `GITHUB_REPO`, release z tagiem `vX.Y.Z` i
+Kanal wydan: publiczne repo `GITHUB_REPO`, release z tagiem `vX.Y.Z` i
 zalacznikiem `CameraCapture-windows-vX.Y.Z.zip` (zawartosc `dist/CameraCapture`
 spakowana z poziomu katalogu — w zipie na wierzchu leza `.exe` i `_internal/`).
-Prywatne repo bez tokena odpowiada 404 (czyli "brak nowszej wersji"), wiec .exe
-niesie w sobie token tylko do odczytu tego repo: CI wpisuje go z sekretu
-`UPDATE_TOKEN` do `src/update_token.py` (poza gitem) przed budowa. Ze zrodel
-token bierze sie z `GITHUB_UPDATE_TOKEN` w `.env`.
+Repo jest publiczne, wiec token nie jest potrzebny. Opcjonalny
+`GITHUB_UPDATE_TOKEN` w `.env` (albo `src/update_token.py`, poza gitem) idzie
+w naglowku — przydaje sie przy limicie zapytan albo gdyby repo bylo prywatne.
 
 Sama podmiana dziala TYLKO dla spakowanego .exe na Windowsie (`can_self_update`):
 dzialajacego procesu nie da sie nadpisac, wiec paczka jest rozpakowywana obok
@@ -61,7 +60,7 @@ _DETACHED = (getattr(subprocess, "DETACHED_PROCESS", 0)
 
 
 def _github_headers(accept: str) -> dict:
-    """Naglowki do API GitHuba — z tokenem, bo repo wydan jest prywatne."""
+    """Naglowki do API GitHuba — z tokenem, jesli jest (patrz docstring modulu)."""
     headers = {"Accept": accept, "User-Agent": f"camera-capture/{APP_VERSION}"}
     if UPDATE_TOKEN:
         headers["Authorization"] = f"Bearer {UPDATE_TOKEN}"

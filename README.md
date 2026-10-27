@@ -11,6 +11,22 @@ Aplikacja do zdjęć produktowych. Aparat stoi na statywie i jest podłączony p
 naciska ENTER. Zdjęcie dostaje białe tło, produkt ląduje na środku kadru, w rogu pojawia się logo, a gotowy
 JPEG 3000 × 3000 trafia do sesji w API.
 
+<table>
+  <tr><th width="50%">Prosto z aparatu</th><th width="50%">Po obróbce</th></tr>
+  <tr>
+    <td><img src="assets/readme/before-1.jpg" width="100%" alt="Zdjęcie 1 prosto z aparatu"></td>
+    <td><img src="assets/readme/after-1.jpg" width="100%" alt="Zdjęcie 1 po obróbce"></td>
+  </tr>
+  <tr>
+    <td><img src="assets/readme/before-2.jpg" width="100%" alt="Zdjęcie 2 prosto z aparatu"></td>
+    <td><img src="assets/readme/after-2.jpg" width="100%" alt="Zdjęcie 2 po obróbce"></td>
+  </tr>
+  <tr>
+    <td><img src="assets/readme/before-3.jpg" width="100%" alt="Zdjęcie 3 prosto z aparatu"></td>
+    <td><img src="assets/readme/after-3.jpg" width="100%" alt="Zdjęcie 3 po obróbce"></td>
+  </tr>
+</table>
+
 Jedno zdjęcie od migawki do pliku na dysku trwa kilka sekund. Między strzałami wystarczy obrócić produkt i
 nacisnąć ENTER jeszcze raz.
 

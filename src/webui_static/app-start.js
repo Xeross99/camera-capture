@@ -128,6 +128,26 @@ function movePick(d) {
   if (el) el.scrollIntoView({ block: "nearest" });
 }
 
+// Strzałki góra/dół: kafelek w rzędzie wyżej/niżej, najbliższy w poziomie.
+// Liczone z położenia na ekranie — dni mają różną liczbę kafelków w rzędzie,
+// więc „±liczba kolumn" w liście trafiałby w złe miejsce.
+function movePickVertical(d) {
+  const cards = [...document.querySelectorAll("[data-pick]")];
+  const cur = cards.find(c => +c.dataset.pick === S.pickIdx);
+  if (!cur) { movePick(d); return; }
+  const r = cur.getBoundingClientRect(), cx = r.left + r.width / 2;
+  const rows = cards.map(c => ({ c, b: c.getBoundingClientRect() }))
+    .filter(x => d < 0 ? x.b.top < r.top - 4 : x.b.top > r.top + 4);
+  if (!rows.length) return;
+  // najbliższy rząd w danym kierunku, w nim kafelek najbliżej w poziomie
+  const rowTop = d < 0 ? Math.max(...rows.map(x => x.b.top)) : Math.min(...rows.map(x => x.b.top));
+  const best = rows.filter(x => Math.abs(x.b.top - rowTop) < 4)
+    .sort((a, b) => Math.abs(a.b.left + a.b.width / 2 - cx) - Math.abs(b.b.left + b.b.width / 2 - cx))[0];
+  S.pickIdx = +best.c.dataset.pick;
+  paintPick();
+  best.c.scrollIntoView({ block: "nearest" });
+}
+
 function openPicked() {
   const s = (S.pickList || [])[S.pickIdx];
   if (s) pickSession(s.id, s.name);

@@ -90,11 +90,17 @@ function renderShell(force) {
   const key = JSON.stringify([st.connected, st.session.name,
     !!(st.robot && st.robot.enabled), u.available, u.busy, u.canApply, S.updateDismissed]);
   if (force || key !== lastShellKey) {
+    // Wejście w sesję / wyjście z niej przebudowuje cały shell (nazwa sesji
+    // jest w górnym pasku), a to zeruje lastSesja — bez zapamiętania widoku
+    // sprzed przebudowy przejście lista <-> sesja traciło animację.
+    const prevView = lastSesja ? (isStartKey(lastSesja) ? "start" : "sesja") : "";
     lastShellKey = key;
     $("app").innerHTML = shell();
     placeTabBar(false);
     lastSesja = lastUstawienia = "";
     renderScreens(true);
+    const nowView = st.session.name ? "sesja" : "start";
+    if (S.screen === "sesja" && prevView && prevView !== nowView) playScreenIn();
     return;
   }
   renderScreens(false);
@@ -477,7 +483,7 @@ document.addEventListener("keydown", e => {
     if (document.activeElement.id === "session-filter") {
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
-        movePick(e.key === "ArrowDown" ? 1 : -1);
+        movePickVertical(e.key === "ArrowDown" ? 1 : -1);
       } else if (e.key === "Enter") {
         openPicked();
       }
@@ -511,8 +517,10 @@ document.addEventListener("keydown", e => {
   // ENTER wchodzi w zaznaczona — skroty sesyjne (shoot itd.) nie dotycza
   // tego widoku
   if (S.screen === "sesja" && S.state && !S.state.session.name && !S.leaveConfirm) {
-    if (["ArrowLeft", "ArrowUp"].includes(e.key)) { e.preventDefault(); movePick(-1); }
-    else if (["ArrowRight", "ArrowDown"].includes(e.key)) { e.preventDefault(); movePick(1); }
+    if (e.key === "ArrowLeft") { e.preventDefault(); movePick(-1); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); movePick(1); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); movePickVertical(-1); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); movePickVertical(1); }
     else if (e.key === "Enter") { e.preventDefault(); openPicked(); }
     return;
   }

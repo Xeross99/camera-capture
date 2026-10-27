@@ -359,3 +359,26 @@ select.field { padding: 0 8px; }
   :root { --shot-w: 80px; --shot-h: 56px; }
   .side-card h2.eyebrow { margin-bottom: 6px !important; }
 }
+.brand-line { display: flex; flex-direction: column; gap: 6px; padding: 12px 10px 10px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted-2); }
+.brand-item { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.brand-line img { width: 18px; height: 18px; flex-shrink: 0; }
+/* znak Trixbrix (biały PNG z przezroczystością) jako maska — kolor tekstu w obu motywach */
+.tbx-mark { width: 18px; height: 15px; flex-shrink: 0; background: var(--text-2); -webkit-mask: url(/brand-mark) center / contain no-repeat; mask: url(/brand-mark) center / contain no-repeat; }
+.theme-dark { display: none; }
+html[data-theme="dark"] .theme-dark, html:not([data-theme]) .theme-dark { display: block; }
+html[data-theme="dark"] .theme-light, html:not([data-theme]) .theme-light { display: none; }
+
+/* Okno aplikacji na macOS (WKWebView) nie pokazywało łapki nad treścią
+   klikalnych kafelków, mimo cursor: pointer na samym kafelku — kursor
+   ustawiony jawnie także na elementach w środku (tak jak przy .author). */
+.session-card, .session-card *,
+.shot, .shot *,
+.day-row, .day-row *,
+.set-nav, .set-nav *,
+.seg-btn, .seg-btn *,
+.logo-tile, .logo-tile *,
+.overlay-seg button, .overlay-seg button *,
+.btn, .btn *, .vbtn, .vbtn *, .vnav, .vnav *,
+.icon-btn, .icon-btn *, .shutter, .shutter *,
+.switch, .crumbs a { cursor: pointer; }
+.btn:disabled, .btn:disabled *, .vnav:disabled, .vnav:disabled * { cursor: default; }

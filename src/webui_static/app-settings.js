@@ -92,7 +92,10 @@ function ustawieniaScreen() {
       <div class="eyebrow" style="padding: 0 10px 10px;">Ustawienia</div>
       ${nav}
       <div style="flex: 1;"></div>
-      <div style="padding: 12px 10px 10px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted-2);">Camera Capture <span class="mono" style="color: var(--text-2);">${u.current}</span> · Trixbrix</div>
+      <div class="brand-line">
+        <span class="brand-item"><img class="theme-light" src="/favicon.png" alt="" /><img class="theme-dark" src="/logo-cc-dark.png" alt="" />Camera Capture <span class="mono" style="color: var(--text-2);">${u.current}</span></span>
+        <span class="brand-item"><span class="tbx-mark" aria-hidden="true"></span>Trixbrix</span>
+      </div>
       <button type="button" class="author" onclick="post({action:'open_url', url: 'https://github.com/Xeross99'})" title="Profil autora na GitHubie">
         <img src="/author" alt="" />
         <span style="flex: 1; min-width: 0; text-align: left;">

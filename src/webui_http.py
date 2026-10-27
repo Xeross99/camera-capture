@@ -28,6 +28,7 @@ ICONS = {
     "/brand-mark": "trixbrix_mark.png",
     "/author": "author.jpg",
     "/favicon.png": "camera_capture.png",
+    "/logo-cc-dark.png": "camera_capture_dark.png",
 }
 
 

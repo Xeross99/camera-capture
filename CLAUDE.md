@@ -85,7 +85,7 @@ Każda udana rozgrzewka (`_job_warmup`) dopisuje swój czas do `.warmup.json` ob
 
 ## Stare oryginały (`RAW_RETENTION_DAYS`, Ustawienia → Pliki)
 
-`purge_originals()` (`session_store.py`, job `purge_originals` przy starcie i po zmianie ustawienia) kasuje `raw/*_raw.jpg` starsze niż N dni (po mtime) RAZEM z kopią `.nologo/<plik>` — inaczej edycja logo dalej by działała i opis w Ustawieniach kłamałby. Po tym `shot_entries` daje `edit: ""`, panel edycji mówi, że logo się nie zmieni. Gotowe zdjęcia zostają. Wybór 7/30/90/0 (0 = nigdy, domyślnie), zapis do `.env`.
+`purge_originals()` (`session_store.py`, job `purge_originals` przy starcie i po zmianie ustawienia) kasuje `raw/*_raw.jpg` starsze niż N dni (po mtime) RAZEM z kopią `.nologo/<plik>` — inaczej edycja logo dalej by działała i opis w Ustawieniach kłamałby. Po tym `shot_entries` daje `edit: ""`, panel edycji mówi, że logo się nie zmieni. Gotowe zdjęcia zostają. Wybór 7/30/90/0 (0 = nigdy). Domyślnie 90 dni (brak wpisu w `.env`); wybór z Ustawień zapisuje się w `.env` i od tej pory obowiązuje.
 
 ## Kosz (`photos/.trash`, retencja `TRASH_RETENTION_DAYS`)
 

@@ -102,11 +102,12 @@ TRASH_RETENTION_DAYS = int(os.environ.get("TRASH_RETENTION_DAYS", "30"))
 
 # Oryginaly z aparatu (photos/<sesja>/raw) starsze niz tyle dni sa kasowane
 # razem z kopia bez logo (.nologo) — potem logo na tym zdjeciu juz sie nie
-# zmieni. 0 = trzymane zawsze. Zmiana w Ustawieniach zapisuje sie tutaj.
+# zmieni. 0 = trzymane zawsze. Domyslnie 90 dni; wybor z Ustawien zapisuje sie
+# w .env i od tej pory to on obowiazuje.
 RAW_RETENTION_CHOICES = (7, 30, 90, 0)
-RAW_RETENTION_DAYS = int(os.environ.get("RAW_RETENTION_DAYS", "0") or 0)
+RAW_RETENTION_DAYS = int(os.environ.get("RAW_RETENTION_DAYS", "90") or 0)
 if RAW_RETENTION_DAYS not in RAW_RETENTION_CHOICES:
-    RAW_RETENTION_DAYS = 0
+    RAW_RETENTION_DAYS = 90
 
 AUTOMAT_BASE_URL = os.environ.get("AUTOMAT_URL", "http://localhost:3000")
 AUTOMAT_API_TOKEN = os.environ.get("AUTOMAT_TOKEN")

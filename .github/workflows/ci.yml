@@ -178,7 +178,8 @@ jobs:
           Write-Host "Opublikowano $tag"
 
       # Zostaje tylko wydanie biezacej wersji: starsze (z paczkami po ~150 MB)
-      # sa usuwane. Tagi w git zostaja — historia wersji jest dalej w repo.
+      # sa usuwane razem z tagami (--cleanup-tag): w repo zostaje jedno wydanie
+      # i jeden tag. Numer wersji kazdego commita jest i tak w jego opisie.
       # Updater pyta o releases/latest, wiec usuniecie starszych niczego mu nie
       # zabiera. Krok idzie tez wtedy, gdy wydanie juz istnialo (push bez
       # podbicia wersji), wiec sprzata zalegle.
@@ -195,6 +196,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Brak wydania $tag — nie usuwam starszych." }
           $old = gh release list --limit 100 --json tagName --jq '.[].tagName' | Where-Object { $_ -ne $tag }
           foreach ($t in $old) {
-            gh release delete $t --yes
-            Write-Host "Usunieto wydanie $t (tag zostaje)"
+            gh release delete $t --yes --cleanup-tag
+            Write-Host "Usunieto wydanie i tag $t"
           }

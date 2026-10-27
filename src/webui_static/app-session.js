@@ -50,8 +50,8 @@ function sesjaScreen() {
       </section>
     </main>
 
-    <aside aria-label="Ustawienia zdjęcia" style="width: 360px; flex: 0 0 360px; box-sizing: border-box; display: flex; flex-direction: column; min-height: 0; background: var(--surface); border-left: 1px solid var(--border);">
-      <div style="flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 18px 18px 12px; display: flex; flex-direction: column; gap: 16px;">
+    <aside class="session-side" aria-label="Ustawienia zdjęcia">
+      <div class="session-side-scroll">
 
         <div style="display: flex; flex-direction: column; gap: 8px; min-width: 0;">
           <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
@@ -96,7 +96,7 @@ function sesjaScreen() {
         ${robotCard()}
       </div>
 
-      <div style="flex: 0 0 auto; padding: 14px 18px 16px; border-top: 1px solid var(--border);">
+      <div class="shutter-bar">
         <button type="button" class="shutter" onclick="shoot()"><span id="shoot-spin" class="spinner" style="flex: 0 0 auto; border-color: rgba(255,255,255,.35); border-top-color: #fff; display: ${shootBusy(st) ? "inline-block" : "none"};"></span>${icon("camera", 20, 1.8)}<span id="shoot-label">${st.busy || "Zrób zdjęcie"}</span><span class="kbd">ENTER</span></button>
       </div>
     </aside>
@@ -270,19 +270,45 @@ function updateReviewHeader(shot) {
   if (f) f.textContent = shot.file;
   const s = $("review-status");
   if (s) s.innerHTML = reviewStatusHtml(shot);
+  reviewSize();
   const prev = $("review-prev"), next = $("review-next");
   if (prev) prev.disabled = shot.i <= 0;
   if (next) next.disabled = shot.i >= n - 1;
 }
 
-// Rozmiar gotowego pliku z samego obrazka (bez pytania backendu).
-function reviewSize(img) {
-  const el = $("review-size");
-  // podgląd edycji jest zmniejszony — jego wymiary nie są wymiarami pliku
-  if (el && img.naturalWidth && !img.src.includes("/edit_preview")) {
-    el.textContent = `${img.naturalWidth} × ${img.naturalHeight}`;
-    el.style.display = "";
-  }
+// Podgląd ładuje najpierw wersję 1800 px (szybkie przełączanie strzałkami się
+// nie zacina), a gdy operator zatrzyma się na zdjęciu (FULL_AFTER_MS), w tle
+// dociąga pełny plik i podmienia go po cichu, kiedy już się wczyta. Przejście
+// do innego zdjęcia w tym czasie unieważnia dociąganie.
+const FULL_AFTER_MS = 450;
+let fullTimer = 0;
+function reviewLoaded(img) {
+  reviewSize();
+  clearTimeout(fullTimer);
+  if (!img.src.includes("&view=1") || S.edit) return;
+  const shot = reviewShot();
+  if (!shot) return;
+  const viewSrc = img.src;
+  fullTimer = setTimeout(() => {
+    const full = new Image();
+    full.onload = () => {
+      // dalej to samo zdjęcie i nikt nie otworzył edycji — podmieniamy
+      if (img.src === viewSrc && !S.edit && $("review-img") === img) {
+        img.onload = null;
+        img.src = full.src;
+      }
+    };
+    full.src = shotUrl(shot);
+  }, FULL_AFTER_MS);
+}
+
+// Rozmiar gotowego pliku z listy zdjęć (podgląd pokazuje wersję 1800 px,
+// więc wymiary samego obrazka nie są wymiarami pliku).
+function reviewSize() {
+  const el = $("review-size"), shot = reviewShot();
+  if (!el || !shot || !shot.size || !shot.size[0]) return;
+  el.textContent = `${shot.size[0]} × ${shot.size[1]}`;
+  el.style.display = "";
 }
 
 // Podglad zdjecia zajmuje CALE okno (position: fixed nad zakladkami i sidebarem),
@@ -309,7 +335,7 @@ function reviewOverlay() {
       </div>
       <div style="flex: 1; min-height: 0; display: flex;">
       <div style="flex: 1; min-width: 0; position: relative;">
-        <img id="review-img" src="${shotUrl(shot)}" alt="" onload="reviewSize(this)" style="position: absolute; left: 88px; right: 88px; top: 20px; bottom: 20px; width: calc(100% - 176px); height: calc(100% - 40px); object-fit: contain; animation: reviewIn .32s cubic-bezier(0.32, 0.72, 0, 1);" />
+        <img id="review-img" src="${shotUrl(shot, "view")}" alt="" onload="reviewLoaded(this)" style="position: absolute; left: 88px; right: 88px; top: 20px; bottom: 20px; width: calc(100% - 176px); height: calc(100% - 40px); object-fit: contain; animation: reviewIn .32s cubic-bezier(0.32, 0.72, 0, 1);" />
         <button type="button" id="review-prev" class="vnav" aria-label="Poprzednie zdjęcie" onclick="navShot(-1)" style="left: 20px;" ${shot.i <= 0 ? "disabled" : ""}>${icon("chevL", 20, 2)}</button>
         <button type="button" id="review-next" class="vnav" aria-label="Następne zdjęcie" onclick="navShot(1)" style="right: 20px;" ${shot.i >= n - 1 ? "disabled" : ""}>${icon("chevR", 20, 2)}</button>
       </div>
@@ -384,6 +410,7 @@ function renderEditPanel() {
 function editPreview() {
   const img = $("review-img"), shot = editShot();
   if (!img || !shot || shot.edit !== "ready") return;
+  clearTimeout(fullTimer);
   const q = new URLSearchParams({ s: S.state.session.name, f: shot.file, logo: S.edit.logo, pos: S.edit.pos, n: Date.now() });
   img.src = `/edit_preview?${q}`;
 }
@@ -405,7 +432,10 @@ function closeEdit() {
   const btn = $("edit-btn");
   if (btn) btn.classList.remove("on");
   const img = $("review-img"), shot = reviewShot();
-  if (img && shot) img.src = shotUrl(shot);
+  if (img && shot) {
+    img.onload = () => reviewLoaded(img);
+    img.src = shotUrl(shot, "view");
+  }
 }
 
 function toggleEdit() { S.edit ? closeEdit() : openEdit(); }
@@ -479,7 +509,7 @@ function stripPanel(id) {
         <div style="flex: 1;"></div>
         <span class="hints">${hints}</span>
       </div>
-      <div id="${id}" data-sig='${stripContentSig().replace(/'/g, "&#39;")}' style="${stripBox}">${filmstrip()}</div>
+      <div id="${id}" class="strip-box" data-sig='${stripContentSig().replace(/'/g, "&#39;")}' style="${stripBox}">${filmstrip()}</div>
     </section>`;
 }
 
@@ -694,7 +724,9 @@ function showShot(next, dir) {
     // Overlay zostaje w DOM (zawsze nieprzezroczysty — zadnych przebitek live
     // view), podmieniamy tylko src: stare zdjecie wisi az nowe sie zdekoduje.
     const shot = reviewShot();
-    img.src = shotUrl(shot);
+    clearTimeout(fullTimer);
+    img.onload = () => reviewLoaded(img);
+    img.src = shotUrl(shot, "view");
     updateReviewHeader(shot);
     // Skok musi byc WIDOCZNY, inaczej krzywa easingu nie ma czego pokazac —
     // przy poprzednich 6 px kazdy easing wygladal identycznie.
@@ -707,7 +739,7 @@ function showShot(next, dir) {
       img.style.opacity = "1";
     }));
     [next - 1, next + 1].forEach(i => {
-      if (list[i]) new Image().src = shotUrl(list[i]);
+      if (list[i]) new Image().src = shotUrl(list[i], "view");
     });
     refreshStrips();
     lastSesja = sesjaKey(S.state);
@@ -761,13 +793,13 @@ function deleteReviewed() {
     img.style.transition = "none";
     img.style.transform = "scale(.96)";
     const show = () => {
-      img.onload = () => reviewSize(img);
+      img.onload = () => reviewLoaded(img);
       img.style.transition = "transform .15s ease-out, opacity .15s ease-out";
       img.style.transform = "none";
       img.style.opacity = "1";
     };
-    img.onload = () => { reviewSize(img); show(); };
-    img.src = shotUrl(nextShot);
+    img.onload = () => { reviewLoaded(img); show(); };
+    img.src = shotUrl(nextShot, "view");
     setTimeout(show, 250);
     refreshStrips();
     lastSesja = sesjaKey(S.state);
@@ -779,6 +811,7 @@ function deleteReviewed() {
 // Wczesniej caly podglad malal do .96 razem z paskiem i miniatury podskakiwaly.
 function closeReview() {
   S.edit = null;
+  clearTimeout(fullTimer);
   const main = $("review-main");
   if (!main) { S.reviewMode = false; renderScreens(); return; }
   main.style.opacity = "0";
@@ -803,19 +836,18 @@ function flashNow() {
 
 // ---------- filmstrip ----------
 
-// Pas ma STAŁĄ wysokość: kafelek 84 + 8 na poziomy scrollbar, który pojawia
-// się przy przepełnieniu. Bez tego pusty stan był niższy niż kafelki i całe
-// menu pod spodem podskakiwało przy pierwszym zdjęciu.
-// Padding z ujemnym marginesem: miejsce na powiekszenie kafelka na hover
-// (pasek przewija sie w poziomie, wiec ucina wszystko poza swoim pudelkiem),
-// a kafelki stoja tam, gdzie staly.
-const stripBox = "height: 92px; padding: 6px; margin: -6px; display: flex; align-items: flex-start; gap: 10px; overflow-x: auto; overflow-y: hidden;";
+// Wymiary pasa i kafelków są w style.css (.strip-box, .shot) — na niskim
+// ekranie kurczą się w media query.
+const stripBox = "";
 
 // Adres zdjecia sesji z wersja pliku (`v`) — serwer pozwala go trzymac
 // w cache na stale, wiec przebudowa paska nie pobiera miniatur od nowa.
-function shotUrl(shot, thumb) {
+// `kind`: true / "thumb" = miniatura paska, "view" = podgląd na całe okno
+// (1800 px), brak = oryginał.
+function shotUrl(shot, kind) {
   const sess = encodeURIComponent(S.state.session.name);
-  return `/img?s=${sess}&f=${encodeURIComponent(shot.file)}&v=${shot.v || 0}${thumb ? "&thumb=1" : ""}`;
+  const k = kind === "view" ? "&view=1" : kind ? "&thumb=1" : "";
+  return `/img?s=${sess}&f=${encodeURIComponent(shot.file)}&v=${shot.v || 0}${k}`;
 }
 
 function filmstrip() {
@@ -849,7 +881,7 @@ function filmstrip() {
   }
   // pobieranie zdjec sesji z Automatu — kafelek-skeleton az plik wyladuje na dysku
   (st.downloading || []).forEach(() => {
-    items.push(`<div class="skeleton" style="width: 112px; height: 84px; flex: 0 0 112px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 11.5px; color: var(--muted-2);">Pobieranie…</div>`);
+    items.push(`<div class="skeleton shot-skel">Pobieranie…</div>`);
   });
   return items.join("") || `<div style="font-size: 12.5px; color: var(--muted-2); align-self: center;">Brak zdjęć. Naciśnij ENTER, żeby zrobić pierwsze.</div>`;
 }

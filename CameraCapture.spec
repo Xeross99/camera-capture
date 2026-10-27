@@ -102,7 +102,7 @@ exe = EXE(
     strip=False,
     upx=False,
     console=False,
-    icon="assets/icons/trixbrix.ico",
+    icon="assets/icons/camera_capture.ico",
     version=version_res,
 )
 coll = COLLECT(

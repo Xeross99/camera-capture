@@ -82,6 +82,7 @@ from .version import APP_VERSION
 from .webui_http import Handler
 
 THUMB_SIZE = 360
+VIEW_SIZE = 1800   # podgląd na całe okno — ostry na ekranie, lekki do dekodowania
 AUTHOR_URL = "https://github.com/Xeross99"
 DEFAULT_NAME_PATTERN = "photo_{data}_{godzina}.jpg"
 
@@ -950,6 +951,7 @@ class WebUI:
         automat_ids = {}
         for f in files:
             (outdir / ".thumbs" / f).unlink(missing_ok=True)
+            (outdir / ".views" / f).unlink(missing_ok=True)
             (outdir / NOLOGO_DIR / f).unlink(missing_ok=True)
             for p in ((outdir / f), find_raw(outdir, f)):
                 if p is None or not p.exists():
@@ -2213,14 +2215,19 @@ class WebUI:
             return None
         return path.read_bytes() if path.is_file() else None
 
-    def image_bytes(self, session: str, filename: str, thumb: bool) -> bytes | None:
+    def image_bytes(self, session: str, filename: str, thumb: bool, view: bool = False) -> bytes | None:
+        """Plik zdjęcia sesji: oryginał, miniatura paska (`thumb`, .thumbs/) albo
+        wersja do podglądu na całe okno (`view`, .views/, VIEW_SIZE px). Podgląd
+        na pełnym 3000×3000 dekodował kilka MB przy każdej strzałce i przy
+        szybkim przełączaniu zdjęć wszystko się zacinało."""
         base = self.base_output.resolve()
         path = (base / sanitize_name(session) / Path(filename).name).resolve()
         if not str(path).startswith(str(base)) or not path.exists():
             return None
-        if not thumb:
+        if not (thumb or view):
             return path.read_bytes()
-        tdir = path.parent / ".thumbs"
+        size, quality = (THUMB_SIZE, 80) if thumb else (VIEW_SIZE, 88)
+        tdir = path.parent / (".thumbs" if thumb else ".views")
         tpath = tdir / path.name
         if not tpath.exists() or tpath.stat().st_mtime < path.stat().st_mtime:
             tdir.mkdir(exist_ok=True)
@@ -2232,8 +2239,8 @@ class WebUI:
             ttmp = tdir / (path.name + ".part")
             try:
                 img = Image.open(path)
-                img.thumbnail((THUMB_SIZE, THUMB_SIZE))
-                img.save(ttmp, "JPEG", quality=80)
+                img.thumbnail((size, size))
+                img.save(ttmp, "JPEG", quality=quality)
             except OSError:
                 ttmp.unlink(missing_ok=True)
                 return None

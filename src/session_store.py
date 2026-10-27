@@ -91,12 +91,22 @@ def shot_entries(session_dir: Path | None, review: dict) -> list[dict]:
         except OSError:
             return 0
 
+    def dims(f: str) -> list[int]:
+        # sam nagłówek JPEG-a (PIL nie dekoduje obrazu) — podgląd pokazuje
+        # zmniejszoną wersję, więc prawdziwy rozmiar pliku musi przyjść stąd
+        try:
+            with Image.open(session_dir / f) as im:
+                return list(im.size)
+        except OSError:
+            return [0, 0]
+
     return [
         {
             "file": f,
             "status": "rejected" if f in review["rejected"] else "ok",
             "uploaded": f in review["uploaded"],
             "v": version(f),
+            "size": dims(f),
             # edycja logo: "ready" = jest wersja bez logo, "raw" = trzeba ja
             # najpierw zrobic z oryginalu z aparatu, "" = nie da sie
             "edit": ("ready" if edit_base(session_dir, f, review)

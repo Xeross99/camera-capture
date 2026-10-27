@@ -122,3 +122,25 @@ def test_missing_edsdk_shows_driver_card(make_app, page: Page, monkeypatch):
     page.goto(app.url, wait_until="domcontentloaded")
     start_session(page)
     expect(page.get_by_text("Brak sterownika aparatu Canon")).to_be_visible()
+
+
+def test_new_photo_does_not_rebuild_session_screen(app, make_app, page: Page, monkeypatch):
+    """Nowe zdjęcie (strzał albo dociągnięte z API) łata pasek i licznik, ale
+    nie przebudowuje ekranu: karta na podglądzie (tu: brak SDK) zostaje tym
+    samym elementem i nie odgrywa drugi raz animacji wejścia."""
+    from src import webui
+    monkeypatch.setattr(webui, "_edsdk_missing", lambda: True)
+    page.goto(app.url, wait_until="domcontentloaded")
+    start_session(page)
+    expect(page.locator(".live-empty.sdk")).to_be_visible()
+    page.wait_for_timeout(600)   # animacja wejścia (.45 s) już się skończyła
+    page.evaluate("document.querySelector('.live-empty.sdk').dataset.marker = '1'")
+    page.keyboard.press("Enter")
+    wait_for(lambda: app.state()["session"]["count"] == 1 and not app.state()["busy"], 120, "zdjecie")
+    expect(page.locator("#filmstrip [data-shot]")).to_have_count(1)
+    expect(page.locator("#sess-count")).to_have_text("1 zdjęcie")
+    assert page.evaluate("document.querySelector('.live-empty.sdk').dataset.marker") == "1", \
+        "ekran sesji przebudował się po nowym zdjęciu"
+    running = page.evaluate("""document.querySelector('.live-empty.sdk').getAnimations()
+        .filter(a => a.animationName === 'liveEmptyIn' && a.playState === 'running').length""")
+    assert running == 0, "animacja wejścia karty odpaliła się drugi raz"

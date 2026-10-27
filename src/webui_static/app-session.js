@@ -64,7 +64,7 @@ function sesjaScreen() {
           </div>
           <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
             ${match && match.product ? `<span style="display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 12px; background: var(--ok-soft); color: var(--ok-fg); font-size: 12px; font-weight: 500;"><span style="width: 6px; height: 6px; border-radius: 50%; background: var(--ok-fg);"></span>${match.product.name}</span>` : `<span style="font-size: 12px; color: var(--muted-2);">Sesja luźna</span>`}
-            <span style="font-size: 12px; color: var(--muted-2);">${plPhotos(st.session.count)}${st.session.rejected ? ` · odrzucone ${st.session.rejected}` : ""}</span>
+            <span id="sess-count" style="font-size: 12px; color: var(--muted-2);">${sessCountText(st)}</span>
           </div>
         </div>
 
@@ -799,6 +799,25 @@ function toggleLog() {
 // Pełna przebudowa tworzyła kafelki od nowa, a ten pod kursorem od razu
 // odpalał animację hover — przy każdej zmianie zdjęcia coś podskakiwało.
 const stripContentSig = () => JSON.stringify([stripSig(S.state), S.editSaved && S.editSaved.file, S.justEdited]);
+
+const sessCountText = st => `${plPhotos(st.session.count)}${st.session.rejected ? ` · odrzucone ${st.session.rejected}` : ""}`;
+// kafelki paska: zdjęcia + skeleton obróbki + skeletony pobierania z API
+const stripItemCount = st => st.shots.length + (st.processing ? 1 : 0) + (st.downloading || []).length;
+
+// Zmiana zdjęć sesji bez przebudowy ekranu (patrz sesjaKey): pasek i jego
+// legenda przez refreshStrips(), licznik w sidebarze po id. Gdy kafelków
+// przybyło (strzał, pobranie), pasek na żywo dojeżdża płynnie do końca.
+function patchStrip(st) {
+  refreshStrips();
+  const c = $("sess-count");
+  if (c) c.textContent = sessCountText(st);
+  const n = stripItemCount(st);
+  const grew = n > (S.stripItems || 0);
+  S.stripItems = n;
+  S.stripCount = st.shots.length;
+  const f = !S.reviewMode && $("filmstrip");
+  if (grew && f) f.scrollTo({ left: f.scrollWidth, behavior: "smooth" });
+}
 
 function refreshStrips() {
   const sig = stripContentSig();

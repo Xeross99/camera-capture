@@ -202,6 +202,51 @@ def _record_warmup(seconds: float) -> None:
         pass  # katalog tylko do odczytu — szacunek po prostu nie urośnie
 
 
+FAVICON_MAX = 512 * 1024
+
+
+def _fetch_favicon(base: str) -> tuple[bytes, str] | None:
+    """(bajty, Content-Type) ikony strony `base` albo None. Tylko obrazy, do
+    FAVICON_MAX, krotkie timeouty — to ozdoba karty, nie moze nic blokowac."""
+    import re
+    from urllib.parse import urljoin
+
+    import requests
+
+    cands: list[tuple[int, str]] = []
+    try:
+        page = requests.get(base + "/", timeout=4)
+        for tag in re.findall(r"<link\b[^>]*>", page.text[:200_000], re.I):
+            rel = re.search(r"""rel=["']([^"']+)["']""", tag, re.I)
+            href = re.search(r"""href=["']([^"']+)["']""", tag, re.I)
+            if not (rel and href and "icon" in rel.group(1).lower()):
+                continue
+            sizes = re.search(r"""sizes=["'](\d+)x\d+["']""", tag, re.I)
+            score = int(sizes.group(1)) if sizes else 32
+            if "apple-touch-icon" in rel.group(1).lower():
+                score += 1000
+            cands.append((score, urljoin(page.url, href.group(1))))
+    except requests.RequestException:
+        pass
+    urls = [u for _, u in sorted(cands, reverse=True)] + [base + "/favicon.ico"]
+    for url in urls:
+        try:
+            r = requests.get(url, timeout=4)
+        except requests.RequestException:
+            continue
+        ctype = r.headers.get("Content-Type", "").split(";")[0].strip()
+        if r.ok and ctype.startswith("image/") and 0 < len(r.content) <= FAVICON_MAX:
+            return r.content, ctype
+    return None
+
+
+class _Server(ThreadingHTTPServer):
+    """Ekran startowy prosi naraz o setki okladek sesji, a domyslna kolejka
+    oczekujacych polaczen to 5 — nadmiarowe przepadaly (ERR_SOCKET_NOT_CONNECTED)
+    i pojedyncze kafelki zostawaly bez okladki."""
+    request_queue_size = 256
+
+
 def _edsdk_missing() -> bool:
     """Brak Canon EDSDK: aparatem nie ma czym sterować, a plików nie ma
     w paczce (licencja Canona) — UI pokazuje wtedy, skąd je wziąć."""
@@ -293,6 +338,8 @@ class WebUI:
         self.edit_preparing: str | None = None  # zdjecie, ktoremu edycja robi wersje bez logo z oryginalu
         self.edit_saving: str | None = None     # zdjecie zapisywane z edycji (nowe logo)
         self.automat_sessions: list[dict] = []
+        self._favicon_cache: dict[str, tuple] = {}   # adres API -> ((bajty, typ) | None, kiedy)
+        self._favicon_lock = threading.Lock()
         self.automat_sessions_error = ""
         self.sessions_refreshing = False  # trwa odswiezanie listy (spinner w UI)
         self.attach_to: dict | None = None  # {"id", "name"} — podłączenie do istniejącej sesji Automatu
@@ -1906,6 +1953,25 @@ class WebUI:
         except OSError:
             return None
 
+    _FAVICON_RETRY_S = 300   # nieudane pobranie faviconu ponawiamy najwyzej co 5 min
+
+    def api_favicon(self) -> tuple[bytes, str] | None:
+        """Favicon serwera API (karta API w Ustawieniach, po polaczeniu).
+        Najpierw ikona wskazana w <link rel="icon"> strony glownej (najwieksza
+        z podanych, apple-touch-icon wygrywa), potem /favicon.ico. Wynik
+        trzymany w pamieci per adres API, porazka tez — zeby kazde otwarcie
+        Ustawien nie pukalo do serwera od nowa."""
+        base = (self.automat_url or "").rstrip("/")
+        if not base.startswith(("http://", "https://")):
+            return None
+        with self._favicon_lock:
+            hit = self._favicon_cache.get(base)
+            if hit and (hit[0] is not None or time.monotonic() - hit[1] < self._FAVICON_RETRY_S):
+                return hit[0]
+            found = _fetch_favicon(base)
+            self._favicon_cache[base] = (found, time.monotonic())
+            return found
+
     def cover_bytes(self, session_id: str) -> bytes | None:
         """Okladka sesji z photos/.covers — id jest liczba, wiec sciezka nie
         moze uciec z katalogu (zadnego skladania nazw z wejscia)."""
@@ -1989,7 +2055,7 @@ class WebUI:
         self._queue_warmup()
 
         handler = type("BoundHandler", (Handler,), {"ui": self})
-        self._server = ThreadingHTTPServer(("127.0.0.1", self.port), handler)
+        self._server = _Server(("127.0.0.1", self.port), handler)
         self.port = self._server.server_address[1]
         threading.Thread(target=self._server.serve_forever, daemon=True).start()
         return f"http://127.0.0.1:{self.port}/?t={self.token}"

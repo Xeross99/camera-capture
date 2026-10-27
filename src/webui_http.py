@@ -78,6 +78,18 @@ class Handler(BaseHTTPRequestHandler):
             self._serve_icon(ICONS[url.path])
         elif url.path == "/logo":
             self._serve_logo(parse_qs(url.query))
+        elif url.path == "/api-favicon":
+            found = self.ui.api_favicon()
+            if found is None:
+                self.send_error(404)
+                return
+            data, ctype = found
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "max-age=3600")
+            self.end_headers()
+            self.wfile.write(data)
         elif url.path == "/edit_preview":
             q = parse_qs(url.query)
             data = self.ui.edit_preview_bytes(

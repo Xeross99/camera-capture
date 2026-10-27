@@ -230,3 +230,20 @@ def test_server_requires_token(app):
     assert e.value.code == 403
     with urllib.request.urlopen(f"{base}api/state?t={app.token}") as r:
         assert json.load(r)["connected"] is True
+
+
+def test_api_favicon_is_fetched_once_and_cached(app, monkeypatch):
+    from src import webui
+    calls = []
+    monkeypatch.setattr(webui, "_fetch_favicon", lambda base: calls.append(base) or (b"ico", "image/png"))
+    app.automat_url = "https://api.example.com/"
+    assert app.api_favicon() == (b"ico", "image/png")
+    assert app.api_favicon() == (b"ico", "image/png")
+    assert calls == ["https://api.example.com"], "drugie wejście w Ustawienia nie puka do serwera"
+
+
+def test_api_favicon_needs_http_address(app, monkeypatch):
+    from src import webui
+    monkeypatch.setattr(webui, "_fetch_favicon", lambda base: pytest.fail("nie powinno pobierać"))
+    app.automat_url = "automat.local"
+    assert app.api_favicon() is None

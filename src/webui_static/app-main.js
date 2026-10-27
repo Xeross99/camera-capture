@@ -40,6 +40,16 @@ function automatStatus(st) {
   return { cls: "ok", text: "połączono" };
 }
 
+// Plakietka API w pasku: po połączeniu favicon serwera w miejscu kropki
+// (ten sam /api-favicon co w karcie API), w każdym innym stanie — i gdy serwer
+// ikony nie ma — kolorowa kropka stanu (brak tokenu, błąd, wysyłanie).
+function syncApiChip(au) {
+  const ad = $("automat-dot"), af = $("automat-fav");
+  const fav = au.cls === "ok" && !S.apiFavBroken && !!af;
+  if (ad) { ad.className = `dot ${au.cls}`; ad.style.display = fav ? "none" : ""; }
+  if (af) af.style.display = fav ? "block" : "none";
+}
+
 function shell() {
   const st = S.state;
   const conn = st && st.connected;
@@ -62,7 +72,7 @@ function shell() {
     </nav>` : ""}
     <div style="flex: 1;"></div>
     <div class="chip"><span class="dot ${conn ? "ok" : "err"}"></span><span id="conn-label">${conn ? "Aparat połączony" : "Aparat rozłączony"}</span>${conn ? `<span id="conn-fps" class="fps">${st.fps} fps</span>` : ""}</div>
-    <div class="chip"><span id="automat-dot" class="dot ${au.cls}"></span>API<span id="automat-text" class="sub">${au.text}</span></div>
+    <div class="chip"><span id="automat-dot" class="dot ${au.cls}"></span><img id="automat-fav" class="chip-fav" src="/api-favicon?u=${encodeURIComponent((st.settings && st.settings.automatUrl) || "")}" alt="" onerror="S.apiFavBroken = true; this.remove(); syncApiChip(automatStatus(S.state));" />API<span id="automat-text" class="sub">${au.text}</span></div>
     <button type="button" id="theme-toggle" class="icon-btn" onclick="toggleTheme()" title="${themeToggleTitle()}" aria-label="${themeToggleTitle()}">${themeToggleIcon()}</button>
   </header>
 
@@ -75,13 +85,12 @@ function shell() {
 
 let lastShellKey = "", lastSesja = "", lastUstawienia = "", lastStrip = "";
 
-// W trybie przeglądania (overlay) zdjęcia NIE są częścią klucza: świeży strzał
-// dołączający do listy (processing → shots) przebudowywałby ekran i odtwarzał
-// overlay — mignięcie + powtórka animacji wejścia dokładnie w chwili, gdy
-// zdjęcie „się dodaje". Pasek w overlayu aktualizuje wtedy refreshStrips()
-// z pollu (renderScreens), bez dotykania reszty DOM.
+// Zdjęcia NIE są częścią klucza (ani w podglądzie, ani na żywo): świeży
+// strzał, obróbka czy zdjęcie dociągnięte z API przebudowywałyby cały ekran —
+// zrywa to stream MJPEG podglądu, odtwarza overlay i odgrywa od nowa animację
+// karty na podglądzie („Aparat rozłączony"). Pasek zdjęć, jego legendę
+// i licznik w sidebarze łata wtedy patchStrip() z pollu, bez reszty DOM.
 const sesjaKey = st => JSON.stringify([st.session.name, st.session.dir,
-  ...(S.reviewMode ? [] : [st.shots, st.processing, st.downloading]),
   st.post, st.previewOn, st.edsdkMissing, st.focusSupported, S.selShot, S.logOpen, S.grid, S.reviewMode]);
 
 const stripSig = st => JSON.stringify([st.shots, st.processing, st.downloading]);
@@ -123,8 +132,7 @@ function updateVolatile(st) {
   if (at) {
     const au = automatStatus(st);
     if (at.textContent !== au.text) at.textContent = au.text;
-    const ad = $("automat-dot");
-    if (ad) ad.className = `dot ${au.cls}`;
+    syncApiChip(au);
   }
   const hist = $("hist-badge");
   if (hist) {
@@ -256,11 +264,11 @@ function renderScreens(force) {
   } else if (S.screen === "sesja") {
     const key = sesjaKey(st);
     if (!(force || key !== lastSesja)) {
-      // bez rebuildu, ale w przeglądzie pasek zdjęć ma nadążać za stanem
-      // (świeży strzał, skeleton obróbki) — łatka zamiast przebudowy
-      if (S.reviewMode && stripSig(st) !== lastStrip) {
+      // bez rebuildu, ale pasek zdjęć ma nadążać za stanem (świeży strzał,
+      // skeleton obróbki, dociągnięte zdjęcie) — łatka zamiast przebudowy
+      if (stripSig(st) !== lastStrip) {
         lastStrip = stripSig(st);
-        refreshStrips();
+        patchStrip(st);
       }
       return;
     }
@@ -277,6 +285,7 @@ function renderScreens(force) {
       S.lastLogLen = logSig(st);
       snapshotSegs($("screen-sesja"));
       $("screen-sesja").innerHTML = sesjaScreen();
+      S.stripItems = stripItemCount(st);
       placeSegPill($("grid-seg"), true);
       if (fromStart) playScreenIn();
       ["filmstrip", "review-strip"].forEach(id => {

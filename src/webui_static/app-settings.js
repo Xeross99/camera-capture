@@ -140,7 +140,7 @@ function ustawieniaScreen() {
         </section>
 
         <section id="sec-automat" class="panel" style="overflow: hidden;">
-          ${cardHead(icon("cloud", 22), "background: rgba(37, 99, 235, .14); color: #2563eb;", "API",
+          ${cardHead(apiIcon(av, cfg), av.cls === "ok" ? "background: var(--surface-2); border: 1px solid var(--border); color: #2563eb;" : "background: rgba(37, 99, 235, .14); color: #2563eb;", "API",
             `Sesje i wysyłka zdjęć · <span class="mono" style="font-size: 12.5px; color: var(--text);">${(cfg.automatUrl || "").replace(/^https?:\/\//, "")}</span>`,
             statusChip(av))}
           <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 14px 20px 18px; border-top: 1px solid var(--hair);">
@@ -206,6 +206,15 @@ function ustawieniaScreen() {
 
 const a_noToken = st => (st.automat && !st.automat.hasToken)
   ? `<div class="row-desc" style="grid-column: 1 / -1; margin: 0;">Bez tokenu nie widać sesji z API i zdjęcia się nie wysyłają. Token wygenerujesz w ustawieniach konta po stronie API.</div>` : "";
+
+// Ikona karty API: po połączeniu favicon serwera (pobiera go backend,
+// /api-favicon), bez połączenia albo gdy serwer ikony nie ma — chmurka.
+// Adres w URL-u obrazka, żeby zmiana serwera nie pokazała starej ikony z cache.
+function apiIcon(av, cfg) {
+  const cloud = icon("cloud", 22);
+  if (av.cls !== "ok") return cloud;
+  return `<img src="/api-favicon?u=${encodeURIComponent(cfg.automatUrl || "")}" alt="" style="width: 26px; height: 26px; border-radius: 6px; object-fit: contain; display: block;" onerror="this.nextElementSibling.style.display = 'block'; this.remove();" /><span style="display: none;">${cloud}</span>`;
+}
 
 // Endpointy API, z których korzysta aplikacja (src/automat_uploader.py).
 // Lista statyczna — zmiana klienta HTTP = zmiana tej tabeli.

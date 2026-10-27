@@ -1,4 +1,4 @@
-name: Test, build & release
+name: Camera Capture
 
 on:
   workflow_dispatch:
@@ -23,13 +23,13 @@ jobs:
   # i katalog tests/ nie trafiaja do .exe — build ich nie instaluje, a paczka
   # bierze wylacznie to, co importuje gui.py.
   test:
-    name: test (${{ matrix.label }})
+    name: 1. Testy · ${{ matrix.label }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { label: windows, os: windows-latest, reqs: requirements-windows.txt }
-          - { label: macos, os: macos-latest, reqs: requirements.txt }
+          - { label: Windows, os: windows-latest, reqs: requirements-windows.txt }
+          - { label: macOS, os: macos-latest, reqs: requirements.txt }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -54,6 +54,7 @@ jobs:
         run: python -m pytest -q
 
   build-windows:
+    name: 2. Build · Windows (.exe)
     needs: test
     runs-on: windows-latest
     steps:
@@ -94,6 +95,7 @@ jobs:
   # EDSDK.framework, .env i photos/ kladzie sie obok .app (src/config.py).
   # Pakowane `ditto`, bo zwykly zip gubi symlinki frameworkow w .app.
   build-macos:
+    name: 2. Build · macOS (.app)
     needs: test
     runs-on: macos-latest
     steps:
@@ -125,6 +127,7 @@ jobs:
   # Wydanie dopiero po zielonym buildzie, i tylko z main — reczny run na innej
   # galezi to same testy + build. Paczka przychodzi z artefaktu buildu.
   release:
+    name: 3. Wydanie na GitHubie
     needs: [build-windows, build-macos]
     if: github.ref == 'refs/heads/main'
     runs-on: windows-latest

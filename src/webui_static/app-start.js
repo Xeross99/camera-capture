@@ -54,9 +54,9 @@ function sessionCard(s, idx) {
       ${s.photos_count ? `<span class="cover-badge">${s.photos_count} zdj.</span>` : ""}
     </div>
     <div style="padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0;">
-      <div style="font-size: 13.5px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${s.name}</div>
-      <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: ${pColor}; overflow: hidden; white-space: nowrap;">
-        <span style="width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: ${pColor};"></span><span style="overflow: hidden; text-overflow: ellipsis;">${product}</span>
+      <div style="font-size: 13.5px; font-weight: 600; line-height: 1.3; color: var(--text); overflow-wrap: anywhere;">${s.name}</div>
+      <div style="display: flex; align-items: baseline; gap: 6px; font-size: 12px; line-height: 1.35; color: ${pColor};">
+        <span style="width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: ${pColor}; transform: translateY(-1px);"></span><span style="overflow-wrap: anywhere;">${product}</span>
       </div>
       <div style="${mono} font-size: 11px; color: var(--muted-2);">${isNaN(d) ? "" : hhmm(d)}</div>
     </div>

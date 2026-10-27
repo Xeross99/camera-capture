@@ -1,0 +1,5 @@
+# Tylko do testow (pytest tests/) — NIE trafia do .exe: paczka bierze wylacznie
+# to, co importuje gui.py, a CI instaluje ten plik tylko w jobie z testami.
+# Po instalacji jednorazowo: python -m playwright install chromium
+pytest>=8
+pytest-playwright>=0.7

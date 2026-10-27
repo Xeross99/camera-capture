@@ -285,6 +285,7 @@ class WebUI:
         self.warmup_eta: int | None = None     # szacowany czas rozgrzewki z .warmup.json
         self.focus_seq = 0                     # kolejne kliknięcia „ostrość tutaj"
         self.focus_result: dict | None = None  # wynik ostatniego (ok, punkt, seq)
+        self._issued_names: set[tuple[str, str]] = set()  # (sesja, plik) — patrz _resolve_filename
         self.syncing: list[str] = []  # nazwy zdjec pobieranych wlasnie z Automatu (skeletony w filmstripie)
         self.edit_preparing: str | None = None  # zdjecie, ktoremu edycja robi wersje bez logo z oryginalu
         self.edit_saving: str | None = None     # zdjecie zapisywane z edycji (nowe logo)
@@ -360,11 +361,21 @@ class WebUI:
         return (self.base_output / self.name) if self.name else None
 
     def _resolve_filename(self) -> str:
+        """Nazwa nastepnego zdjecia. Wzorzec ma dokladnosc do sekundy, wiec dwa
+        strzaly w tej samej sekundzie dostawaly te sama nazwe i drugi nadpisywal
+        pierwszy. Plik powstaje dopiero po obrobce, wiec sam dysk nie wystarczy —
+        nazwy wydane w tym uruchomieniu siedza w `_issued_names`."""
         now = datetime.now()
         name = self.name_pattern.replace("{data}", now.strftime("%Y%m%d"))
         name = name.replace("{godzina}", now.strftime("%H%M%S"))
         if not name.endswith(".jpg"):
             name += ".jpg"
+        stem, sdir = name[:-4], self.session_dir
+        n = 1
+        while (str(sdir), name) in self._issued_names or (sdir and (sdir / name).exists()):
+            n += 1
+            name = f"{stem}_{n}.jpg"
+        self._issued_names.add((str(sdir), name))
         return name
 
     # ---------- watek aparatu ----------

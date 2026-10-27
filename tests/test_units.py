@@ -1,0 +1,193 @@
+"""Czesci bez aparatu i bez okna: obrobka zdjecia, nazwy, kosz, wersje."""
+
+import os
+import time
+from datetime import datetime, timedelta
+from pathlib import Path
+
+import numpy as np
+import pytest
+from PIL import Image
+
+from conftest import FIXTURES
+from src import config
+from src.image_processing import LOGO_POSITIONS, overlay_logo, process
+from src.naming import sanitize_name
+from src.session_store import (TRASH_STAMP, edit_base, finals, find_raw, load_review,
+                               purge_trash, remote_filename, save_review, shot_entries)
+from src.version import parse_version
+from src.webui import _ev_number
+
+
+# ---------- nazwy ----------
+
+@pytest.mark.parametrize("raw, want", [
+    ("left switch r72", "left switch r72"),
+    ("  Zwrotnica  ", "Zwrotnica"),
+    ("a/b\\c", "a_b_c"),               # sesja nie moze wyjsc z katalogu photos/
+    ("../../etc", "_.._etc"),
+    ("", "default"),
+    ("...", "default"),
+])
+def test_sanitize_name(raw, want):
+    assert sanitize_name(raw) == want
+
+
+def test_remote_filename_stays_inside_session():
+    assert remote_filename({"id": 7, "filename": "../../x.jpg"}) == "x.jpg"
+    assert remote_filename({"id": 7, "filename": "notatki.txt"}) == "photo_7.jpg"
+    assert remote_filename({"id": 7, "filename": ".hidden.jpg"}) == "photo_7.jpg"
+
+
+# ---------- kompensacja ekspozycji ----------
+
+@pytest.mark.parametrize("text, want", [
+    ("0", 0.0), ("+1/3", 1 / 3), ("-2/3", -2 / 3), ("+2 2/3", 2 + 2 / 3),
+    ("+3.0", 3.0), ("−1", -1.0), ("", None), ("abc", None),
+])
+def test_ev_number(text, want):
+    got = _ev_number(text)
+    assert got == pytest.approx(want) if want is not None else got is None
+
+
+# ---------- wersje (aktualizacje) ----------
+
+def test_parse_version():
+    assert parse_version("v2.3.1") == (2, 3, 1)
+    assert parse_version("2.10.0") > parse_version("2.9.9")
+    assert parse_version("nie-wersja") is None
+
+
+def test_is_newer(monkeypatch):
+    from src import updater
+    monkeypatch.setattr(updater, "APP_VERSION", "2.3.1")
+    assert updater.is_newer("2.3.2")
+    assert updater.is_newer("2.10.0")
+    assert not updater.is_newer("2.3.1")
+    assert not updater.is_newer("2.2.9")
+
+
+# ---------- obrobka zdjecia ----------
+
+@pytest.fixture(scope="module")
+def processed(tmp_path_factory):
+    """Jedna pelna obrobka (rembg trwa) — wspolna dla testow ponizej."""
+    out_dir = tmp_path_factory.mktemp("session")
+    out = process(FIXTURES / "product_raw.jpg", config.LOGOS["kids"]["file"], out_dir,
+                  clean_bg=True, add_logo=True, logo_position="bottom-right",
+                  auto_center=True, auto_zoom=True, out_name="photo_1.jpg",
+                  base_out=out_dir / ".nologo" / "photo_1.jpg")
+    return out_dir, out
+
+
+def test_process_makes_square_3000(processed):
+    _, out = processed
+    with Image.open(out) as im:
+        assert im.size == (config.OUTPUT_SIZE, config.OUTPUT_SIZE) == (3000, 3000)
+
+
+def test_process_keeps_raw_and_nologo(processed):
+    out_dir, out = processed
+    assert (out_dir / "photo_1_raw.jpg").read_bytes() == (FIXTURES / "product_raw.jpg").read_bytes()
+    assert (out_dir / ".nologo" / "photo_1.jpg").exists()
+
+
+def test_process_background_is_white(processed):
+    _, out = processed
+    arr = np.asarray(Image.open(out).convert("L"))
+    corners = [arr[:150, :150], arr[:150, -150:], arr[-150:, :150]]
+    for c in corners:
+        assert c.mean() > 245, "tlo w rogach ma byc biale"
+
+
+def test_process_centers_and_zooms_product(processed):
+    out_dir, _ = processed
+    # wersja bez logo — logo w rogu nie zaburza pomiaru
+    arr = np.asarray(Image.open(out_dir / ".nologo" / "photo_1.jpg").convert("L"))
+    ys, xs = np.nonzero(arr < 200)
+    h, w = arr.shape
+    cx, cy = xs.mean() / w, ys.mean() / h
+    assert abs(cx - 0.5) < 0.08 and abs(cy - 0.5) < 0.08, "produkt na srodku kadru"
+    span = max(xs.max() - xs.min(), ys.max() - ys.min()) / w
+    assert span > 0.6, "produkt przyblizony, wypelnia wiekszosc kadru"
+
+
+def test_process_without_logo_and_clean_bg_is_plain_crop(tmp_path):
+    out = process(FIXTURES / "product_raw.jpg", config.LOGOS["kids"]["file"], tmp_path,
+                  clean_bg=False, add_logo=False, out_name="p.jpg")
+    with Image.open(out) as im:
+        assert im.size == (3000, 3000)
+    assert not (tmp_path / ".nologo").exists()
+
+
+def _logo_box(img: Image.Image) -> tuple[float, float]:
+    """Srodek obszaru, gdzie obraz z logo rozni sie od bialego tla."""
+    arr = np.asarray(img.convert("L")).astype(int)
+    ys, xs = np.nonzero(arr < 250)
+    return xs.mean() / arr.shape[1], ys.mean() / arr.shape[0]
+
+
+@pytest.mark.parametrize("logo", list(config.LOGOS))
+@pytest.mark.parametrize("position", LOGO_POSITIONS)
+def test_logo_lands_in_chosen_corner(logo, position):
+    blank = Image.new("RGB", (1000, 1000), "white")
+    out = overlay_logo(blank, config.LOGOS[logo]["file"], position)
+    x, y = _logo_box(out)
+    assert (x < 0.5) == ("left" in position)
+    assert (y < 0.5) == ("top" in position)
+
+
+def test_logo_sizes_differ_between_logos():
+    blank = Image.new("RGB", (1000, 1000), "white")
+    heights = {}
+    for key, spec in config.LOGOS.items():
+        arr = np.asarray(overlay_logo(blank, spec["file"], "bottom-right").convert("L"))
+        ys, _ = np.nonzero(arr < 250)
+        heights[key] = (ys.max() - ys.min()) / 1000
+    # KIDS jest wieksze (0.10 kadru) niz TRIXBRIX.eu (0.06)
+    assert heights["kids"] > heights["trixbrix"]
+    assert heights["kids"] <= config.LOGOS["kids"]["height"] + 0.01
+
+
+def test_missing_logo_file_leaves_image_untouched(tmp_path):
+    img = Image.new("RGB", (100, 100), "white")
+    assert overlay_logo(img, tmp_path / "brak.webp") is img
+
+
+# ---------- sesja na dysku ----------
+
+def test_review_roundtrip_and_finals(tmp_path):
+    for name in ("photo_2.jpg", "photo_1.jpg", "photo_1_raw.jpg"):
+        Image.new("RGB", (10, 10)).save(tmp_path / name)
+    assert finals(tmp_path) == ["photo_1.jpg", "photo_2.jpg"], "raw nie jest zdjeciem sesji"
+    review = load_review(tmp_path)
+    assert review == {"rejected": [], "uploaded": [], "meta": {}, "automat": {}}
+    review["rejected"].append("photo_2.jpg")
+    save_review(tmp_path, review)
+    entries = {e["file"]: e for e in shot_entries(tmp_path, load_review(tmp_path))}
+    assert entries["photo_2.jpg"]["status"] == "rejected"
+    assert entries["photo_1.jpg"]["status"] == "ok"
+    assert entries["photo_1.jpg"]["size"] == [10, 10]
+    assert find_raw(tmp_path, "photo_1.jpg") == tmp_path / "photo_1_raw.jpg"
+
+
+def test_edit_base_prefers_nologo_copy(tmp_path):
+    (tmp_path / ".nologo").mkdir()
+    Image.new("RGB", (10, 10)).save(tmp_path / ".nologo" / "a.jpg")
+    assert edit_base(tmp_path, "a.jpg", {"meta": {}}) == tmp_path / ".nologo" / "a.jpg"
+    # zdjecie robione bez logo jest samo swoja baza
+    assert edit_base(tmp_path, "b.jpg", {"meta": {"b.jpg": "zoom · 3000×3000"}}) == tmp_path / "b.jpg"
+    assert edit_base(tmp_path, "c.jpg", {"meta": {"c.jpg": "logo · 3000×3000"}}) is None
+
+
+def test_purge_trash_respects_retention(tmp_path):
+    root = tmp_path / ".trash"
+    old = root / ((datetime.now() - timedelta(days=31)).strftime(TRASH_STAMP) + "_stara")
+    fresh = root / ((datetime.now() - timedelta(days=29)).strftime(TRASH_STAMP) + "_nowa")
+    old.mkdir(parents=True)
+    fresh.mkdir(parents=True)
+    # data jest w NAZWIE — swiezy mtime starego wpisu nic nie zmienia
+    os.utime(old, (time.time(), time.time()))
+    assert purge_trash(tmp_path, days=30) == 1
+    assert not old.exists() and fresh.exists()
+    assert purge_trash(tmp_path, days=0) == 0, "0 dni = kosz wylaczony, nic nie kasuje"

@@ -26,6 +26,18 @@ python3 gui.py --browser    # to samo w przeglądarce
 
 `activate` musi być **sourcowany** (`source` lub `.`) — `./venv/bin/activate` zwraca permission denied.
 
+## Testy (`tests/`, pytest + Playwright)
+
+```bash
+pip install -r requirements-dev.txt && python -m playwright install chromium   # raz
+python -m pytest -q            # wszystko (~30 s)
+python -m pytest -q -m "not ui"   # bez przegladarki
+```
+
+Testy NIE dotykają aparatu, sieci ani `.env` (`tests/conftest.py`): zmienne środowiska ustawiane przed importem `src` (pusty `AUTOMAT_TOKEN`, upload OFF), `make_camera_session` podmieniony na `FakeCamera` (oddaje `tests/fixtures/product_raw.jpg`, umie zasymulować zerwanie połączenia przy strzale, błąd ostrzenia, odrzuconą kompensację), `persist_env` pisze do słownika, GitHub odpowiada atrapą. `test_units.py` — obróbka (3000×3000, białe tło, produkt wyśrodkowany i przybliżony, logo w każdym rogu, rozmiary logo), nazwy, kosz, wersje. `test_app.py` — `WebUI` z wątkami na atrapie: strzał, odmowy migawki, ponowienie po błędzie aparatu, kosz, recenzja, ostrość w punkcie, EV, edycja logo, ustawienia w `.env`, token serwera. `test_ui.py` — prawdziwa przeglądarka: ENTER/SPACJA/E/ESC/BACKSPACE, modal wyjścia, klik w podgląd = ostrość, motyw, karta braku EDSDK, zero błędów w konsoli. **Zachowanie opisane w tym dokumencie, które ma się nie zmieniać, dostaje test** — zmiana zachowania = zmiana testu w tym samym commicie.
+
+**CI**: job `test` (Windows) idzie przed `build` (`needs: test`) — czerwone testy = brak buildu i brak wydania. Publikacja wydania tylko z `main`; ręczny run (`gh workflow run build-windows.yml --ref <gałąź>`) na innej gałęzi = testy + build bez wydania. `requirements-dev.txt` i `tests/` nie trafiają do `.exe` (build ich nie instaluje, PyInstaller bierze tylko importy `gui.py`).
+
 ## Windows
 
 Aplikacja okienkowa (`gui.py`) działa też na Windowsie — pełna instrukcja w `WINDOWS.md`. Aparatem steruje **wyłącznie Canon EDSDK** (`src/camera_edsdk.py`, przez `make_camera_session()` — po USB przez ctypes; **SDK żyje w osobnym procesie-dziecku** (`src/camera_proc.py`, `CAMERA_EDSDK_ISOLATION`, domyślnie ON), bo na niektórych maszynach wywołania EDSDK wisną NA ZAWSZE w DLL-u, a zawieszony proces — w odróżnieniu od wątku — zawsze da się zabić; wymaga `EDSDK.dll` + `EdsImage.dll` x64 z programu deweloperskiego Canona obok aplikacji — DLL-ek nie commitujemy, licencja; ich brak to czytelny błąd z `EdsdkSession.open()`). Backend digiCamControl (webserver HTTP pośrednika) został **USUNIĘTY w 1.1.0** — utrzymywanie dwóch ścieżek sterowania aparatem podwajało koszty debugowania, a EDSDK działa u operatorów; Instalacja: `pip install -r requirements-windows.txt`. Build `.exe`: `build_windows.bat` → PyInstaller z `CameraCapture.spec` (onedir, `dist\CameraCapture\Trixbrix - Camera Capture.exe`; ikona `assets/icons/trixbrix.ico`, metadane [autor: Michał Krzysteczko] generowane przez spec z `src/version.py` do `build/version_info.txt` — plik nie jest już trzymany w repo, żeby wersja miała jedno źródło prawdy; `.env` i `photos/` żyją obok `.exe`). CI: `.github/workflows/build-windows.yml` buduje artefakt `CameraCapture-windows` przy każdym pushu na main, a przy tagu `vX.Y.Z` dodatkowo publikuje GitHub Release z paczką `CameraCapture-windows-vX.Y.Z.zip` (patrz sekcja „Aktualizacje").

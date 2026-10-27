@@ -1,0 +1,232 @@
+"""Logika aplikacji (WebUI) na atrapie aparatu: strzal, odmowy migawki,
+kasowanie do kosza, recenzja, ostrosc, kompensacja, edycja logo, ustawienia,
+dostep do serwera tylko z tokenem."""
+
+import json
+import urllib.error
+import urllib.request
+
+import numpy as np
+import pytest
+from PIL import Image
+
+from conftest import log_texts, shoot_and_wait, wait_for
+from src.session_store import load_review
+
+
+def open_session(app, name="sesja testowa"):
+    res = app.action({"action": "set_session", "name": name})
+    assert res["ok"], res
+    return app.base_output / name
+
+
+# ---------- strzal ----------
+
+def test_enter_takes_photo_into_session(app, camera):
+    sdir = open_session(app)
+    f = shoot_and_wait(app)
+    assert camera.captures == 1
+    assert (sdir / f).exists()
+    assert (sdir / "raw" / f.replace(".jpg", "_raw.jpg")).exists(), "oryginal z aparatu w raw/"
+    with Image.open(sdir / f) as im:
+        assert im.size == (3000, 3000)
+    st = app.state()
+    assert st["session"]["count"] == 1
+    assert st["busy"] == "" and st["processing"] is None
+    assert any(t.startswith(f"Zapisano {f}") for t in log_texts(app))
+
+
+def test_two_photos_in_the_same_second_are_both_kept(app, camera):
+    sdir = open_session(app)
+    app.action({"action": "shoot"})
+    app.action({"action": "shoot"})
+    wait_for(lambda: camera.captures == 2 and not app.state()["busy"]
+             and app.state()["processing"] is None, 120, "dwa zdjecia")
+    wait_for(lambda: len(app.state()["shots"]) >= 1, 5, "zdjecia w sesji")
+    assert len(app.state()["shots"]) == 2, "drugie zdjecie nie moze nadpisac pierwszego"
+
+
+def test_photo_meta_describes_processing(app):
+    sdir = open_session(app)
+    f = shoot_and_wait(app)
+    assert load_review(sdir)["meta"][f] == "logo · zoom · 3000×3000"
+
+
+def test_shutter_refused_without_session(app, camera):
+    res = app.action({"action": "shoot"})
+    assert res == {"ok": False, "error": "najpierw ustaw nazwę sesji"}
+    assert camera.captures == 0
+    assert "Migawka: najpierw ustaw nazwę sesji." in log_texts(app)
+
+
+def test_shutter_refused_when_camera_disconnected(make_app):
+    app = make_app(start=False)
+    open_session(app)
+    assert app.action({"action": "shoot"})["error"] == "aparat nie jest połączony"
+
+
+def test_shutter_refused_during_update(app, camera):
+    open_session(app)
+    app.update_busy = True
+    assert app.action({"action": "shoot"})["error"] == "trwa aktualizacja"
+    assert camera.captures == 0
+
+
+def test_capture_retries_once_after_camera_error(app, camera):
+    sdir = open_session(app)
+    camera.fail_capture = 1
+    f = shoot_and_wait(app)
+    assert (sdir / f).exists()
+    assert "Zdjęcie wyszło za drugim podejściem." in log_texts(app)
+
+
+def test_capture_failing_twice_frees_shutter(app, camera):
+    open_session(app)
+    camera.fail_capture = 2
+    assert app.action({"action": "shoot"})["ok"]
+    wait_for(lambda: any("także po ponownym połączeniu" in t for t in log_texts(app)),
+             20, "blad drugiej proby")
+    wait_for(lambda: app.state()["busy"] == "", 5, "przycisk migawki znow wolny")
+    assert app.state()["shots"] == []
+
+
+# ---------- kasowanie i recenzja ----------
+
+def test_backspace_moves_photo_and_raw_to_trash(app):
+    sdir = open_session(app)
+    f = shoot_and_wait(app)
+    app.action({"action": "delete", "session": sdir.name, "files": [f]})
+    wait_for(lambda: not (sdir / f).exists(), 10, "zdjecie zniknelo z sesji")
+    trash = list((app.base_output / ".trash").glob(f"*_{sdir.name}"))
+    assert len(trash) == 1
+    names = sorted(p.name for p in trash[0].iterdir())
+    assert names == sorted([f, f.replace(".jpg", "_raw.jpg")]), "do kosza idzie zdjecie i oryginal"
+    assert app.state()["session"]["count"] == 0
+
+
+def test_reject_and_accept(app):
+    sdir = open_session(app)
+    f = shoot_and_wait(app)
+    app.action({"action": "review", "session": sdir.name, "file": f, "verdict": "rejected"})
+    assert app.state()["session"]["rejected"] == 1
+    app.action({"action": "review", "session": sdir.name, "file": f, "verdict": "accepted"})
+    assert app.state()["session"]["rejected"] == 0
+
+
+# ---------- ostrosc w kliknietym punkcie ----------
+
+def test_click_focuses_at_point(app, camera):
+    res = app.action({"action": "focus_at", "x": 0.25, "y": 0.75})
+    assert res["ok"]
+    focus = wait_for(lambda: app.state()["focus"], 5, "wynik ostrzenia")
+    assert camera.focus_calls == [(0.25, 0.75)]
+    assert focus["ok"] and focus["at"] == [0.25, 0.75] and focus["seq"] == res["seq"]
+    assert app.state()["focusSupported"]
+
+
+@pytest.mark.parametrize("point, error", [
+    ({"x": 1.2, "y": 0.5}, "punkt poza kadrem"),
+    ({"x": "a", "y": 0.5}, "zły punkt"),
+    ({}, "zły punkt"),
+])
+def test_focus_rejects_bad_points(app, camera, point, error):
+    assert app.action({"action": "focus_at", **point})["error"] == error
+    assert camera.focus_calls == []
+
+
+def test_focus_failure_explains_af_mode(app, camera):
+    camera.fail_focus = "DoEvfAf: AF NG"
+    app.action({"action": "focus_at", "x": 0.5, "y": 0.5})
+    focus = wait_for(lambda: app.state()["focus"], 5, "wynik ostrzenia")
+    assert not focus["ok"]
+    assert any("Ostrość w punkcie" in t and "AF z wybieranym punktem" in t for t in log_texts(app))
+
+
+def test_focus_failure_without_af_hint_for_other_errors(app, camera):
+    camera.fail_focus = "proces sterownika nie odpowiada"
+    app.action({"action": "focus_at", "x": 0.5, "y": 0.5})
+    wait_for(lambda: app.state()["focus"], 5, "wynik ostrzenia")
+    line = next(t for t in log_texts(app) if "Ostrość w punkcie" in t)
+    assert "AF z wybieranym punktem" not in line
+
+
+# ---------- kompensacja ekspozycji ----------
+
+def test_ev_change_reaches_camera(app, camera):
+    wait_for(lambda: app.state()["camera"]["ev"], 5, "odczyt kompensacji")
+    assert app.action({"action": "set_ev", "value": "+1/3"})["ok"]
+    wait_for(lambda: (app.state()["camera"]["ev"] or {}).get("current") == "+1/3", 5, "nowa kompensacja")
+    assert camera.ev == "+1/3"
+
+
+def test_ev_rejected_by_camera_is_reported(app, camera):
+    camera.reject_ev = True
+    app.action({"action": "set_ev", "value": "+1"})
+    wait_for(lambda: any("Aparat nie przyjął kompensacji +1" in t for t in log_texts(app)),
+             5, "komunikat o odrzuceniu")
+
+
+# ---------- edycja logo na gotowym zdjeciu ----------
+
+def test_edit_logo_moves_and_removes_logo(app):
+    sdir = open_session(app)
+    f = shoot_and_wait(app)
+    app.action({"action": "edit_save", "file": f, "logo": "kids", "position": "top-left"})
+    wait_for(lambda: app.state()["editSaving"] is None and "Zmieniono" in " ".join(log_texts(app)),
+             20, "zmiana logo")
+    assert load_review(sdir)["meta"][f].startswith("logo")
+    app.action({"action": "edit_save", "file": f, "logo": "", "position": "bottom-right"})
+    wait_for(lambda: "bez logo" in " ".join(log_texts(app)), 20, "zdjecie bez logo")
+    assert "logo" not in load_review(sdir)["meta"][f].split(" · ")
+    nologo = np.asarray(Image.open(sdir / ".nologo" / f).convert("L").resize((64, 64)), dtype=int)
+    now = np.asarray(Image.open(sdir / f).convert("L").resize((64, 64)), dtype=int)
+    assert np.abs(now - nologo).max() <= 6, "bez logo = wersja z .nologo"
+
+
+def test_edit_refuses_unknown_logo_and_position(app):
+    open_session(app)
+    assert app.action({"action": "edit_save", "file": "x.jpg", "logo": "inne"})["error"] == "nieznane logo"
+    assert app.action({"action": "edit_save", "file": "x.jpg", "logo": "kids",
+                       "position": "srodek"})["error"] == "nieznana pozycja"
+
+
+# ---------- ustawienia ----------
+
+def test_settings_are_saved_to_env(app, env_store):
+    app.action({"action": "set_app", "key": "ui_theme", "value": "dark"})
+    app.action({"action": "set_app", "key": "preview_fps", "value": 99})
+    app.action({"action": "set_post", "key": "logo", "value": "trixbrix"})
+    st = app.state()
+    assert st["settings"]["uiTheme"] == "dark"
+    assert st["settings"]["previewFps"] == 30, "FPS podgladu przyciety do 1–30"
+    assert st["post"]["logoChoice"] == "trixbrix"
+    assert env_store == {"UI_THEME": "dark", "PREVIEW_FPS": "30", "LOGO": "trixbrix"}
+
+
+def test_unknown_theme_is_ignored(app, env_store):
+    app.action({"action": "set_app", "key": "ui_theme", "value": "fioletowy"})
+    assert app.state()["settings"]["uiTheme"] == "light"
+    assert "UI_THEME" not in env_store
+
+
+def test_toggles_and_logo_position(app):
+    app.action({"action": "toggle", "key": "zoom", "value": False})
+    app.action({"action": "set_post", "key": "logo_position", "value": "top-left"})
+    app.action({"action": "set_post", "key": "logo_position", "value": "srodek"})
+    post = app.state()["post"]
+    assert post["zoom"] is False and post["logoPosition"] == "top-left"
+
+
+def test_unknown_action(app):
+    assert app.action({"action": "robot_pose"}) == {"ok": False, "error": "nieznana akcja 'robot_pose'"}
+
+
+# ---------- serwer ----------
+
+def test_server_requires_token(app):
+    base = app.url.split("?")[0]
+    with pytest.raises(urllib.error.HTTPError) as e:
+        urllib.request.urlopen(base + "api/state")
+    assert e.value.code == 403
+    with urllib.request.urlopen(f"{base}api/state?t={app.token}") as r:
+        assert json.load(r)["connected"] is True

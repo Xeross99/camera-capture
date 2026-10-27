@@ -115,6 +115,16 @@ python3 gui.py --browser    # to samo w przeglądarce
 
 Na macOS aparat działa wyłącznie przez Canon EDSDK: `EDSDK.framework` (z paczki Canona dla macOS, poza repozytorium) musi leżeć w katalogu aplikacji. Framework pobrany przez przeglądarkę trzeba zwolnić z kwarantanny: `xattr -dr com.apple.quarantine EDSDK.framework`. Kliknięcie w podgląd ustawia ostrość w tym miejscu.
 
+## Testy
+
+```bash
+pip install -r requirements-dev.txt
+python -m playwright install chromium
+python -m pytest -q
+```
+
+Testy działają bez aparatu (atrapa w `tests/conftest.py`) i bez sieci. CI uruchamia je na Windowsie przed każdym buildem — gdy nie przejdą, nowa wersja się nie buduje.
+
 ## Dokumentacja
 
 Wszystko techniczne, czyli jak działa obróbka, kolejka zdjęć, połączenie z aparatem, aktualizator i

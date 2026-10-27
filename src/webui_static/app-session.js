@@ -664,14 +664,23 @@ function showLeaveConfirm() {
   S.leaveConfirm = true;
   const el = document.createElement("div");
   el.id = "leave-confirm";
-  // modal zyje w <body>, POZA #app — klasa .ui daje mu font aplikacji
-  el.className = "ui";
-  el.style.cssText = "position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; background: rgba(20,20,24,.28); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); opacity: 0; transition: opacity .18s ease;";
+  // modal zyje w <body>, POZA #app — klasa .ui daje mu font aplikacji.
+  // Układ i animacja jak w modalu Tailwind UI (panel z opacity 0 i scale .95),
+  // tylko szybciej: wejście 160 ms, zamknięcie 120 ms.
+  el.className = "ui modal-root";
+  el.setAttribute("role", "dialog");
+  el.setAttribute("aria-modal", "true");
+  el.setAttribute("aria-labelledby", "leave-title");
   el.innerHTML = `
-    <div id="leave-card" class="panel" style="padding: 22px 24px; max-width: 400px; display: flex; flex-direction: column; gap: 12px; transform: scale(.94) translateY(8px); transition: transform .22s cubic-bezier(0.16, 1, 0.3, 1); box-shadow: 0 18px 50px var(--shadow);">
-      <div style="font-size: 16px; font-weight: 700; color: var(--text);">Wrócić do listy sesji?</div>
-      <div style="font-size: 13px; line-height: 1.5; color: var(--muted);">Sesja zostanie zamknięta. Zdjęcia są zapisane.</div>
-      <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px;">
+    <div id="leave-card" class="modal-panel">
+      <div style="display: flex; align-items: flex-start; gap: 16px; padding: 22px 24px 18px;">
+        <div class="modal-icon">${icon("leave", 22, 1.6)}</div>
+        <div style="min-width: 0; padding-top: 2px;">
+          <h3 id="leave-title" style="margin: 0; font-size: 16px; font-weight: 700; color: var(--text);">Wrócić do listy sesji?</h3>
+          <p style="margin: 8px 0 0; font-size: 13px; line-height: 1.5; color: var(--muted);">Sesja zostanie zamknięta. Zdjęcia są zapisane.</p>
+        </div>
+      </div>
+      <div class="modal-foot">
         <button type="button" class="btn" onclick="hideLeaveConfirm()">Zostań <span class="kbd">ESC</span></button>
         <button type="button" class="btn btn-primary" onclick="confirmLeave()">Wróć do listy <span class="kbd">ENTER</span></button>
       </div>
@@ -679,21 +688,16 @@ function showLeaveConfirm() {
   // klik w przyciemnione tlo = anuluj (ten sam gest co ESC)
   el.addEventListener("click", ev => { if (ev.target === el) hideLeaveConfirm(); });
   document.body.appendChild(el);
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    el.style.opacity = "1";
-    const card = $("leave-card");
-    if (card) card.style.transform = "none";
-  }));
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add("open")));
 }
 
 function hideLeaveConfirm() {
   S.leaveConfirm = false;
   const el = $("leave-confirm");
   if (!el) return;
-  el.style.opacity = "0";
-  const card = $("leave-card");
-  if (card) card.style.transform = "scale(.94) translateY(8px)";
-  setTimeout(() => el.remove(), 200);
+  el.classList.remove("open");
+  el.classList.add("closing");
+  setTimeout(() => el.remove(), 130);
 }
 
 function confirmLeave() {

@@ -4,19 +4,27 @@
 
 // Baner aktualizacji nad zakladkami. Widoczny dopiero gdy backend znajdzie
 // nowszy release; „Później" chowa go do konca uruchomienia (per wersja).
+// Postęp pobierania (tekst i pasek) łata updateVolatile() po id — rebuild
+// shella przy każdym procencie zrywałby stream live view.
 function updateBanner() {
   const u = S.state && S.state.update;
   if (!u || !u.available || S.updateDismissed === u.available) return "";
+  const hide = `S.updateDismissed = '${u.available}'; renderShell(true)`;
   const right = u.canApply
-    ? `<button type="button" class="btn btn-primary btn-sm" onclick="applyUpdate()" ${u.busy ? "disabled" : ""}>${u.busy ? `<span class="spinner" style="border-color: rgba(255,255,255,.35); border-top-color: #fff;"></span>Aktualizuję…` : "Zaktualizuj i uruchom ponownie"}</button>
-       <button type="button" class="btn btn-sm" onclick="S.updateDismissed = '${u.available}'; renderShell(true)">Później</button>`
-    : `<span style="${mono} font-size: 11px; color: var(--warn-fg-2);">uruchomienie ze źródeł — zaktualizuj przez <b>git pull</b></span>
-       <button type="button" class="btn btn-sm" onclick="S.updateDismissed = '${u.available}'; renderShell(true)">Ukryj</button>`;
+    ? `<button type="button" class="btn btn-sm" onclick="${hide}" ${u.busy ? "disabled" : ""}>Później</button>
+       <button type="button" class="btn btn-primary btn-sm" onclick="applyUpdate()" ${u.busy ? "disabled" : ""}>${u.busy ? `<span class="spinner" style="border-color: rgba(255,255,255,.35); border-top-color: #fff;"></span>Aktualizuję…` : `${icon("download", 14, 2)}Zaktualizuj i uruchom ponownie`}</button>`
+    : `<span style="font-size: 12px; color: var(--muted);">Uruchomienie ze źródeł: zaktualizuj przez <b class="mono" style="font-weight: 500; color: var(--text-2);">git pull</b></span>
+       <button type="button" class="btn btn-sm" onclick="${hide}">Ukryj</button>`;
   return `
-  <div style="flex: 0 0 auto; background: var(--warn-bg); border-bottom: 1px solid var(--warn-border); display: flex; align-items: center; gap: 12px; padding: 8px 16px;">
-    <span style="font-size: 12.5px; color: var(--warn-fg);">Dostępna aktualizacja <b>${u.available}</b> <span style="${mono} font-size: 11px; color: var(--warn-fg-2);">(masz ${u.current})</span></span>
-    <span id="update-progress" style="${mono} font-size: 11px; color: var(--warn-fg-2);">${u.busy && u.progress ? u.progress + "%" : ""}</span>
-    <span style="margin-left: auto; display: flex; align-items: center; gap: 8px;">${right}</span>
+  <div class="update-banner">
+    <span class="update-icon">${icon("download", 16, 2)}</span>
+    <div style="flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+      <span style="font-size: 13px; font-weight: 600; color: var(--text);">Dostępna wersja <span class="mono">${u.available}</span></span>
+      <span style="font-size: 12px; color: var(--muted);">masz <span class="mono">${u.current}</span></span>
+      <span id="update-progress" class="mono" style="font-size: 12px; color: var(--accent-fg);">${u.busy && u.progress ? u.progress + "%" : ""}</span>
+    </div>
+    ${right}
+    <span class="update-bar" style="display: ${u.busy ? "block" : "none"};"><span id="update-bar-fill" style="width: ${u.busy ? u.progress || 0 : 0}%;"></span></span>
   </div>`;
 }
 
@@ -179,6 +187,8 @@ function updateVolatile(st) {
   if (up) {
     const u = st.update || {};
     up.textContent = u.busy && u.progress ? `${u.progress}%` : "";
+    const bar = $("update-bar-fill");
+    if (bar) bar.style.width = `${u.busy ? u.progress || 0 : 0}%`;
   }
   const sig = logSig(st);
   if (sig !== S.lastLogLen) {
@@ -233,6 +243,7 @@ function renderScreens(force) {
       const scroll = $("start-scroll") ? $("start-scroll").scrollTop : 0;
       const fromSesja = lastSesja && !isStartKey(lastSesja);
       lastSesja = key;
+      snapshotSegs($("screen-sesja"));
       $("screen-sesja").innerHTML = startScreen();
       placeSegPill($("period-seg"), true);
       if (fromSesja) playScreenIn();
@@ -275,6 +286,7 @@ function renderScreens(force) {
       lastSesja = key;
       lastStrip = stripSig(st);
       S.lastLogLen = logSig(st);
+      snapshotSegs($("screen-sesja"));
       $("screen-sesja").innerHTML = sesjaScreen();
       placeSegPill($("grid-seg"), true);
       if (fromStart) playScreenIn();
@@ -306,6 +318,7 @@ function renderScreens(force) {
       if (document.activeElement && document.activeElement.tagName === "INPUT") return;
       lastUstawienia = key;
       const sc = $("settings-scroll") ? $("settings-scroll").scrollTop : 0;
+      snapshotSegs($("screen-ustawienia"));
       $("screen-ustawienia").innerHTML = ustawieniaScreen();
       if ($("settings-scroll")) $("settings-scroll").scrollTop = sc;
       placeSegPill($("fps-seg"), true);
@@ -428,7 +441,7 @@ function placeSegPill(seg, animate) {
   if (seg.id) segPos[seg.id] = to;
   // animacja TYLKO przy realnej zmianie wyboru; świeżo zbudowany pill stoi na
   // 0/0 i bez tego warunku wjeżdżał od lewej przy każdej przebudowie ekranu
-  const moved = from && (from.left !== to.left || from.width !== to.width);
+  const moved = from && (Math.abs(from.left - to.left) > .5 || Math.abs(from.width - to.width) > .5);
   if (animate && moved) {
     pill.style.transition = "none";
     pill.style.left = `${from.left}px`;
@@ -438,6 +451,21 @@ function placeSegPill(seg, animate) {
   pill.style.transition = animate && (moved || !seg.id) ? `left .32s ${ease}, width .32s ${ease}` : "none";
   pill.style.left = `${to.left}px`;
   pill.style.width = `${to.width}px`;
+}
+
+// Przed przebudową ekranu: gdzie BIAŁE TŁO jest teraz (także w trakcie
+// animacji). Nowy przełącznik po przebudowie przejeżdża z tego miejsca — bez
+// tego klik w filtr okresu (natychmiastowa przebudowa listy) gubił animację.
+function snapshotSegs(root) {
+  if (!root) return;
+  root.querySelectorAll(".seg[id], .overlay-seg[id]").forEach(seg => {
+    const pill = seg.querySelector(".overlay-pill, .seg-pill");
+    if (!pill) return;
+    const cs = getComputedStyle(pill);
+    const width = parseFloat(cs.width) || 0;
+    // jeszcze nieustawione tło (0 px) — zostaje ostatnia znana pozycja
+    if (width) segPos[seg.id] = { left: parseFloat(cs.left) || 0, width };
+  });
 }
 
 // Klik w opcję segmented controla: zaznaczenie i tło przestawiane od razu,

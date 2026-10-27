@@ -382,3 +382,20 @@ html[data-theme="dark"] .theme-light, html:not([data-theme]) .theme-light { disp
 .icon-btn, .icon-btn *, .shutter, .shutter *,
 .switch, .crumbs a { cursor: pointer; }
 .btn:disabled, .btn:disabled *, .vnav:disabled, .vnav:disabled * { cursor: default; }
+
+/* Baner aktualizacji nad górnym paskiem */
+.update-banner { position: relative; flex: 0 0 auto; display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: var(--accent-soft); border-bottom: 1px solid var(--accent-ring); }
+.update-icon { width: 28px; height: 28px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: var(--accent); color: #fff; }
+.update-bar { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--accent-ring); }
+.update-bar > span { display: block; height: 100%; background: var(--accent); transition: width .3s ease; }
+
+/* Okno potwierdzenia (wyjście z sesji) — układ i animacja jak modal Tailwind UI,
+   tylko szybsza: wejście 160 ms, wyjście 120 ms */
+.modal-root { position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(20, 20, 24, .32); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); opacity: 0; transition: opacity .16s ease-out; }
+.modal-root.open { opacity: 1; }
+.modal-root.closing { transition: opacity .12s ease-in; }
+.modal-panel { width: 100%; max-width: 460px; overflow: hidden; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 20px 50px var(--shadow); opacity: 0; transform: scale(.95); transition: opacity .16s ease-out, transform .16s ease-out; }
+.modal-root.open .modal-panel { opacity: 1; transform: none; }
+.modal-root.closing .modal-panel { transition: opacity .12s ease-in, transform .12s ease-in; }
+.modal-icon { width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--accent-soft); color: var(--accent); }
+.modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 24px; background: var(--surface-2); border-top: 1px solid var(--hair); }

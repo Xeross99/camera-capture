@@ -16,6 +16,7 @@ Stan recenzji per sesja w photos/<sesja>/.review.json:
 """
 
 import contextlib
+import json
 import io
 import os
 import sys
@@ -37,6 +38,7 @@ from .automat_uploader import (AutomatNotFound, AutomatUploader,
                                describe_opened_session)
 from .camera import CAMERA_ERRORS, make_camera_session
 from .config import (
+    PROJECT_DIR,
     CAMERA_BACKEND,
     CAMERA_EDSDK_ISOLATION,
     PREVIEW_FPS,
@@ -175,6 +177,40 @@ class _LogPipe(io.TextIOBase):
         return len(s)
 
 
+# Czasy rozgrzewki silnika czyszczenia tła na TYM komputerze (sekundy, ostatnie
+# WARMUP_KEEP). Plik leży obok .exe jak .env, więc przeżywa aktualizacje; UI
+# pokazuje z niego „zwykle ok. X s" i pasek postępu zamiast samego spinnera.
+WARMUP_FILE = PROJECT_DIR / ".warmup.json"
+WARMUP_KEEP = 10
+
+
+def _warmup_history() -> list[float]:
+    try:
+        data = json.loads(WARMUP_FILE.read_text(encoding="utf-8"))
+        return [float(x) for x in data.get("seconds", [])][-WARMUP_KEEP:]
+    except (OSError, ValueError, TypeError, AttributeError):
+        return []
+
+
+def _warmup_estimate() -> int | None:
+    """Mediana ostatnich 5 rozgrzewek — jedna anomalia (antywirus, pierwsza
+    kompilacja shaderów po aktualizacji sterownika) nie psuje szacunku."""
+    hist = sorted(_warmup_history()[-5:])
+    if not hist:
+        return None
+    return max(1, round(hist[len(hist) // 2]))
+
+
+def _record_warmup(seconds: float) -> None:
+    hist = (_warmup_history() + [round(seconds, 1)])[-WARMUP_KEEP:]
+    tmp = WARMUP_FILE.with_name(WARMUP_FILE.name + ".part")
+    try:
+        tmp.write_text(json.dumps({"seconds": hist}), encoding="utf-8")
+        os.replace(tmp, WARMUP_FILE)
+    except OSError:
+        pass  # katalog tylko do odczytu — szacunek po prostu nie urośnie
+
+
 def _edsdk_missing() -> bool:
     """Windows bez EDSDK.dll: aparatem nie ma czym sterować, a plików nie ma w
     paczce (licencja Canona) — UI pokazuje wtedy, skąd je wziąć. Na macOS/Linux
@@ -276,6 +312,7 @@ class WebUI:
         # DirectML trzymala obrobke ~2 min.
         self.warmup_t0 = time.monotonic()
         self.warmup_done = False
+        self.warmup_eta: int | None = None     # szacowany czas rozgrzewki z .warmup.json
         self._robot_read_at = 0.0   # throttle odpytywania katow w bezczynnosci
         # trwa ekspozycja/pobieranie pliku z aparatu — na ten czas ramie stoi.
         # Osobno od `busy`, ktore obejmuje takze obrobke (patrz _robot_ready).
@@ -1510,6 +1547,7 @@ class WebUI:
         try:
             with contextlib.redirect_stdout(_LogPipe(self)):
                 warmup_clean_bg()
+            _record_warmup(time.perf_counter() - t0)
         finally:
             # overlay na podgladzie MUSI zgasnac takze po bledzie rozgrzewki —
             # inaczej wisialby do konca uruchomienia
@@ -1547,6 +1585,7 @@ class WebUI:
         with self.lock:
             self.warmup_done = False
             self.warmup_t0 = time.monotonic()
+            self.warmup_eta = _warmup_estimate()
         self._jobs.put(("warmup",))
         return True
 
@@ -2123,6 +2162,7 @@ class WebUI:
                 "connected": self.connected,
                 "edsdkMissing": _edsdk_missing(),
                 "warmup": None if self.warmup_done else int(time.monotonic() - self.warmup_t0),
+                "warmupEta": self.warmup_eta,
                 "fps": round(self.fps),
                 "previewOn": self.preview_on,
                 "busy": self.busy,

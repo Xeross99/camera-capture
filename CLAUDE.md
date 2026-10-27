@@ -133,6 +133,10 @@ Panel z boku podglądu zdjęcia: bez logo / TRIXBRIX.eu / KIDS i róg kadru (`ed
 
 **Wersja bez logo** (`session_store.edit_base()`): `photos/<sesja>/.nologo/<plik>` — `process(..., base_out=...)` zapisuje ją przy każdej obróbce z logo. Zdjęcie zrobione bez logo (meta bez „logo") jest samo swoją bazą; przed nałożeniem logo kopiuje się do `.nologo/`, inaczej nie byłoby jak go zdjąć. Starsze zdjęcia: akcja `edit_prepare` → job `edit_base` robi bazę z oryginału z aparatu (`raw/`) z BIEŻĄCYMI ustawieniami obróbki (wynik może się minimalnie różnić od pierwotnego kadru). Bez `.nologo` i bez raw edycja jest niemożliwa i panel mówi to wprost. `shot_entries` niesie to jako `edit`: `ready` / `raw` / `""`. Kasowanie zdjęcia usuwa też jego `.nologo`.
 
+## Rozgrzewka silnika czyszczenia tła — szacowany czas na danym komputerze
+
+Każda udana rozgrzewka (`_job_warmup`) dopisuje swój czas do `.warmup.json` obok `.exe` (`WARMUP_FILE`, ostatnie `WARMUP_KEEP` = 10; obok `.env`, więc przeżywa aktualizacje). `_warmup_estimate()` = mediana ostatnich 5 (jedna anomalia — antywirus, pierwsza kompilacja po aktualizacji sterownika — nie psuje szacunku), liczona przy kolejkowaniu rozgrzewki i wysyłana jako `state.warmupEta`. Karta na podglądzie (`warmup-overlay`) pokazuje z niej „zwykle ok. X s na tym komputerze · zostało ok. Y s" i pasek postępu (zatrzymany na 95%, gdy trwa dłużej); bez historii zakłada 2 minuty (`WARMUP_DEFAULT_S` w `app-session.js`). Zapis atomowy, a katalog tylko do odczytu po prostu nie buduje historii.
+
 ## Kosz (`photos/.trash`, retencja `TRASH_RETENTION_DAYS`)
 
 Nic, co aplikacja usuwa lokalnie, nie znika od razu — pliki lądują w `photos/.trash/<data>-<godzina>_<sesja>/` i dopiero `_job_purge_trash` (raz przy starcie, `purge_trash()` z `src/session_store.py`) kasuje wpisy starsze niż `TRASH_RETENTION_DAYS` (domyślnie 30). Odzyskanie = przeniesienie plików z powrotem do `photos/<sesja>/` (raw wraca obok finału, nie do `raw/` — kosz jest płaski).

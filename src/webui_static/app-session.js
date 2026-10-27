@@ -20,8 +20,10 @@ function sesjaScreen() {
     <main style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
       <section aria-label="Podgląd z aparatu" style="flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 16px; background: var(--live-bg);">
         <div style="position: relative; height: 100%; max-width: 100%; aspect-ratio: 3 / 2; border-radius: 12px; overflow: hidden; background: repeating-linear-gradient(135deg, var(--stripe-a) 0 10px, var(--stripe-b) 10px 20px); box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 0 0 1px var(--border); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">
-          ${liveOn ? `<img id="live" src="/stream" alt="Podgląd na żywo" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;" />` : ""}
           ${liveEmptyHtml(st)}
+          <!-- obraz PO karcie: pierwsza klatka zawsze ją przykrywa (przed nią
+               <img> MJPEG jest przezroczysty i karta jest widoczna) -->
+          ${liveOn ? `<img id="live" src="/stream" alt="Podgląd na żywo" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;" />` : ""}
           <div id="grid-overlay" style="position: absolute; inset: 0; display: ${grid.cols && liveOn ? "block" : "none"}; background: ${gridBackground(grid.cols, grid.rows)};"></div>
 
           <div id="grid-seg" class="overlay-seg" role="group" aria-label="Siatka kadrowania" style="left: 14px; top: 14px;">
@@ -37,11 +39,13 @@ function sesjaScreen() {
           </div>
           <div id="ev-overlay" class="overlay-box mono" style="right: 14px; bottom: 14px; font-size: 11.5px; display: ${cam.ev && st.connected ? "flex" : "none"};">EV ${cam.ev ? evLabel(cam.ev.current) : ""}</div>
 
-          <div id="warmup-overlay" style="position: absolute; inset: 0; display: ${st.warmup != null ? "flex" : "none"}; align-items: center; justify-content: center; background: rgba(10,10,12,.72); z-index: 3;">
-            <div class="panel" style="display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 20px 26px; max-width: 78%; text-align: center;">
-              <span class="spinner" style="width: 18px; height: 18px;"></span>
-              <div style="font-size: 14px; font-weight: 600; color: var(--text);">Przygotowuję silnik czyszczenia tła… <span id="warmup-s">${st.warmup != null ? st.warmup : 0}</span> s</div>
-              <div style="font-size: 12.5px; line-height: 1.5; color: var(--muted);">Pierwsze uruchomienie na karcie graficznej trwa do 2 minut.<br>Zdjęcia można robić: poczekają w kolejce.</div>
+          <div id="warmup-overlay" class="warmup-overlay" style="display: ${st.warmup != null ? "flex" : "none"};">
+            <div class="live-empty warm">
+              <div class="live-empty-art">${WARMUP_SVG}</div>
+              <div class="live-empty-title">Przygotowuję silnik czyszczenia tła</div>
+              <div class="live-empty-text">Karta graficzna kompiluje model do usuwania tła. Zdjęcia można robić już teraz: poczekają w kolejce.</div>
+              <div class="warm-progress"><span id="warmup-bar" style="width: ${warmupPct(st)}%;"></span></div>
+              <div id="warmup-text" class="warm-meta">${warmupText(st)}</div>
             </div>
           </div>
           <div id="flash" style="position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 4;"></div>
@@ -149,6 +153,38 @@ function edsdkMissingHtml() {
       </div>
       <button type="button" class="btn btn-sm" onclick="post({action:'open_url', url: 'https://github.com/Xeross99'})">${GITHUB_MARK.replace("width: 24px; height: 24px", "width: 14px; height: 14px")}Kontakt: Xeross99${icon("external", 13, 1.8)}</button>
     </div>`;
+}
+
+// Rozgrzewka silnika czyszczenia tła: zdjęcie z szarym tłem, po którym
+// przesuwa się „pędzel" i zostawia za sobą biel; iskierki na końcu przejazdu.
+const WARMUP_SVG = `
+  <svg class="warm-art" viewBox="0 0 132 80" width="132" height="80" aria-hidden="true">
+    <defs><clipPath id="warm-clip"><rect x="14" y="8" width="104" height="64" rx="8"/></clipPath></defs>
+    <g clip-path="url(#warm-clip)">
+      <rect x="14" y="8" width="104" height="64" fill="#c9ccd4"/>
+      <rect class="warm-clean" x="14" y="8" width="104" height="64" fill="#ffffff"/>
+      <g fill="none" stroke="#5e6472" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="44" y="30" width="44" height="26" rx="3"/>
+        <path d="M44 38 h44 M44 48 h44 M56 30 v26 M76 30 v26"/>
+      </g>
+      <rect class="warm-brush" x="10" y="4" width="6" height="72" rx="3" fill="var(--accent)"/>
+    </g>
+    <rect x="14" y="8" width="104" height="64" rx="8" fill="none" stroke="currentColor" stroke-width="2.4"/>
+    <path class="warm-spark" fill="var(--accent)" d="M120 10 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z"/>
+    <path class="warm-spark s2" fill="var(--accent)" d="M8 60 l1.4 3.6 3.6 1.4 -3.6 1.4 -1.4 3.6 -1.4 -3.6 -3.6 -1.4 3.6 -1.4z"/>
+  </svg>`;
+
+// Pasek postępu liczony od szacunku z historii rozgrzewek na tym komputerze
+// (warmupEta); bez historii zakładamy 2 minuty. Zatrzymany na 95%, gdy trwa dłużej.
+const WARMUP_DEFAULT_S = 120;
+const warmupEta = st => st.warmupEta || WARMUP_DEFAULT_S;
+const warmupPct = st => st.warmup != null ? Math.min(95, Math.round(100 * st.warmup / warmupEta(st))) : 0;
+const fmtSec = s => s >= 60 ? `${Math.floor(s / 60)} min${s % 60 ? ` ${s % 60} s` : ""}` : `${s} s`;
+function warmupText(st) {
+  const s = st.warmup || 0, eta = warmupEta(st), left = eta - s;
+  return left > 0
+    ? `Zwykle ok. ${fmtSec(eta)} na tym komputerze · zostało ok. <span class="mono">${fmtSec(left)}</span>`
+    : `Trwa dłużej niż zwykle (ok. ${fmtSec(eta)}) · <span class="mono">${fmtSec(s)}</span>`;
 }
 
 function liveEmptyHtml(st) {

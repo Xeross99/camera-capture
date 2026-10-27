@@ -166,8 +166,11 @@ function updateVolatile(st) {
   const wo = $("warmup-overlay");
   if (wo) {
     wo.style.display = st.warmup != null ? "flex" : "none";
-    const ws = $("warmup-s");
-    if (ws && st.warmup != null) ws.textContent = st.warmup;
+    if (st.warmup != null) {
+      const wb = $("warmup-bar"), wt = $("warmup-text");
+      if (wb) wb.style.width = `${warmupPct(st)}%`;
+      if (wt) wt.innerHTML = warmupText(st);
+    }
   }
   // Panel robota też jest ŚWIADOMIE łatany, nie keyowany — stan ramienia
   // zmienia się co poll (busy/rozłączenie), a rebuild ekranu zabiłby <img>

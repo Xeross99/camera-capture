@@ -411,7 +411,7 @@ html[data-theme="dark"] .theme-light, html:not([data-theme]) .theme-light { disp
 .cam-off b { color: var(--text); font-weight: 600; }
 
 /* Plansza w ramce podglądu bez obrazu z aparatu */
-.live-empty { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 360px; padding: 26px 30px 22px; text-align: center; border-radius: 16px; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 10px 30px rgba(0, 0, 0, .08); animation: liveEmptyIn .45s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.live-empty { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 360px; padding: 26px 30px 22px; text-align: center; border-radius: 16px; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 10px 30px rgba(0, 0, 0, .08); animation: liveEmptyIn .45s cubic-bezier(0.34, 1.56, 0.64, 1); }
 .live-empty-icon { position: relative; width: 60px; height: 60px; margin-bottom: 8px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--seg); color: var(--muted); }
 .live-empty-icon svg { position: relative; z-index: 1; }
 .live-empty-title { font-size: 15px; font-weight: 700; color: var(--text); }
@@ -450,3 +450,19 @@ html[data-theme="dark"] .theme-light, html:not([data-theme]) .theme-light { disp
 .sdk-n { width: 18px; height: 18px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--accent-soft); color: var(--accent-fg); font-size: 11px; font-weight: 700; }
 .sdk-person { display: inline-flex; align-items: center; gap: 5px; vertical-align: -4px; }
 .sdk-person img { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; box-shadow: 0 0 0 1px var(--border); }
+
+/* Rozgrzewka silnika czyszczenia tła */
+.warmup-overlay { position: absolute; inset: 0; z-index: 3; align-items: center; justify-content: center; background: rgba(20, 20, 24, .28); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+.live-empty.warm { max-width: 400px; }
+.warm-art { color: var(--muted); }
+.warm-art .warm-clean { transform-box: view-box; transform-origin: 14px 0; animation: warmClean 2.8s cubic-bezier(.65, 0, .35, 1) infinite; }
+.warm-art .warm-brush { animation: warmBrush 2.8s cubic-bezier(.65, 0, .35, 1) infinite; }
+.warm-art .warm-spark { opacity: 0; transform-box: fill-box; transform-origin: center; animation: warmSpark 2.8s ease-out infinite; }
+.warm-art .warm-spark.s2 { animation-delay: .12s; }
+@keyframes warmClean { 0% { transform: scaleX(0); } 70%, 88% { transform: scaleX(1); } 100% { transform: scaleX(1); opacity: 0; } }
+@keyframes warmBrush { 0% { transform: translateX(0); } 70% { transform: translateX(104px); } 71%, 100% { transform: translateX(104px); opacity: 0; } }
+@keyframes warmSpark { 0%, 66% { opacity: 0; transform: scale(.3) rotate(0deg); } 76% { opacity: 1; transform: scale(1.15) rotate(45deg); } 84% { transform: scale(1) rotate(60deg); } 94%, 100% { opacity: 0; transform: scale(.5) rotate(90deg); } }
+.warm-progress { position: relative; width: 100%; height: 6px; margin-top: 10px; border-radius: 3px; background: var(--seg); overflow: hidden; }
+.warm-progress > span { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--accent); transition: width .5s ease; }
+.warm-progress > span.indet { width: 35% !important; animation: indet 1.3s ease-in-out infinite; }
+.warm-meta { margin-top: 6px; font-size: 12px; color: var(--muted-2); }

@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/icons/camera_capture_dark.svg">
-    <img src="assets/icons/camera_capture.svg" width="128" alt="Camera Capture">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/icons/camera_capture_dark_anim.svg">
+    <img src="assets/icons/camera_capture_anim.svg" width="128" alt="Camera Capture">
   </picture>
 </p>
 
@@ -66,7 +66,9 @@ Motyw jasny albo ciemny przełącza się ikoną w prawym górnym rogu.
 
 <img src="assets/readme/settings.jpg" width="100%" alt="Ustawienia: aktualizacje, Automat, pliki">
 
-<img src="assets/readme/sessions-dark.jpg" width="100%" alt="Lista sesji w ciemnym motywie">
+<img src="assets/readme/session-dark.jpg" width="100%" alt="Sesja w ciemnym motywie, aparat rozłączony">
+
+<sub>Ciemny motyw. Gdy aparat jest odłączony, w ramce podglądu animowana wtyczka próbuje się wpiąć, a aplikacja co kilka sekund łączy się ponownie.</sub>
 
 ### Klawiatura
 
@@ -120,7 +122,7 @@ konfiguracja w `.env`, jest opisane w [CLAUDE.md](CLAUDE.md).
 
 ## Autor
 
-<a href="https://github.com/Xeross99"><img src="assets/icons/author.jpg" width="48" alt="" align="left"></a>
+<a href="https://github.com/Xeross99"><img src="assets/readme/author.png" width="48" alt="" align="left"></a>
 **Michał Krzysteczko** dla Trixbrix<br>
 [@Xeross99](https://github.com/Xeross99)
 <br clear="left">

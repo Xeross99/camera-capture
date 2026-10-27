@@ -8,7 +8,6 @@ const SETTINGS_SECTIONS = [
   { id: "automat", label: "Automat", icon: "cloud" },
   { id: "pliki", label: "Pliki", icon: "folder" },
   { id: "obrobka", label: "Podgląd i obróbka", icon: "sparkles" },
-  { id: "robot", label: "Robot", icon: "robot", robot: true },
   { id: "skroty", label: "Skróty klawiszowe", icon: "terminal" },
 ];
 
@@ -70,11 +69,10 @@ const field = (id, labelText, value, action, extra = "") => `
 function ustawieniaScreen() {
   const st = S.state, cfg = st.settings, u = st.update || { current: "?", status: "" };
   const uv = updateView(st), av = automatView(st);
-  const robotOn = st.robot && st.robot.enabled;
   const keys = [["ENTER", "zrób zdjęcie"], ["P", "podgląd z aparatu"], ["SPACJA", "podgląd zdjęć"], ["← →", "poprzednie / następne"],
                 ["E", "edytuj zdjęcie"], ["BACKSPACE", "usuń zdjęcie"], ["ESC", "zamknij podgląd"], [modKey("F"), "szukaj sesji"], [modKey("N"), "nowa sesja"]];
   const navMeta = { aktualizacje: uv, automat: av };
-  const nav = SETTINGS_SECTIONS.filter(x => !x.robot || robotOn).map(x => {
+  const nav = SETTINGS_SECTIONS.map(x => {
     const m = navMeta[x.id];
     const metaColor = !m ? "var(--muted-2)" : m.cls === "ok" ? "var(--ok-fg)" : m.cls === "err" ? "var(--err-fg)" : m.cls === "warn" ? "var(--warn-fg-3)" : "var(--muted-2)";
     return `
@@ -195,7 +193,6 @@ function ustawieniaScreen() {
           </div>
         </section>
 
-        ${robotOn ? `<div id="sec-robot">${robotSetupCard("background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px;")}</div>` : ""}
 
         <section id="sec-skroty" class="panel" style="overflow: hidden;">
           ${cardHead(icon("terminal", 22), "background: var(--seg); color: var(--text-2);", "Skróty klawiszowe", "Wszystko da się zrobić z klawiatury")}
@@ -241,138 +238,6 @@ function settingsScrolled() {
     S.settingsSection = cur;
     markSettingsNav(cur);
   }
-}
-
-// Ustawianie ujęć ramienia. Cała „kalibracja" tego robota to zapisanie
-// bieżących kątów przegubów — ujęcie jest jedną pozycją, więc nie ma tu czego
-// mierzyć ani liczyć (patrz sekcja „Robot" w CLAUDE.md).
-//
-// Przepływ jest PER UJĘCIE: operator klika kafelek („Z góry" / „Z boku"),
-// ramię jedzie na zapisane ujęcie (jeśli jest) i dopiero pod kafelkiem
-// pojawia się korekta przyciskami, puszczanie serw i zapis. Wcześniej wiersze
-// korekty wisiały zawsze, bez związku z żadnym ujęciem — nie było widać, CO się
-// właściwie poprawia ani do którego ujęcia trafi zapis.
-//
-// Kolejność przy ujęciu od zera jest wypisana w UI: puszczone serwa oznaczają,
-// że ramię opada pod ciężarem aparatu i trzeba je TRZYMAĆ. Dopiero po złapaniu
-// momentu operator ma wolne ręce, żeby sprawdzić kadr na Sesji i kliknąć zapis.
-const SETUP_POSES = { top90: "Z góry", a45: "Z boku" };
-
-function robotSetupCard(card) {
-  const r = (S.state && S.state.robot) || {};
-  if (r.enabled === false) return "";
-  const set = r.set || {};
-  const line = `${mono} font-size: 10.5px; color: var(--fg-4);`;
-  const sel = S.setupPose && SETUP_POSES[S.setupPose] ? S.setupPose : null;
-  const tile = (p, name) => {
-    const on = sel === p;
-    const st = on
-      ? `border: 1px solid ${ACCENT}; background: var(--accent-bg);`
-      : `border: 1px solid var(--line); background: var(--card);`;
-    return `
-      <div onclick="robotSetupSelect('${p}')" style="display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 12px; border-radius: 6px; cursor: default; ${st} ${r.connected ? "" : "opacity: .55;"}">
-        <div style="font-size: 12.5px; font-weight: 600; color: var(--fg-0);">${name}</div>
-        <div style="${mono} font-size: 11px; color: ${set[p] ? "var(--ok)" : "var(--warn)"};">${set[p] ? "ustawione" : "nieustawione"}</div>
-      </div>`;
-  };
-  return `
-    <div style="${card}">
-      <div style="${head}">Robot — ujęcia</div>
-      ${r.connected ? "" : `<div style="${line} color: var(--warn);">ramię rozłączone — sprawdź kabel USB i zasilanie</div>`}
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-        ${tile("top90", SETUP_POSES.top90)}
-        ${tile("a45", SETUP_POSES.a45)}
-      </div>
-      ${sel ? robotSetupPanel(sel, r, line) : `<div style="${line}">Kliknij ujęcie, żeby je ustawić albo poprawić — ramię pojedzie na nie i pojawi się korekta.</div>`}
-      <div id="robot-setup-msg" style="${mono} font-size: 10.5px; color: var(--err);">${S.setupMsg || ""}</div>
-    </div>`;
-}
-
-// Panel pod wybranym ujęciem: korekta osi + puszczanie serw + zapis.
-function robotSetupPanel(pose, r, line) {
-  const set = (r.set || {})[pose];
-  const dis = r.connected ? "" : "disabled";
-  const off = r.connected ? "" : "opacity: .5;";
-  const busy = r.busy ? `<div style="display: flex; align-items: center; gap: 7px; ${line} color: var(--warn-fg-2);"><span class="spinner"></span>${r.busy}…</div>` : "";
-  const hint = set
-    ? `Ramię stoi na ujęciu <b>${SETUP_POSES[pose]}</b>. Popraw przyciskami patrząc na podgląd na zakładce Sesja i kliknij <b>Zapisz</b>. Zgrubna zmiana: <b>Puść serwa</b> (PRZYTRZYMAJ ramię — z aparatem opada samo), ustaw z ręki, <b>Złap pozycję</b>.`
-    : `Ujęcie <b>${SETUP_POSES[pose]}</b> nie jest jeszcze ustawione: <b>Puść serwa</b> i PRZYTRZYMAJ ramię (z aparatem opada samo), ustaw z ręki, <b>Złap pozycję</b>, dostrój przyciskami i kliknij <b>Zapisz</b>.`;
-  return `
-    ${busy}
-    ${robotNudgeRows()}
-    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-      <button onclick="robotSetupPost({action:'robot_torque', on:${r.loose ? "true" : "false"}})" ${dis} style="${btnGray} font-size: 11.5px; ${off}">${r.loose ? "Złap pozycję" : "Puść serwa"}</button>
-      <button onclick="robotTeach('${pose}')" ${dis || (r.loose ? "disabled" : "")} style="height: 26px; padding: 0 14px; ${btnBlue} border-radius: 4px; font-size: 11.5px; font-weight: 600; ${off} ${r.loose ? "opacity: .5;" : ""}">Zapisz jako „${SETUP_POSES[pose]}”</button>
-      <button onclick="robotSetupSelect(null)" style="${btnGray} font-size: 11.5px;">Zamknij</button>
-    </div>
-    <div style="${line}">${hint}</div>`;
-}
-
-// Klik w kafelek: wybór ujęcia + przejazd ramienia na nie (gdy jest zapisane).
-// Ten sam klik drugi raz zamyka panel. Przejazd idzie zwykłą akcją
-// `robot_pose`, więc odmowa (trwa zdjęcie, rozłączone) ląduje w komunikacie
-// pod kartą jak każda inna.
-function robotSetupSelect(pose) {
-  if (pose === S.setupPose) pose = null;
-  S.setupPose = pose;
-  const r = (S.state && S.state.robot) || {};
-  if (pose && (r.set || {})[pose] && r.connected) {
-    S.robot.pose = pose;
-    S.robot.echoAt = performance.now();
-    robotSetupPost({ action: "robot_pose", pose: pose });
-  }
-  renderScreens(true);
-}
-
-// Korekta pozycji przyciskami. Ręką nie ustawi się ramienia z dokładnością do
-// stopnia, a od tego zależy, czy produkt siedzi na środku kadru — więc każda
-// oś ma własny wiersz i dwa kroki: mały do wykończenia, duży do dojechania.
-// Nazwy osi są opisowe, bo „j2" nic nie mówi o tym, co się ruszy. Oś 5 to
-// dodatkowe serwo pochylające kamerę (ROBOT_EXT_SERVO_ID) — wiersz pojawia się
-// tylko, gdy backend mówi `axes: 5`.
-const ROBOT_JOINT_NAMES = ["Obrót podstawy", "Bark (wysokość)", "Łokieć (wysięg)", "Głowica (obrót)", "Kamera (pochylenie)"];
-
-function robotNudgeRows() {
-  const r = (S.state && S.state.robot) || {};
-  const j = r.joints, [small, big] = r.nudge || [1, 5];
-  const locked = !r.connected || r.loose || !!r.busy;
-  const b = `${btnGray} height: 24px; padding: 0 8px; font-size: 11px; ${locked ? "opacity: .5;" : ""}`;
-  const row = i => `
-    <div style="color: var(--fg-2);">${ROBOT_JOINT_NAMES[i]}</div>
-    <div style="display: flex; align-items: center; gap: 5px;">
-      <button onclick="robotNudge(${i + 1}, ${-big})" ${locked ? "disabled" : ""} style="${b}">−${big}</button>
-      <button onclick="robotNudge(${i + 1}, ${-small})" ${locked ? "disabled" : ""} style="${b}">−${small}</button>
-      <div style="${mono} font-size: 11px; color: var(--fg-1); min-width: 62px; text-align: center;">${j ? j[i].toFixed(1) + "°" : "—"}</div>
-      <button onclick="robotNudge(${i + 1}, ${small})" ${locked ? "disabled" : ""} style="${b}">+${small}</button>
-      <button onclick="robotNudge(${i + 1}, ${big})" ${locked ? "disabled" : ""} style="${b}">+${big}</button>
-    </div>`;
-  return `
-    <div style="display: grid; grid-template-columns: 120px 1fr; gap: 6px 10px; align-items: center;">
-      ${Array.from({ length: r.axes || 4 }, (_, i) => i).map(row).join("")}
-    </div>
-    ${r.loose ? `<div style="${mono} font-size: 10.5px; color: var(--warn);">serwa puszczone — PRZYTRZYMAJ ramię; korekta przyciskami i zapis zadziałają po „Złap pozycję"</div>` : ""}`;
-}
-
-function robotNudge(joint, delta) {
-  robotSetupPost({ action: "robot_nudge", joint: joint, delta: delta });
-}
-
-// Odmowa z backendu (rozłączone ramię, puszczone serwa, trwa zdjęcie) MUSI być
-// widoczna. Bez tego kliknięcie, które backend odrzucił, wyglądało dokładnie
-// tak samo jak zepsuta komenda: „klikam i nic się nie dzieje".
-// Komunikat siedzi w S.setupMsg, nie tylko w DOM: karta rebuilduje się przy
-// każdej zmianie kątów (co ~1 s przy puszczonych serwach), więc wpisany
-// wprost w element znikałby, zanim operator zdążył go przeczytać.
-function robotSetupPost(payload) {
-  post(payload).then(r => r.json()).then(res => {
-    S.setupMsg = (res && res.ok === false) ? "✗ " + res.error : "";
-    const el = $("robot-setup-msg");
-    if (el) el.textContent = S.setupMsg;
-  }).catch(() => {});
-}
-
-function robotTeach(pose) {
-  robotSetupPost({ action: "robot_teach", pose: pose });
 }
 
 // Echo od razu w stanie: poll z tą samą wartością nie przebuduje ekranu

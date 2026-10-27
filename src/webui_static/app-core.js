@@ -28,11 +28,6 @@ const S = {           // stan klienta
   leaveConfirm: false,// modal „wrócić do menu głównego?" (ESC na ekranie Sesji)
   pickIdx: -1,        // zaznaczony kafelek na ekranie startowym (nawigacja
   pickList: null,     // strzałkami/hover, ENTER wchodzi); lista = widoczne sesje
-  // ustawienie ujęcia ramienia — optymistyczne echo stanu z backendu
-  // (state.robot); prawdą jest webui.py, patrz robotReconcile w app-robot.js
-  robot: { pose: "top90", echoAt: 0 },
-  setupMsg: "",       // ostatnia odmowa backendu w karcie „Robot — ujęcia" (przeżywa rebuild karty)
-  setupPose: null,    // ujęcie wybrane w Ustawieniach → „Robot — ujęcia" (panel korekty pod kafelkiem)
   edit: null,         // edycja logo w podglądzie: {file, logo, pos} — logo "" = bez logo
 };
 const $ = id => document.getElementById(id);
@@ -123,7 +118,6 @@ const ICON_PATHS = {
   terminal: '<path d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0 0 21 18V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v12a2.25 2.25 0 0 0 2.25 2.25Z"/>',
   lock: '<path d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"/>',
   external: '<path d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/>',
-  robot: '<path d="M4.5 21h9M9 21v-5M9 16l6-8M15 8l4 2.2"/>',
   leave: '<path d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m-3 0-3-3m0 0 3-3m-3 3H21"/>',
   cameraOff: '<path d="m15.75 10.5 4.72-4.72a.75.75 0 0 1 1.28.53v11.38a.75.75 0 0 1-1.28.53l-4.72-4.72M12 18.75H4.5a2.25 2.25 0 0 1-2.25-2.25V9m12.841 9.091L16.5 19.5m-1.409-1.409c.407-.407.659-.97.659-1.591v-9a2.25 2.25 0 0 0-2.25-2.25h-9c-.621 0-1.184.252-1.591.659m12.182 12.182L2.909 5.909M1.5 4.5l1.409 1.409"/>',
   eyeSlash: '<path d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88"/>',
@@ -155,10 +149,6 @@ function flipSwitch(el) {
 const switchOn = el => el.getAttribute("aria-checked") === "true";
 
 
-// Ramie robota (podstawa + dwa segmenty + przeguby i glowica) — do statusu
-// ramienia w pasku zakladek, w parze z CAM_ICON dla aparatu. Kreski, nie fill:
-// sylwetka ramienia w 12 px czytelna jest tylko grubym strokiem.
-const ROBOT_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width: 12px; height: 12px; display: block;"><path d="M4.5 21h9" /><path d="M9 21v-5" /><path d="M9 16l6-8" /><path d="M15 8l4 2.2" /><circle cx="9" cy="16" r="1.5" fill="currentColor" stroke="none" /><circle cx="15" cy="8" r="1.5" fill="currentColor" stroke="none" /><circle cx="20.3" cy="10.9" r="1.9" fill="currentColor" stroke="none" /></svg>`;
 
 // ---------- kompensacja ekspozycji (liczby, nie tekst) ----------
 

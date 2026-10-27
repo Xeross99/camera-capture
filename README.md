@@ -19,8 +19,8 @@ nacisnąć ENTER jeszcze raz.
 
 ## Jak to działa
 
-1. **Zdjęcie.** Aplikacja sama wyzwala migawkę i pobiera plik po USB. Na Windowsie przez Canon EDSDK, na
-   macOS przez gphoto2. Nie ma programu producenta pośrodku ani obserwowanego folderu.
+1. **Zdjęcie.** Aplikacja sama wyzwala migawkę i pobiera plik po USB przez Canon EDSDK, na Windowsie i na
+   macOS. Nie ma programu producenta pośrodku ani obserwowanego folderu.
 2. **Obróbka**, każdy krok do włączenia w panelu Postprocessing:
    - **Wyrównanie tła do bieli:** tło dociągane do czystej bieli, cienie pod produktem wygaszone.
    - **Przybliżanie i centrowanie:** kadr dociąga się do produktu i stawia go na środku, zamiast tam, gdzie
@@ -113,7 +113,7 @@ python3 gui.py              # okno aplikacji
 python3 gui.py --browser    # to samo w przeglądarce
 ```
 
-Na macOS aparat działa przez Canon EDSDK, gdy w katalogu aplikacji leży `EDSDK.framework` (z paczki Canona dla macOS, poza repozytorium). Bez niego aplikacja używa gphoto2. Kliknięcie w podgląd ustawia ostrość w tym miejscu (tylko przez EDSDK).
+Na macOS aparat działa wyłącznie przez Canon EDSDK: `EDSDK.framework` (z paczki Canona dla macOS, poza repozytorium) musi leżeć w katalogu aplikacji. Framework pobrany przez przeglądarkę trzeba zwolnić z kwarantanny: `xattr -dr com.apple.quarantine EDSDK.framework`. Kliknięcie w podgląd ustawia ostrość w tym miejscu.
 
 Bez aparatu można przetworzyć gotowy plik: `python3 main.py --input zdjecie.jpg --name test --no-upload`.
 

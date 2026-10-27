@@ -63,8 +63,6 @@ function shell() {
     <div style="flex: 1;"></div>
     <div class="chip"><span class="dot ${conn ? "ok" : "err"}"></span><span id="conn-label">${conn ? "Aparat połączony" : "Aparat rozłączony"}</span>${conn ? `<span id="conn-fps" class="fps">${st.fps} fps</span>` : ""}</div>
     <div class="chip"><span id="automat-dot" class="dot ${au.cls}"></span>Automat<span id="automat-text" class="sub">${au.text}</span></div>
-    ${st.robot && st.robot.enabled ? `
-    <div class="chip"><span id="robot-dot" class="dot ${st.robot.connected ? "ok" : "err"}"></span><span id="robot-conn-label">${st.robot.connected ? "Robot połączony" : "Robot rozłączony"}</span></div>` : ""}
     <button type="button" id="theme-toggle" class="icon-btn" onclick="toggleTheme()" title="${themeToggleTitle()}" aria-label="${themeToggleTitle()}">${themeToggleIcon()}</button>
   </header>
 
@@ -96,7 +94,7 @@ function renderShell(force) {
   // S.screen NIE jest w kluczu: zmiana zakladki przelacza ekrany w miejscu
   // (go()), zeby pasek pod zakladka mogl przejechac, a ekran wejsc animacja
   const key = JSON.stringify([st.connected, st.session.name,
-    !!(st.robot && st.robot.enabled), u.available, u.busy, u.canApply, S.updateDismissed]);
+    u.available, u.busy, u.canApply, S.updateDismissed]);
   if (force || key !== lastShellKey) {
     // Wejście w sesję / wyjście z niej przebudowuje cały shell (nazwa sesji
     // jest w górnym pasku), a to zeruje lastSesja — bez zapamiętania widoku
@@ -121,15 +119,6 @@ function updateVolatile(st) {
   // fps liczony na zywo przez watek aparatu, odswiezany co poll
   const fps = $("conn-fps");
   if (fps) fps.textContent = `${st.fps} fps`;
-  // status robota w pasku zakładek — łatany po id jak aparat, bo połączenie
-  // ramienia zmienia się bez rebuildu shella (nie siedzi w jego kluczu)
-  const rl = $("robot-conn-label");
-  if (rl) {
-    const rc = !!(st.robot && st.robot.connected);
-    rl.textContent = rc ? "Robot połączony" : "Robot rozłączony";
-    const rd = $("robot-dot");
-    if (rd) rd.className = `dot ${rc ? "ok" : "err"}`;
-  }
   const at = $("automat-text");
   if (at) {
     const au = automatStatus(st);
@@ -155,7 +144,7 @@ function updateVolatile(st) {
   afReconcile(st);
   const sl = $("shoot-label");
   if (sl && performance.now() - shootErrAt > 4000) {
-    sl.textContent = st.busy || (st.robot && st.robot.busy ? "Ramię w ruchu…" : "Zrób zdjęcie");
+    sl.textContent = st.busy || "Zrób zdjęcie";
   }
   // Spinner obok tekstu fazy — widoczny zawsze, gdy przycisk nie strzeli od
   // reki (takze podczas komunikatu bledu po odmowie: busy jest wtedy false,
@@ -173,10 +162,6 @@ function updateVolatile(st) {
       if (wt) wt.innerHTML = warmupText(st);
     }
   }
-  // Panel robota też jest ŚWIADOMIE łatany, nie keyowany — stan ramienia
-  // zmienia się co poll (busy/rozłączenie), a rebuild ekranu zabiłby <img>
-  // streamu MJPEG przy każdym przejeździe.
-  robotReconcile();
   // „Odśwież listę" na ekranie startowym — spinner do konca odswiezania;
   // data-busy chroni animacje spinnera przed restartem przy kazdym pollu
   const rb = $("refresh-btn");
@@ -311,13 +296,7 @@ function renderScreens(force) {
       if (lp) lp.scrollTop = lp.scrollHeight;
     }
   } else {
-    // Karta „Robot — ujęcia" pokazuje kąty na żywo, stan serw i przejazd —
-    // bez robota w kluczu zamierała na pierwszym renderze. Na tym ekranie nie
-    // ma streamu MJPEG, więc rebuild jest tani; kąty zaokrąglone do 0,1°.
-    const r = st.robot || {};
-    const robotSig = [r.connected, r.loose, r.busy, r.set, r.axes,
-                      r.joints ? r.joints.map(v => Math.round(v * 10)) : null, S.setupPose];
-    const key = JSON.stringify([st.settings, st.update, robotSig]);
+    const key = JSON.stringify([st.settings, st.update]);
     if (force || key !== lastUstawienia) {
       if (document.activeElement && document.activeElement.tagName === "INPUT") return;
       lastUstawienia = key;
@@ -376,12 +355,9 @@ function leaveSession() {
 
 function shoot() {
   if (!S.state.connected || !S.state.session.name) return;
-  // migawka w trakcie przejazdu ramienia = rozmycie; backend i tak odmówi,
-  // ale bez tego mignąłby jeszcze biały flash sugerujący zrobione zdjęcie
-  if (S.state.robot && S.state.robot.busy) return;
   flashNow();
   // Odpowiedź MUSI być obejrzana. Sam flash jest lokalny, więc odmowa backendu
-  // („trwa aktualizacja", „ramię w ruchu") wyglądała identycznie jak zdjęcie
+  // („trwa aktualizacja", „aparat nie jest połączony") wyglądała identycznie jak zdjęcie
   // zrobione poprawnie: błysk i nic więcej. Powód ląduje na przycisku, bo tam
   // patrzy operator po naciśnięciu ENTER.
   post({ action: "shoot" }).then(r => r.json()).then(res => {
@@ -521,18 +497,6 @@ document.addEventListener("keydown", e => {
       }
     }
     return;
-  }
-  // Skróty robota (⌘1/⌘2 ujęcie) — tylko na ekranie Sesji z otwartą sesją,
-  // czyli tam, gdzie panel jest widoczny. Skróty odległości (⌘−/⌘=) i kąta
-  // kamery (⌘[/⌘]) usunięte razem z tymi suwakami: każda regulacja psuła
-  // ustawione ujęcie (patrz komentarz w app-robot.js).
-  // Bez ramienia (ROBOT_ENABLED=false) skroty nie maja czego ruszac.
-  if ((e.metaKey || e.ctrlKey) && S.screen === "sesja" && S.state.session.name
-      && S.state.robot && S.state.robot.enabled) {
-    const robotKey = {
-      "1": () => robotPose("top90"), "2": () => robotPose("a45"),
-    }[e.key];
-    if (robotKey) { e.preventDefault(); robotKey(); return; }
   }
   if (e.metaKey || e.ctrlKey) return;
 

@@ -97,8 +97,6 @@ function sesjaScreen() {
             ${logoPicker(post_)}
           </div>
         </section>
-
-        ${robotCard()}
       </div>
 
       <div class="shutter-bar">
@@ -141,15 +139,18 @@ const UNPLUGGED_SVG = `
 
 // Brak Canon EDSDK (Windows): pliki są na licencji Canona, więc nie ma ich
 // w paczce aplikacji — karta mówi, po co są, skąd je wziąć i gdzie położyć.
-function edsdkMissingHtml() {
+function edsdkMissingHtml(st) {
+  const mac = st.platform === "darwin";
+  const files = mac ? `<span class="mono">EDSDK.framework</span>` : `<span class="mono">EDSDK.dll</span> i <span class="mono">EdsImage.dll</span>`;
+  const where = mac ? `Połóż <span class="mono">EDSDK.framework</span> w katalogu aplikacji.` : `Połóż oba pliki obok <span class="mono">Trixbrix - Camera Capture.exe</span>.`;
   return `
     <div class="live-empty sdk">
       <div class="live-empty-icon">${icon("puzzle", 26, 1.6)}</div>
       <div class="live-empty-title">Brak sterownika aparatu Canon</div>
-      <div class="live-empty-text">Aplikacja steruje aparatem przez Canon EDSDK: robi zdjęcia, pobiera je po USB i pokazuje podgląd na żywo. Pliki <span class="mono">EDSDK.dll</span> i <span class="mono">EdsImage.dll</span> wymagają licencji Canona, dlatego nie ma ich w paczce aplikacji.</div>
+      <div class="live-empty-text">Aplikacja steruje aparatem przez Canon EDSDK: robi zdjęcia, pobiera je po USB i pokazuje podgląd na żywo. ${mac ? "Framework" : "Pliki"} ${files} ${mac ? "wymaga" : "wymagają"} licencji Canona, dlatego nie ma ${mac ? "go" : "ich"} w paczce aplikacji.</div>
       <div class="sdk-steps">
         <div><span class="sdk-n">1</span><span>Poproś o pliki: <span class="sdk-person"><img src="/author" alt="" /><b>Michał Krzysteczko</b></span>, ma licencję na Canon EDSDK.</span></div>
-        <div><span class="sdk-n">2</span><span>Połóż oba pliki obok <span class="mono">Trixbrix - Camera Capture.exe</span>.</span></div>
+        <div><span class="sdk-n">2</span><span>${where}</span></div>
         <div><span class="sdk-n">3</span><span>Uruchom aplikację ponownie.</span></div>
       </div>
       <button type="button" class="btn btn-sm" onclick="post({action:'open_url', url: 'https://github.com/Xeross99'})">${GITHUB_MARK.replace("width: 24px; height: 24px", "width: 14px; height: 14px")}Kontakt: Xeross99${icon("external", 13, 1.8)}</button>
@@ -189,7 +190,7 @@ function warmupText(st) {
 }
 
 function liveEmptyHtml(st) {
-  if (st.edsdkMissing) return edsdkMissingHtml();
+  if (st.edsdkMissing) return edsdkMissingHtml(st);
   const v = !st.connected
     ? { cls: "err", ic: "cameraOff", title: "Aparat rozłączony", text: "Sprawdź kabel USB i czy aparat jest włączony.", foot: `<span class="live-empty-foot"><span class="spinner"></span>Łączę ponownie…</span>` }
     : st.previewOn
@@ -395,9 +396,8 @@ function evReconcile(st) {
 }
 
 // Spinner w przycisku migawki: krecy sie przez caly czas, gdy przycisk nie
-// zrobi zdjecia od reki — strzal/obrobka (st.busy niesie tekst fazy) albo
-// przejazd ramienia. Sam tekst faz byl statyczny i wygladal na zawieszke.
-const shootBusy = st => !!(st.busy || (st.robot && st.robot.busy));
+// zrobi zdjecia od reki — strzal/obrobka (st.busy niesie tekst fazy). Sam tekst faz byl statyczny i wygladal na zawieszke.
+const shootBusy = st => !!st.busy;
 
 const bgStatus = st => (st.connected && BG_LABEL[st.camera.bgStatus]) ? st.camera.bgStatus : "unknown";
 const histLabel = st => BG_LABEL[bgStatus(st)];

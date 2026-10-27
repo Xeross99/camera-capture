@@ -49,22 +49,11 @@ from .config import (
     AUTOMAT_BASE_URL,
     OUTPUT_SIZE,
     LOGOS,
-    ROBOT_AXES,
-    ROBOT_ENABLED,
-    ROBOT_HOME_ON_CONNECT,
-    ROBOT_POSE_ON_CONNECT,
-    ROBOT_JOINTS,
-    ROBOT_JOINTS_ENV,
-    ROBOT_JOINT_TOL,
-    ROBOT_NUDGE_BIG,
-    ROBOT_NUDGE_STEP,
     TRASH_RETENTION_DAYS,
     persist_env,
-    persist_joints,
 )
 from .image_processing import LOGO_POSITIONS, overlay_logo, process, save_jpeg_atomic
 from .naming import sanitize_name
-from .robot import RoArmSession, RobotRangeError
 from .session_store import (
     NOLOGO_DIR,
     cover_path,
@@ -212,10 +201,10 @@ def _record_warmup(seconds: float) -> None:
 
 
 def _edsdk_missing() -> bool:
-    """Windows bez EDSDK.dll: aparatem nie ma czym sterować, a plików nie ma w
-    paczce (licencja Canona) — UI pokazuje wtedy, skąd je wziąć. Na macOS/Linux
-    aparat idzie przez gphoto2, więc nigdy."""
-    if sys.platform != "win32" or CAMERA_BACKEND not in ("auto", "edsdk", "digicamcontrol"):
+    """Windows/macOS bez Canon EDSDK: aparatem nie ma czym sterować, a plików
+    nie ma w paczce (licencja Canona) — UI pokazuje wtedy, skąd je wziąć.
+    Linux idzie przez gphoto2, więc nigdy."""
+    if sys.platform not in ("win32", "darwin"):
         return False
     from .camera_edsdk import find_edsdk_dll
     return find_edsdk_dll() is None
@@ -239,7 +228,6 @@ class WebUI:
         self._server: ThreadingHTTPServer | None = None
         self._camera_thread: threading.Thread | None = None
         self._worker_thread: threading.Thread | None = None
-        self._robot_thread: threading.Thread | None = None
         self._sync_thread: threading.Thread | None = None
         self.lock = threading.RLock()
         # .review.json ma DWOCH pisarzy (worker i watek sync) — kazdy cykl
@@ -280,20 +268,6 @@ class WebUI:
         self._ev_t0 = 0.0
         self._ev_logged = False   # wpis diagnostyczny raz na połączenie
         self.processing_file: str | None = None
-        # ramie RoArm-M2-S (src/robot.py). `robot_pose` to ZADANE ujecie —
-        # front trzyma je tylko jako optymistyczne echo, prawda jest tutaj,
-        # zeby przezyc odswiezenie okna i restart frontu. Odleglosci ani kata
-        # nie ma: ujecie to zapisane katy przegubow i nic sie w nim nie
-        # reguluje (patrz komentarz na gorze robot.py).
-        self.robot_connected = False
-        self.robot_pose = ROBOT_POSE_ON_CONNECT or next(iter(ROBOT_JOINTS))
-        self.robot_busy = ""      # niepusty = ramie w ruchu (blokuje migawke)
-        self.robot_error = ""
-        # Ostatni odczytany uklad przegubow — pokazywany w logu przy polaczeniu
-        # i w Ustawieniach, przy zapisywaniu ujec.
-        self.robot_joints: list[float] | None = None
-        # Serwa puszczone (moment off) — tylko na czas ustawiania ujecia recznie.
-        self.robot_loose = False
         # Co robi w tej chwili watek camera i od kiedy. Watek ma JEDNEGO
         # wlasciciela portu, wiec kazda dluga operacja (podglad, strzal, odczyt
         # kompensacji, reconnect) blokuje odbieranie komend — bez tej informacji
@@ -315,10 +289,6 @@ class WebUI:
         self.warmup_eta: int | None = None     # szacowany czas rozgrzewki z .warmup.json
         self.focus_seq = 0                     # kolejne kliknięcia „ostrość tutaj"
         self.focus_result: dict | None = None  # wynik ostatniego (ok, punkt, seq)
-        self._robot_read_at = 0.0   # throttle odpytywania katow w bezczynnosci
-        # trwa ekspozycja/pobieranie pliku z aparatu — na ten czas ramie stoi.
-        # Osobno od `busy`, ktore obejmuje takze obrobke (patrz _robot_ready).
-        self.capturing = False
         self.syncing: list[str] = []  # nazwy zdjec pobieranych wlasnie z Automatu (skeletony w filmstripie)
         self.edit_preparing: str | None = None  # zdjecie, ktoremu edycja robi wersje bez logo z oryginalu
         self.edit_saving: str | None = None     # zdjecie zapisywane z edycji (nowe logo)
@@ -368,11 +338,6 @@ class WebUI:
         # zeby pobieranie dziesiatek zdjec nie blokowalo kolejki workera
         # (obrobka strzalu czekalaby za siecia); None = sygnal konca
         self._sync_q: queue.Queue = queue.Queue()
-        self.robot = RoArmSession()
-        self.robot.should_stop = self._stop.is_set
-        self.robot.log = self._log
-        self._robot_q: queue.Queue[tuple] = queue.Queue()
-
     # ---------- log ----------
 
     def _log(self, text: str, kind: str = "info") -> None:
@@ -456,7 +421,6 @@ class WebUI:
                 # obrobka mogla zostac przerwana w polowie: bez tego przycisk
                 # migawki zostawalby na „Wyzwalam migawke…" do konca sesji
                 self.busy = ""
-                self.capturing = False
             if time.monotonic() - started >= self._HEALTHY_AFTER:
                 backoff = self.RECONNECT_MIN
                 flapping = False
@@ -484,9 +448,6 @@ class WebUI:
             self.fps = 0.0
             self.bg_range = None
             self.ev = None
-            # zakolejkowany strzal nie doczeka sie juz obslugi — bez tego
-            # flaga zostawalaby ustawiona na zawsze i ramie stalo zablokowane
-            self.capturing = False
         self._ev_logged = False   # po ponownym połączeniu warto wypisać raz jeszcze
         with self._frame_cond:
             self._frame = None
@@ -691,13 +652,7 @@ class WebUI:
                           f"{e2}", "err")
                 shutil.rmtree(tmpdir, ignore_errors=True)
                 self._set_busy("")
-                with self.lock:
-                    self.capturing = False
                 return
-        # ramie moze sie znowu ruszac: kadr jest juz w pliku, dalsza obrobka
-        # (rembg, upload) nie patrzy na to, gdzie stoi kamera
-        with self.lock:
-            self.capturing = False
         # Stan obrobki ustawiany JUZ TERAZ, przy kolejkowaniu — nie dopiero
         # gdy _job_photo wystartuje. Job potrafi czekac w kolejce (najdluzej:
         # za rozgrzewka DirectML przy pierwszym uruchomieniu) i bez tego UI
@@ -708,261 +663,6 @@ class WebUI:
             self.processing_file = opts["filename"]
         self._jobs.put(("photo", {**opts, "tmpdir": tmpdir, "captured": captured,
                                   "cap_s": time.perf_counter() - t0}))
-
-    # ---------- watek robota ----------
-
-    ROBOT_RECONNECT_MIN = 3.0
-    ROBOT_RECONNECT_MAX = 30.0
-
-    def _robot_loop(self) -> None:
-        """Wlasciciel portu szeregowego ramienia — jeden watek, jak przy
-        aparacie.
-
-        SWIADOMIE nie worker: tam siedzi rembg, wiec ⌘1 czekaloby sekundy za
-        obrobka zdjecia. I swiadomie nie watek camera: gphoto2/EDSDK maja miec
-        jednego wlasciciela i nic wiecej do roboty miedzy klatkami podgladu.
-
-        Backoff 3 → 30 s jak w `_camera_loop` — ramie bywa po prostu niepodpiete
-        (maszyna deweloperska), a wtedy proba co 3 s przez cale uruchomienie
-        zalewalaby log."""
-        backoff = self.ROBOT_RECONNECT_MIN
-        announced_fail = False
-        while not self._stop.is_set():
-            try:
-                self.robot.open()
-            except Exception as e:
-                with self.lock:
-                    self.robot_error = str(e)
-                if not announced_fail:
-                    announced_fail = True
-                    self._log(f"Robot: {e}", "warn")
-                if self._stop.wait(backoff):
-                    return
-                backoff = min(self.ROBOT_RECONNECT_MAX, backoff * 2)
-                continue
-            announced_fail = False
-            backoff = self.ROBOT_RECONNECT_MIN
-            with self.lock:
-                self.robot_connected = True
-                self.robot_error = ""
-            self._log(f"Ramię połączone: {self.robot.describe()}", "ok")
-            # Ujecie startowe: stanowisko ma byc gotowe do strzalu bez ⌘1.
-            # Jedziemy na ZADANE ujecie (`robot_pose`), a nie na stale
-            # ROBOT_POSE_ON_CONNECT — przy pierwszym polaczeniu to to samo, ale
-            # reconnect w srodku sesji (zerwany link, restart plytki) wraca
-            # wtedy tam, gdzie operator ustawil ramie, zamiast zabierac mu kadr.
-            # Gdy ujecie startowe dziala, pozycja domowa nie ma sensu — bylaby
-            # przystankiem po drodze, czyli przejazdem z aparatem bez powodu.
-            want_pose = self.robot_pose if ROBOT_POSE_ON_CONNECT else ""
-            start_pose = want_pose if ROBOT_JOINTS.get(want_pose) else ""
-            if want_pose and not start_pose:
-                self._log(f"Robot: ujęcie startowe „{want_pose}” nie jest "
-                          "ustawione — ramię zostaje tam, gdzie stoi", "warn")
-            if ROBOT_HOME_ON_CONNECT and not start_pose:
-                # Blad pozycji domowej NIE moze wywrocic watku: ramie bywa
-                # przytrzymane albo bez zasilania serw, a wtedy chcemy dzialac
-                # dalej i pokazac powod, nie stracic sterowanie na cala sesje.
-                try:
-                    self.robot.home()
-                    self._log("Robot: ustawiony w pozycji domowej", "ok")
-                except RobotRangeError as e:
-                    self._log(f"✗ Robot: {e}", "err")
-            pose, joints = self.robot.read_pose(), self.robot.read_joints()
-            if pose:
-                # Punkt wyjscia do kalibracji: te liczby wklejasz do .env
-                # (ROBOT_POSE_*) albo porownujesz z tym, co ustawione.
-                self._log("Robot: pozycja startowa " + RoArmSession._fmt(pose))
-            if joints:
-                # Katy przy KAZDYM polaczeniu, bo skala osi potrafi sie
-                # przesunac miedzy uruchomieniami: `middle_set` z webowego UI
-                # ramienia zeruje odniesienie wszystkich serw, a tryb osi 4
-                # (chwytak/nadgarstek) zmienia jej interpretacje. Ujecia sa
-                # zapisanymi katami, wiec takie przesuniecie unieważnia je
-                # wszystkie — bez tego wpisu „czemu dzis inaczej niz wczoraj"
-                # jest nie do ustalenia.
-                with self.lock:
-                    self.robot_joints = joints
-                self._log("Robot: kąty startowe " + RoArmSession.fmt_joints(joints))
-            if start_pose:
-                # Przez kolejke, a nie wprost: przejazd ma isc ta sama sciezka
-                # co ⌘1 (busy na przycisku migawki, blad tylko do logu), a gdy
-                # operator w miedzyczasie wskaze inne ujecie, `_coalesce_robot`
-                # zostawi to ostatnie zamiast odgrywac oba.
-                self._robot_q.put(("move", start_pose))
-            try:
-                self._run_robot()
-            except Exception as e:
-                self._log(f"✗ Robot: {e}", "err")
-                with self.lock:
-                    self.robot_error = str(e)
-            self.robot.close()
-            with self.lock:
-                self.robot_connected = False
-                self.robot_busy = ""
-            if self._stop.wait(1.0):
-                return
-
-    def _run_robot(self) -> None:
-        """Petla komend. Wyjscie = zerwany link (petla wyzej reconnectuje)."""
-        while not self._stop.is_set():
-            try:
-                cmd = self._robot_q.get(timeout=0.3)
-            except queue.Empty:
-                # Przy puszczonych serwach operator wlasnie ustawia ujecie reka,
-                # wiec katy musza chodzic na zywo w Ustawieniach. Poza tym
-                # stanem nie odpytujemy ramienia bez powodu — port ma swoja
-                # przepustowosc, a przy przejazdach czeka na nim `_wait_joints`.
-                now = time.time()
-                if now - self._robot_read_at > (0.3 if self.robot_loose else 1.0):
-                    self._robot_read_at = now
-                    joints = self.robot.read_joints()
-                    if joints is not None:
-                        with self.lock:
-                            self.robot_joints = joints
-                continue
-            cmd = self._coalesce_robot(cmd)
-            if cmd[0] == "torque":
-                self._do_torque(cmd[1])
-                continue
-            if cmd[0] == "teach":
-                self._do_teach(cmd[1])
-                continue
-            if cmd[0] == "nudge":
-                self._do_nudge(cmd[1], cmd[2])
-                continue
-            if cmd[0] != "move":
-                continue
-            pose = cmd[1]
-            self._set_robot_busy(f"Ramię jedzie: {pose}")
-            try:
-                self.robot.move(pose)
-            except RobotRangeError as e:
-                # ujecie nieustawione / ramie nie dojechalo — polaczenie jest
-                # zdrowe, wiec tylko mowimy o tym operatorowi i czekamy dalej
-                self._log(f"✗ Robot: {e}", "err")
-            finally:
-                self._set_robot_busy("")
-
-    def _coalesce_robot(self, cmd: tuple) -> tuple:
-        """Zostaje TYLKO ostatnia zadana pozycja.
-
-        Szybkie ⌘1/⌘2/⌘1 potrafi wrzucic kilka komend, a kazdy przejazd trwa
-        sekundy — bez zwijania kolejki ramie odgrywaloby cala historie klikania
-        zamiast pojechac tam, gdzie operator ostatecznie wskazal."""
-        if cmd[0] != "move":
-            return cmd
-        while True:
-            try:
-                nxt = self._robot_q.get_nowait()
-            except queue.Empty:
-                return cmd
-            if nxt[0] != "move":
-                # Puszczenie momentu i zapis ujecia MUSZA sie wykonac — nie
-                # wolno ich zjesc przy zwijaniu. Odkladamy zwiniety przejazd
-                # na kolejny obrot petli.
-                self._robot_q.put(cmd)
-                return nxt
-            cmd = nxt
-
-    def _set_robot_busy(self, text: str) -> None:
-        with self.lock:
-            self.robot_busy = text
-
-    def _do_torque(self, on: bool) -> None:
-        """Puszcza albo lapie serwa. Wykonywane W WATKU ROBOTA, bo dotyka portu.
-
-        Puszczone serwa = ramie opada pod ciezarem aparatu, wiec operator musi
-        je trzymac. Po ustawieniu ujecia lapie sie moment i dopiero wtedy da sie
-        swobodnie klikac po UI (patrz sekcja „Robot" w CLAUDE.md)."""
-        try:
-            self.robot.set_torque(on is not False)
-        except Exception as e:
-            self._log(f"✗ Robot: nie udało się {'puścić' if on is False else 'złapać'} serw ({e})", "err")
-            return
-        with self.lock:
-            self.robot_loose = on is False
-        if on is False:
-            self._log("Robot: serwa puszczone — PRZYTRZYMAJ ramię i ustaw ujęcie", "warn")
-        else:
-            self._log("Robot: serwa trzymają pozycję", "ok")
-
-    def _do_teach(self, pose: str) -> None:
-        """Zapisuje BIEZACE katy przegubow jako ujecie (`ROBOT_JOINTS_*`).
-
-        Cala „kalibracja" tego ramienia to wlasnie to: ustaw raz recznie i
-        zapisz. Zadnych dwoch probek, osi patrzenia ani wspolczynnikow — patrz
-        historia w sekcji „Robot" w CLAUDE.md."""
-        joints = self.robot.read_joints()
-        if joints is None:
-            self._log("✗ Robot: ramię nie oddaje odczytu kątów — nie zapisuję", "err")
-            return
-        ROBOT_JOINTS[pose] = joints
-        with self.lock:
-            self.robot_joints = joints
-        persist_joints(ROBOT_JOINTS_ENV[pose], joints)
-        self._log(f"✓ Zapisano ujęcie {pose}: {RoArmSession.fmt_joints(joints)}", "ok")
-        # Od razu: czy silniki w ogole utrzymaja te katy? Ujecie ustawione
-        # reka przy puszczonych serwach potrafi lezec poza zasiegiem serwa
-        # (os 4: reka −115°, silnik konczy na ~−107°) — przy ⌘1 skonczyloby
-        # sie to „nie dojechalo" bez wyjasnienia, skad sie wzielo.
-        self._set_robot_busy("Sprawdzam, czy silniki utrzymają ujęcie")
-        try:
-            now = self.robot.verify_pose(joints)
-        except RobotRangeError as e:
-            self._log(f"✗ Robot: {e}", "err")
-            return
-        finally:
-            self._set_robot_busy("")
-        if now is None:
-            return
-        off = [(i, n - t) for i, (t, n) in enumerate(zip(joints, now))
-               if abs(n - t) > ROBOT_JOINT_TOL]
-        if off:
-            what = ", ".join(f"oś {i + 1} stoi na {now[i]:.0f}° zamiast {joints[i]:.0f}°"
-                             for i, _ in off)
-            self._log(f"⚠ Robot: ujęcie {pose} poza zasięgiem silników ({what}) — "
-                      "przy ⌘ nie wróci dokładnie tutaj; ustaw je bliżej środka zakresu osi",
-                      "warn")
-        else:
-            with self.lock:
-                self.robot_joints = now
-            self._log(f"Robot: silniki trzymają ujęcie {pose} "
-                      f"(największa odchyłka {max(abs(n - t) for t, n in zip(joints, now)):.1f}°)")
-
-    def _do_nudge(self, joint: int, delta: float) -> None:
-        """Korekta jednej osi o `delta` stopni — wykonywana w watku robota.
-
-        Kadru nie ustawia sie reka z dokladnoscia do stopnia, a od tego zalezy,
-        czy produkt siedzi na srodku. Po ruchu odswiezamy `robot_joints`, zeby
-        liczby w Ustawieniach chodzily razem z ramieniem."""
-        before = self.robot.read_joints()
-        try:
-            joints = self.robot.nudge(joint, delta)
-        except RobotRangeError as e:
-            self._log(f"✗ Robot: {e}", "err")
-            return
-        if joints is None:
-            self._log("✗ Robot: brak odczytu kątów — korekta nie wyszła", "err")
-            return
-        with self.lock:
-            self.robot_joints = joints
-        # Wpis w logu przy KAZDEJ korekcie: bez niego „klikam i nic sie nie
-        # dzieje" jest nie do odroznienia od „os nie przyjmuje komendy". Gdy
-        # os stoi w miejscu, mowimy to wprost — to najczestszy objaw zlej
-        # konwersji kata (patrz tools/roarm_j4_probe.py).
-        was = before[joint - 1] if before else float("nan")
-        got = joints[joint - 1]
-        if before and abs(got - was) < 0.3:
-            self._log(f"✗ Robot: oś {joint} nie drgnęła (stoi na {got:.1f}°, "
-                      f"miała iść na {was + delta:.1f}°)", "err")
-        else:
-            self._log(f"Robot: oś {joint}: {was:.1f}° → {got:.1f}°")
-
-    def _robot_move(self) -> None:
-        """Kolejkuje przejazd na aktualnie zadane ujecie."""
-        with self.lock:
-            pose = self.robot_pose
-        self._robot_q.put(("move", pose))
 
     # ---------- watek worker ----------
 
@@ -1820,10 +1520,6 @@ class WebUI:
             # zgineloby razem z workerem (job by sie nie doczekal obrobki)
             self._log("Trwa aktualizacja — migawka zablokowana do restartu.", "warn")
             return {"ok": False, "error": "trwa aktualizacja"}
-        if self.robot_busy:
-            # zdjecie w trakcie przejazdu ramienia to gwarantowane rozmycie
-            self._log("Migawka: ramię jest w ruchu — poczekaj na koniec przejazdu.", "warn")
-            return {"ok": False, "error": "ramię jest w ruchu"}
         # Watek camera odbiera komendy pojedynczo. Zalegajaca kolejka znaczy, ze
         # utknal (typowo: EDSDK czeka na plik z aparatu) — bez tego wpisu ENTER
         # wyglada jak zignorowany, bo nic sie nie dzieje i nic nie tlumaczy.
@@ -1833,9 +1529,6 @@ class WebUI:
             self._log(f"Migawka: aparat nie odebrał jeszcze poprzedniej komendy "
                       f"({self._cam_q.qsize()} w kolejce) — wątek aparatu: "
                       f"{phase}{held}.", "warn")
-        # od teraz do konca pobrania pliku ramie stoi (patrz _robot_ready)
-        with self.lock:
-            self.capturing = True
         with self.lock:
             opts = dict(
                 outdir=self.session_dir, filename=self._resolve_filename(),
@@ -1845,74 +1538,6 @@ class WebUI:
                 upload=self.upload_enabled,
             )
         self._cam_q.put(("shoot", opts))
-        return None
-
-    def _robot_ready(self) -> dict | None:
-        """Wspolne warunki dla obu komend ramienia. None = mozna jechac."""
-        if not ROBOT_ENABLED:
-            return {"ok": False, "error": "sterowanie ramieniem wyłączone"}
-        if not self.robot_connected:
-            return {"ok": False, "error": "ramię nie jest połączone"}
-        # Ruch w trakcie ekspozycji/pobierania pliku zabralby aparatowi kadr
-        # spod obiektywu. SWIADOMIE tylko `capturing`, nie `busy`: `busy`
-        # obejmuje takze obrobke (rembg, sekundy), a wtedy kadr jest juz w
-        # pliku i blokowanie ramienia byloby czekaniem bez powodu.
-        if self.capturing:
-            return {"ok": False, "error": "trwa zdjęcie"}
-        return None
-
-    def _act_robot_pose(self, data: dict) -> dict | None:
-        pose = str(data.get("pose") or "")
-        if pose not in ROBOT_JOINTS:
-            return {"ok": False, "error": "nieznane ujęcie"}
-        err = self._robot_ready()
-        if err:
-            return err
-        if self.robot_loose:
-            # serwo bez momentu nie wykona komendy pozycji — czekalibysmy
-            # pelny timeout na ramie, ktore nie ma prawa ruszyc
-            return {"ok": False, "error": "serwa są puszczone — najpierw złap pozycję"}
-        with self.lock:
-            self.robot_pose = pose
-        self._robot_move()
-        return None
-
-    def _act_robot_torque(self, data: dict) -> dict | None:
-        """Puszczenie/zlapanie serw — do recznego ustawiania ujecia."""
-        if not ROBOT_ENABLED:
-            return {"ok": False, "error": "sterowanie ramieniem wyłączone"}
-        if not self.robot_connected:
-            return {"ok": False, "error": "ramię nie jest połączone"}
-        self._robot_q.put(("torque", bool(data.get("on"))))
-        return None
-
-    def _act_robot_nudge(self, data: dict) -> dict | None:
-        """Korekta osi z przyciskow w Ustawieniach: `joint` 1..ROBOT_AXES,
-        `delta` w stopniach."""
-        try:
-            joint = int(data.get("joint"))
-            delta = float(data.get("delta"))
-        except (TypeError, ValueError):
-            return {"ok": False, "error": "brak osi albo kroku"}
-        if not 1 <= joint <= ROBOT_AXES:
-            return {"ok": False, "error": "nieznana oś"}
-        if not self.robot_connected:
-            return {"ok": False, "error": "ramię nie jest połączone"}
-        if self.robot_loose:
-            return {"ok": False, "error": "serwa są puszczone — najpierw złap pozycję"}
-        if self.capturing:
-            return {"ok": False, "error": "trwa zdjęcie"}
-        self._robot_q.put(("nudge", joint, delta))
-        return None
-
-    def _act_robot_teach(self, data: dict) -> dict | None:
-        """Zapis biezacej pozycji ramienia jako ujecie."""
-        pose = str(data.get("pose") or "")
-        if pose not in ROBOT_JOINTS:
-            return {"ok": False, "error": "nieznane ujęcie"}
-        if not self.robot_connected:
-            return {"ok": False, "error": "ramię nie jest połączone"}
-        self._robot_q.put(("teach", pose))
         return None
 
     _TOGGLE_ATTRS = {
@@ -2017,10 +1642,6 @@ class WebUI:
         "shoot": _act_shoot,
         "set_ev": _act_set_ev,
         "focus_at": _act_focus_at,
-        "robot_pose": _act_robot_pose,
-        "robot_torque": _act_robot_torque,
-        "robot_teach": _act_robot_teach,
-        "robot_nudge": _act_robot_nudge,
         "toggle": _act_toggle,
         "set_post": _act_set_post,
         "review": _act_review,
@@ -2200,6 +1821,7 @@ class WebUI:
             return {
                 "connected": self.connected,
                 "edsdkMissing": _edsdk_missing(),
+                "platform": sys.platform,
                 "warmup": None if self.warmup_done else int(time.monotonic() - self.warmup_t0),
                 "warmupEta": self.warmup_eta,
                 "focus": self.focus_result,
@@ -2223,23 +1845,6 @@ class WebUI:
                     "bg": f"{bg[0]}–{bg[1]}" if bg else "—",
                     "bgStatus": _bg_status(bg),
                     "ev": self.ev,
-                },
-                "robot": {
-                    "enabled": ROBOT_ENABLED,
-                    "connected": self.robot_connected,
-                    "pose": self.robot_pose,
-                    "busy": self.robot_busy,
-                    "error": self.robot_error,
-                    # ktore ujecia sa w ogole ustawione (`ROBOT_JOINTS_*` w
-                    # .env) — panel wyszarza te, ktorych nie ma, zamiast
-                    # wysylac ramie w nieznane
-                    "set": {p: bool(a) for p, a in ROBOT_JOINTS.items()},
-                    # do sekcji „Robot — ujęcia" w Ustawieniach; `axes` = ile
-                    # wierszy korekty (5 z serwem pochylenia kamery, 4 bez)
-                    "axes": ROBOT_AXES,
-                    "loose": self.robot_loose,
-                    "joints": self.robot_joints,
-                    "nudge": [ROBOT_NUDGE_STEP, ROBOT_NUDGE_BIG],
                 },
                 "post": {
                     "logo": self.add_logo,
@@ -2369,10 +1974,6 @@ class WebUI:
         self._camera_thread.start()
         self._worker_thread.start()
         self._sync_thread.start()
-        if ROBOT_ENABLED:
-            self._robot_thread = threading.Thread(target=self._guarded(self._robot_loop, "ramienia"),
-                                                  daemon=True)
-            self._robot_thread.start()
         if self.automat_token:
             self._jobs.put(("list_sessions",))
         self._jobs.put(("cleanup_update",))
@@ -2414,11 +2015,6 @@ class WebUI:
             # w najgorszym razie w locie jest jedno pobranie — krotki join,
             # pliki i tak pisza sie przez .part + rename
             self._sync_thread.join(timeout=2.0)
-        if self._robot_thread is not None:
-            # watek zwalnia port szeregowy (niezamkniety = „resource busy" przy
-            # nastepnym starcie); czekanie na koniec przejazdu przerywa
-            # `should_stop`, wiec nie stoimy tu pelnego ROBOT_MOVE_TIMEOUT
-            self._robot_thread.join(timeout=4.0)
         if self._server is not None:
             self._server.shutdown()
             self._server.server_close()

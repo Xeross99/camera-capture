@@ -592,39 +592,35 @@ class CameraSession:
 
 
 def make_camera_session():
-    """Wybiera backend aparatu wg CAMERA_BACKEND (auto/gphoto2/edsdk).
+    """Wybiera backend aparatu wg CAMERA_BACKEND (auto/edsdk/gphoto2).
 
-    auto: gphoto2 jesli zaimportowalne, na Windows edsdk. Backend
-    digiCamControl zostal USUNIETY (1.1.0) — na Windows dziala wylacznie
-    EDSDK; brak EDSDK.dll konczy sie czytelnym bledem z EdsdkSession.open(),
-    a nie cichym przejsciem na posrednika.
+    Windows i macOS: WYŁĄCZNIE Canon EDSDK (macOS od 2.2 — EDSDK.framework
+    obok aplikacji). Brak SDK kończy się czytelnym błędem z
+    EdsdkSession.open() i kartą „Brak sterownika aparatu Canon" w UI, a nie
+    cichym przejściem na gphoto2. gphoto2 zostaje tylko na Linuksie (i dla
+    starego trybu terminalowego `main.py`). Backend digiCamControl został
+    USUNIĘTY (1.1.0).
     Zwracany obiekt ma interfejs CameraSession (open/preview_frame/capture_to/
     get_settings/set_setting/close) oraz `backend_info` — TEKST z wyborem
     i powodem, ktory webui wypisuje do logu przy starcie."""
     backend = CAMERA_BACKEND
     reason = f"CAMERA_BACKEND={CAMERA_BACKEND} w .env"
-    if backend == "digicamcontrol":
+    edsdk_only = sys.platform in ("win32", "darwin")
+    if backend == "digicamcontrol" or (edsdk_only and backend == "gphoto2"):
         # stary wpis w .env nie moze wywracac startu — przechodzimy na edsdk
-        backend = "edsdk" if sys.platform == "win32" else "auto"
-        reason = "backend digiCamControl został usunięty — używam EDSDK"
+        reason = (f"backend {backend} nie jest już obsługiwany na tym systemie "
+                  "— używam Canon EDSDK")
         print(f"Uwaga: {reason}.")
-    if backend == "auto" and sys.platform == "darwin":
-        # macOS: EDSDK, gdy EDSDK.framework leży obok aplikacji (pełna kontrola
-        # Canona: podgląd, ostrość w punkcie); bez niego gphoto2 jak dotąd
-        from .camera_edsdk import find_edsdk_dll
-        dll = find_edsdk_dll()
-        if dll is not None:
-            backend, reason = "edsdk", f"auto: znaleziono {dll.parent.name}"
+        backend = "edsdk" if edsdk_only else "auto"
     if backend == "auto":
-        if gp is not None:
-            backend, reason = "gphoto2", "auto: gphoto2 dostępne"
-        elif sys.platform == "win32":
+        if edsdk_only:
             from .camera_edsdk import find_edsdk_dll
             dll = find_edsdk_dll()
             backend = "edsdk"
-            reason = (f"auto: znaleziono {dll}" if dll else
-                      "auto: BRAK EDSDK.dll obok aplikacji — połóż EDSDK.dll "
-                      "+ EdsImage.dll (x64) obok .exe, patrz WINDOWS.md")
+            missing = ("BRAK EDSDK.framework w katalogu aplikacji" if sys.platform == "darwin"
+                       else "BRAK EDSDK.dll obok aplikacji — połóż EDSDK.dll "
+                            "+ EdsImage.dll (x64) obok .exe, patrz WINDOWS.md")
+            reason = f"auto: znaleziono {dll}" if dll else f"auto: {missing}"
         else:
             backend, reason = "gphoto2", "auto"
 

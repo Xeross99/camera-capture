@@ -1,4 +1,3 @@
-gphoto2>=2.6
 pillow>=11
 rich>=14
 numpy>=2
@@ -7,7 +6,8 @@ rembg>=2.0.60
 onnxruntime>=1.20
 requests>=2.32
 python-dotenv>=1.0
-pyusb>=1.2
 pywebview
-# ramie RoArm-M2-S po USB-serial (src/robot.py); ciagnie pyserial
-roarm-sdk>=0.1.0
+# Aparat na macOS i Windowsie: Canon EDSDK (EDSDK.framework / EDSDK.dll obok
+# aplikacji, licencja Canona — nie z pip). gphoto2 i pyusb tylko dla Linuksa
+# i starego trybu terminalowego (python main.py):
+#   pip install "gphoto2>=2.6" "pyusb>=1.2"

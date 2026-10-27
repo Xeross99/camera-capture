@@ -72,6 +72,9 @@ def test_english_ui_has_no_polish_text(app, page: Page):
     expect(page.locator("#shoot-label")).to_be_visible()
     page.keyboard.press("Enter")
     wait_for(lambda: app.state()["session"]["count"] == 1 and not app.state()["busy"], 120, "zdjecie")
+    # strona dowiaduje się o końcu obróbki z pollu (co 0,5 s) — do tego czasu
+    # przycisk migawki pokazuje tekst fazy nadany przez backend jeszcze po polsku
+    expect(page.locator("#shoot-label")).to_have_text("Zrób zdjęcie", timeout=10000)
 
     page.evaluate("setLang('en')")
     wait_for(lambda: app.state()["settings"]["uiLang"] == "en", 5, "język zapisany")

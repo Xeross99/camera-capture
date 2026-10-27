@@ -6,6 +6,7 @@ lokalne pliki. Czysta warstwa plikowa — zero HTTP i zero stanu WebUI."""
 import json
 import os
 import shutil
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -143,13 +144,27 @@ def trash_batch(base_output: Path, session: str) -> Path:
     raise RuntimeError("kosz: nie mogę założyć katalogu na usunięte pliki")
 
 
+def retry_locked(fn, attempts: int = 20, delay: float = 0.1):
+    """Windows nie pozwala przeniesc ani skasowac pliku, ktory ktos czyta —
+    a podglad w oknie pobiera zdjecie (i jego miniature) dokladnie wtedy, gdy
+    operator wciska BACKSPACE. Czytanie trwa ulamek sekundy, wiec ponawiamy
+    krotko zamiast zostawiac zdjecie, ktore „nie chce sie usunac"."""
+    for i in range(attempts):
+        try:
+            return fn()
+        except PermissionError:
+            if i == attempts - 1:
+                raise
+            time.sleep(delay)
+
+
 def move_into(batch: Path, path: Path) -> None:
     target = batch / path.name
     n = 1
     while target.exists():
         target = batch / f"{path.stem}-{n}{path.suffix}"
         n += 1
-    shutil.move(str(path), str(target))
+    retry_locked(lambda: shutil.move(str(path), str(target)))
 
 
 def purge_trash(base_output: Path, days: int = TRASH_RETENTION_DAYS) -> int:

@@ -64,6 +64,7 @@ from .session_store import (
     move_into,
     purge_trash,
     remote_filename,
+    retry_locked,
     review_path,
     save_review,
     shot_entries,
@@ -725,14 +726,13 @@ class WebUI:
         batch = trash_batch(self.base_output, session) if TRASH_RETENTION_DAYS > 0 else None
         automat_ids = {}
         for f in files:
-            (outdir / ".thumbs" / f).unlink(missing_ok=True)
-            (outdir / ".views" / f).unlink(missing_ok=True)
-            (outdir / NOLOGO_DIR / f).unlink(missing_ok=True)
+            for cache in (outdir / ".thumbs" / f, outdir / ".views" / f, outdir / NOLOGO_DIR / f):
+                retry_locked(lambda c=cache: c.unlink(missing_ok=True))
             for p in ((outdir / f), find_raw(outdir, f)):
                 if p is None or not p.exists():
                     continue
                 if batch is None:
-                    p.unlink(missing_ok=True)
+                    retry_locked(lambda p=p: p.unlink(missing_ok=True))
                 else:
                     move_into(batch, p)
             for key in ("rejected", "uploaded"):

@@ -141,6 +141,10 @@ def make_app(tmp_path, monkeypatch, camera, env_store):
 
     yield factory
     for app in apps:
+        # log aplikacji na stdout — pytest pokazuje go przy czerwonym tescie
+        print("\n--- log aplikacji ---")
+        for e in list(app.log):
+            print(f"[{e.get('kind')}] {e.get('text')}")
         app._stop.set()
         app._jobs.put(None)
         app._sync_q.put(None)

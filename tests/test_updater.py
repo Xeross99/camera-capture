@@ -193,7 +193,7 @@ def test_download_unpacks_package_next_to_app(upd, monkeypatch):
     assert calls[0][1]["headers"]["Accept"] == "application/octet-stream"
     assert calls[0][1]["stream"] is True
     assert staging == upd.install_dir / ".update" / "staging"
-    assert (staging / EXE).read_text() == "nowy exe"
+    assert (staging / EXE).read_text(encoding="utf-8") == "nowy exe"
     assert (staging / "_internal" / "python311.dll").is_file()
     assert not (upd.install_dir / ".update" / "update.zip").exists()
     assert progress[-1] == 100 and progress == sorted(progress) and len(progress) > 2
@@ -227,7 +227,7 @@ def test_package_must_have_exe_and_internal(upd, tmp_path):
     pkg.mkdir()
     with pytest.raises(ValueError, match=r"\.exe"):
         upd._validate_staging(pkg)
-    (pkg / EXE).write_text("x")
+    (pkg / EXE).write_text("x", encoding="utf-8")
     with pytest.raises(ValueError, match="_internal"):
         upd._validate_staging(pkg)
     (pkg / "_internal").mkdir()
@@ -241,7 +241,7 @@ def staged_package(upd, files=NEW_PACKAGE) -> Path:
     for name, text in files.items():
         p = staging / name
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(text)
+        p.write_text(text, encoding="utf-8")
     return staging
 
 
@@ -261,13 +261,13 @@ def test_updater_starts_from_the_new_package(upd, monkeypatch):
     monkeypatch.setattr(upd.time, "sleep", lambda s: None)
     monkeypatch.setattr(upd.subprocess, "Popen", FakePopen)
     FakePopen.started, FakePopen.alive = [], True
-    (upd.install_dir / "update_error.txt").write_text("stary błąd")
+    (upd.install_dir / "update_error.txt").write_text("stary błąd", encoding="utf-8")
     staging = staged_package(upd)
     log = upd.apply_update_and_restart(staging)
     args, kw = FakePopen.started[0]
     assert args == [str(staging / EXE), "--apply-update", str(upd.install_dir), str(__import__("os").getpid())]
     assert kw["cwd"] == str(staging)
-    assert log == upd.install_dir / "update.log" and "aktualizator dziala" in log.read_text()
+    assert log == upd.install_dir / "update.log" and "aktualizator dziala" in log.read_text(encoding="utf-8")
     assert not (upd.install_dir / "update_error.txt").exists()
 
 
@@ -303,7 +303,7 @@ def old_install(root: Path) -> None:
     for name, text in files.items():
         p = root / name
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(text)
+        p.write_text(text, encoding="utf-8")
 
 
 def test_install_replaces_program_and_keeps_user_files(upd, monkeypatch):
@@ -315,17 +315,17 @@ def test_install_replaces_program_and_keeps_user_files(upd, monkeypatch):
     rc = upd.run_apply_update([str(upd.install_dir), "0"])
     d = upd.install_dir
     assert rc == 0
-    assert (d / EXE).read_text() == "nowy exe"
-    assert (d / "_internal" / "python311.dll").read_text() == "nowa biblioteka"
+    assert (d / EXE).read_text(encoding="utf-8") == "nowy exe"
+    assert (d / "_internal" / "python311.dll").read_text(encoding="utf-8") == "nowa biblioteka"
     assert (d / "_internal" / "src" / "webui_static" / "index.html").is_file()
     assert not (d / "_internal" / "tylko_stara.pyd").exists()
     assert not (d / "_internal" / "stary_katalog").exists()
     # to, co operator dołożył, przeżywa aktualizację
-    assert (d / ".env").read_text() == "AUTOMAT_TOKEN=sekret\n"
-    assert (d / "photos" / "sesja" / "photo_1.jpg").read_text() == "zdjęcie"
+    assert (d / ".env").read_text(encoding="utf-8") == "AUTOMAT_TOKEN=sekret\n"
+    assert (d / "photos" / "sesja" / "photo_1.jpg").read_text(encoding="utf-8") == "zdjęcie"
     assert (d / "EDSDK.dll").is_file() and (d / "EdsImage.dll").is_file()
     assert spawned == [d.resolve() / EXE]
-    assert "gotowe" in (d / "update.log").read_text()
+    assert "gotowe" in (d / "update.log").read_text(encoding="utf-8")
     assert not (d / "update_error.txt").exists()
 
 
@@ -339,17 +339,17 @@ def test_broken_package_brings_back_the_old_version(upd, monkeypatch):
     rc = upd.run_apply_update([str(upd.install_dir), "0"])
     d = upd.install_dir
     assert rc == 1
-    assert (d / EXE).read_text() == "stary exe"          # nic nie nadpisane
+    assert (d / EXE).read_text(encoding="utf-8") == "stary exe"          # nic nie nadpisane
     assert (d / "_internal" / "tylko_stara.pyd").is_file()
     assert spawned == [d.resolve() / EXE]                # stara wersja wstaje
     assert "_internal" in boxes[0]
-    marker = (d / "update_error.txt").read_text()
+    marker = (d / "update_error.txt").read_text(encoding="utf-8")
     assert "_internal" in marker and "update.log" in marker
 
 
 def test_copy_retries_while_windows_holds_the_file(upd, monkeypatch, tmp_path):
     src = tmp_path / "a.dll"
-    src.write_text("x")
+    src.write_text("x", encoding="utf-8")
     real_copy = upd.shutil.copy2
     fails = [PermissionError("zajęty"), PermissionError("zajęty")]
     def copy2(a, b):
@@ -359,7 +359,7 @@ def test_copy_retries_while_windows_holds_the_file(upd, monkeypatch, tmp_path):
     monkeypatch.setattr(upd.shutil, "copy2", copy2)
     monkeypatch.setattr(upd.time, "sleep", lambda s: None)
     upd._copy(src, tmp_path / "out" / "a.dll")
-    assert (tmp_path / "out" / "a.dll").read_text() == "x"
+    assert (tmp_path / "out" / "a.dll").read_text(encoding="utf-8") == "x"
     fails[:] = [PermissionError("zajęty")] * 3
     with pytest.raises(PermissionError):
         upd._copy(src, tmp_path / "out" / "b.dll", attempts=3)
@@ -368,11 +368,11 @@ def test_copy_retries_while_windows_holds_the_file(upd, monkeypatch, tmp_path):
 # ---------- sprzątanie przy następnym starcie ----------
 
 def test_next_start_reports_failure_and_cleans_up(upd):
-    (upd.install_dir / "update_error.txt").write_text("brak _internal\nLog: update.log\n")
+    (upd.install_dir / "update_error.txt").write_text("brak _internal\nLog: update.log\n", encoding="utf-8")
     for d in (upd.install_dir / ".update" / "staging", upd.temp_dir / "cc_update",
               upd.temp_dir / "cc_update_stary"):
         d.mkdir(parents=True)
-        (d / "plik").write_text("x")
+        (d / "plik").write_text("x", encoding="utf-8")
     assert upd.cleanup_after_update() == "brak _internal\nLog: update.log"
     assert not (upd.install_dir / "update_error.txt").exists()
     assert not (upd.install_dir / ".update").exists()
@@ -565,9 +565,11 @@ def test_win32_updater_waits_for_the_old_app_to_close(tmp_path):
     assert time.monotonic() - t0 > 1.0
     assert old.poll() is not None
     assert any(f"czekam na zamkniecie pid {old.pid}" in s for s in said)
-    said.clear()
+    # proces już zakończony: drugie czekanie wraca od razu (Popen trzyma
+    # jeszcze jego uchwyt, więc Windows pozwala go otworzyć — nie czekamy 60 s)
+    t0 = time.monotonic()
     updater._wait_for_old_app(old.pid, tmp_path, said.append)
-    assert any("juz nie zyje" in s for s in said)
+    assert time.monotonic() - t0 < 1.0
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="blokada pliku .exe tylko na Windowsie")

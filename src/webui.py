@@ -58,6 +58,7 @@ from .config import (
 from .i18n import EN, n_form, set_lang, tr
 from .image_processing import LOGO_POSITIONS, overlay_logo, process, save_jpeg_atomic
 from .naming import sanitize_name
+from .progress import PhotoProgress, stages_for
 from .session_store import (
     NOLOGO_DIR,
     cover_path,
@@ -487,6 +488,9 @@ class WebUI:
         self._ev_t0 = 0.0
         self._ev_logged = False   # wpis diagnostyczny raz na połączenie
         self.processing_file: str | None = None
+        # etapy zdjęcia od migawki do pliku — kafelek z procentem w pasku zdjęć
+        # (szacunki czasów w pliku obok .warmup.json, patrz src/progress.py)
+        self.progress = PhotoProgress(lambda: WARMUP_FILE.with_name(".stages.json"))
         # Co robi w tej chwili watek camera i od kiedy. Watek ma JEDNEGO
         # wlasciciela portu, wiec kazda dluga operacja (podglad, strzal, odczyt
         # kompensacji, reconnect) blokuje odbieranie komend — bez tej informacji
@@ -854,6 +858,8 @@ class WebUI:
     def _do_capture(self, opts: dict) -> None:
         self._phase("robienie zdjęcia")
         self._set_busy(tr("Wyzwalam migawkę…"))
+        self.progress.start(opts["filename"], stages_for(
+            opts["clean_bg"], opts["add_logo"], opts["upload"]))
         tmpdir = Path(tempfile.mkdtemp(prefix="capture_"))
         t0 = time.perf_counter()
         try:
@@ -882,6 +888,7 @@ class WebUI:
                              "{e}", e=e2), "err")
                 shutil.rmtree(tmpdir, ignore_errors=True)
                 self._set_busy("")
+                self.progress.finish(opts["filename"], ok=False)
                 return
         # Stan obrobki ustawiany JUZ TERAZ, przy kolejkowaniu — nie dopiero
         # gdy _job_photo wystartuje. Job potrafi czekac w kolejce (najdluzej:
@@ -891,6 +898,7 @@ class WebUI:
         with self.lock:
             self.busy = tr("Czyszczę tło / centruję…")
             self.processing_file = opts["filename"]
+        self.progress.stage(opts["filename"], "queue")
         self._jobs.put(("photo", {**opts, "tmpdir": tmpdir, "captured": captured,
                                   "cap_s": time.perf_counter() - t0}))
 
@@ -1144,6 +1152,7 @@ class WebUI:
             steps.append(tr("aparat {s:.1f} s", s=job['cap_s']))
         announced_id = None
         if job["upload"] and self.uploader is not None:
+            self.progress.stage(filename, "announce")
             t0 = time.perf_counter()
             try:
                 announced_id = self.uploader.announce_photo(filename)
@@ -1160,8 +1169,11 @@ class WebUI:
                     auto_center=job["auto_center"], auto_zoom=job["auto_zoom"],
                     out_name=filename,
                     base_out=outdir / NOLOGO_DIR / filename,
+                    on_stage=lambda key: self.progress.stage(filename, key),
                 )
+            done = True
         except Exception as e:
+            done = False
             self._log(tr("✗ Obróbka nie wyszła: {e}", e=e), "err")
             return
         finally:
@@ -1169,6 +1181,9 @@ class WebUI:
             with self.lock:
                 self.busy = ""
                 self.processing_file = None
+            # razem z processing_file: kafelek postępu znika w tym samym pollu,
+            # w którym pojawia się gotowe zdjęcie
+            self.progress.finish(filename, ok=done)
         steps.append(tr("obróbka {s:.1f} s", s=time.perf_counter() - t0))
 
         raw = outdir / f"{Path(filename).stem}_raw.jpg"
@@ -1997,7 +2012,7 @@ class WebUI:
             "canApply": bool(info.get("url")) and updater.can_self_update(),
             # macOS .app: przycisk otwiera paczke macOS (albo strone wydania)
             "packagedMac": updater.packaged_mac(),
-            "macDownload": info.get("mac_url") or info.get("page", ""),
+            "macDownload": info.get("download") or info.get("page", ""),
             "checking": self.update_checking,
             "busy": self.update_busy,
             "progress": self.update_progress,
@@ -2098,6 +2113,7 @@ class WebUI:
                 "previewOn": self.preview_on,
                 "busy": self.busy,
                 "processing": self.processing_file,
+                "progress": self.progress.snapshot(),
                 "downloading": list(self.syncing),
                 "editPreparing": self.edit_preparing,
                 "editSaving": self.edit_saving,

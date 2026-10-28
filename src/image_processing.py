@@ -113,7 +113,10 @@ def process(
     auto_zoom: bool = AUTO_ZOOM,
     out_name: str | None = None,
     base_out: Path | None = None,
+    on_stage=None,
 ) -> Path:
+    """`on_stage(klucz)` dostaje początek kolejnych etapów (src/progress.py)."""
+    stage = on_stage or (lambda key: None)
     output_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     stem = Path(out_name).stem if out_name else f"photo_{timestamp}"
@@ -131,14 +134,17 @@ def process(
 
         canvas_size = target or (OUTPUT_SIZE, OUTPUT_SIZE)
         image = clean_background(
-            image, canvas_size, auto_center=auto_center, auto_zoom=auto_zoom
+            image, canvas_size, auto_center=auto_center, auto_zoom=auto_zoom,
+            on_stage=stage,
         )
     else:
+        stage("crop")
         image = crop_to_aspect(image, ASPECT_W, ASPECT_H)
         if target and image.size != target:
             image = image.resize(target, Image.LANCZOS)
 
     if add_logo:
+        stage("logo")
         # Wersja BEZ logo obok (`base_out`) — z niej edycja w podgladzie
         # zdejmuje, dodaje albo przestawia logo bez ponownej obrobki tla.
         if base_out is not None:
@@ -149,6 +155,7 @@ def process(
     # pierwszego bajtu i prosi o miniature, zanim zapis sie skonczy — PIL
     # konczylo wtedy na "image file is truncated". Pod docelowa nazwa plik
     # pojawia sie dopiero CALY (jak przy download_photo w automat_uploader).
+    stage("save")
     out_path = output_dir / f"{stem}.jpg"
     tmp_path = output_dir / f"{stem}.jpg.part"
     image.save(tmp_path, "JPEG", quality=JPEG_QUALITY)

@@ -918,7 +918,8 @@ const stripContentSig = () => JSON.stringify([stripSig(S.state), S.editSaved && 
 
 const sessCountText = st => `${plPhotos(st.session.count)}${st.session.rejected ? ` · ${t("odrzucone {n}", { n: st.session.rejected })}` : ""}`;
 // kafelki paska: zdjęcia + skeleton obróbki + skeletony pobierania z API
-const stripItemCount = st => st.shots.length + (st.processing ? 1 : 0) + (st.downloading || []).length;
+const stripItemCount = st => st.shots.length
+  + Math.max((st.progress || []).length, st.processing ? 1 : 0) + (st.downloading || []).length;
 
 // Zmiana zdjęć sesji bez przebudowy ekranu (patrz sesjaKey): pasek i jego
 // legenda przez refreshStrips(), licznik w sidebarze po id. Gdy kafelków
@@ -1188,7 +1189,11 @@ function filmstrip() {
       ${ss.cls ? `<span class="dot ${ss.cls}"></span>` : ""}
     </button>`;
   });
-  if (st.processing) {
+  // zdjęcia w drodze: kafelek z procentem i etapem (app-progress.js); stary
+  // kafelek bez procentu tylko gdy backend nie podał etapów
+  const prog = st.progress || [];
+  prog.forEach(p => items.push(procTileHtml(p)));
+  if (st.processing && !prog.some(p => p.file === st.processing)) {
     items.push(`<div class="shot-wait" title="${st.processing}">${t("Obróbka…")}<span class="indet"></span></div>`);
   }
   // pobieranie zdjec sesji z Automatu — kafelek-skeleton az plik wyladuje na dysku

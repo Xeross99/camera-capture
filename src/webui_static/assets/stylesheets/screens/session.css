@@ -157,6 +157,172 @@
     left: 100%;
   }
 }
+/* Kafelek postępu zdjęcia (app-progress.js): procent, pasek, kropki etapów
+   i nazwa etapu, która przy zmianie wyjeżdża do góry, a nowa wjeżdża od dołu */
+.proc {
+  gap: 6px;
+  padding: 0 8px;
+}
+.proc.proc-new {
+  animation: procIn 0.38s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+@keyframes procIn {
+  from {
+    transform: scale(0.88);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.proc-head {
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--accent-fg);
+  white-space: nowrap;
+}
+.proc-pct {
+  font-variant-numeric: tabular-nums;
+}
+.proc-bar {
+  width: 100%;
+  max-width: 104px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--accent-ring);
+  overflow: hidden;
+}
+.proc-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transform-origin: left center;
+  will-change: transform;
+}
+.proc-fill.bump {
+  animation: procBump 0.55s ease-out;
+}
+@keyframes procBump {
+  0% {
+    filter: brightness(1.45);
+  }
+  100% {
+    filter: none;
+  }
+}
+.proc-pips {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 5px;
+}
+.proc-pip {
+  width: 5px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--accent-ring);
+  transition:
+    width 0.35s cubic-bezier(0.32, 0.72, 0, 1),
+    background-color 0.35s ease;
+}
+.proc-pip.done {
+  background: var(--accent);
+}
+.proc-pip.on {
+  width: 14px;
+  background: var(--accent);
+  animation: procPulse 1.2s ease-in-out infinite;
+}
+@keyframes procPulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+.proc-stage {
+  position: relative;
+  width: 100%;
+  height: 15px;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  text-align: center;
+}
+.proc-label {
+  position: absolute;
+  inset: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.proc-label.in {
+  animation: procLabelIn 0.34s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+.proc-label.out {
+  animation: procLabelOut 0.26s ease-in both;
+}
+@keyframes procLabelIn {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+@keyframes procLabelOut {
+  to {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+}
+/* mniejsze kafelki na niskim oknie (layout/responsive.css): bez kropek
+   etapów, mniejszy napis — procent, pasek i nazwa etapu muszą się zmieścić */
+@media (max-height: 860px) {
+  .proc {
+    gap: 5px;
+    padding: 0 6px;
+  }
+  .proc-head {
+    font-size: 11px;
+  }
+  .proc-bar {
+    height: 4px;
+  }
+  .proc-pips {
+    display: none;
+  }
+  .proc-stage {
+    height: 13px;
+    font-size: 10.5px;
+  }
+}
+@media (max-height: 720px) {
+  .proc {
+    gap: 4px;
+    padding: 0 5px;
+  }
+  .proc-head {
+    font-size: 10px;
+  }
+  .proc-stage {
+    height: 12px;
+    font-size: 10px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .proc.proc-new,
+  .proc-fill.bump,
+  .proc-pip.on,
+  .proc-label.in,
+  .proc-label.out {
+    animation: none;
+  }
+}
 .statusbar {
   flex: 0 0 auto;
   background: var(--surface-2);

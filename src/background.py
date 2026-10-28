@@ -705,8 +705,12 @@ def clean_background(
     canvas_size: tuple[int, int],
     auto_center: bool = AUTO_CENTER,
     auto_zoom: bool = AUTO_ZOOM,
+    on_stage=None,
 ) -> Image.Image:
+    """`on_stage(klucz)` dostaje początek kolejnych etapów (src/progress.py)."""
     from rembg import remove
+
+    stage = on_stage or (lambda key: None)
 
     canvas_w, canvas_h = canvas_size
     src_w, src_h = image.size
@@ -723,6 +727,7 @@ def clean_background(
         times.append((label, now - t0))
         t0 = now
 
+    stage("rembg")
     if max(src_w, src_h) > CLEAN_BG_INFERENCE_SIZE:
         infer_img = image.resize(
             (CLEAN_BG_INFERENCE_SIZE, CLEAN_BG_INFERENCE_SIZE), Image.LANCZOS
@@ -733,6 +738,7 @@ def clean_background(
     rembg_alpha = rgba.split()[3].resize((src_w, src_h), Image.LANCZOS)
     _mark("rembg")
 
+    stage("mask")
     alpha, binary, img_lum = _product_alpha(image, rembg_alpha)
     _mark(tr("maska"))
     img = _lift_internal_shadows(image.convert("RGB"), alpha, SHADOW_STRENGTH)
@@ -741,10 +747,12 @@ def clean_background(
     if bbox is None:
         return Image.new("RGB", canvas_size, CLEAN_BG_COLOR)
 
+    stage("crop")
     window = _select_crop_window(
         image, alpha, bbox, canvas_w / canvas_h, auto_center, auto_zoom, img_lum
     )
     _mark(tr("kadr"))
+    stage("compose")
     result = _compose_on_canvas(img, alpha, window, canvas_size)
     _mark(tr("kompozyt"))
     total = sum(dt for _, dt in times)

@@ -124,11 +124,22 @@ jobs:
           name: CameraCapture-macos
           path: CameraCapture-macos.zip
 
-  # Wydanie dopiero po zielonym buildzie, i tylko z main — reczny run na innej
-  # galezi to same testy + build. Paczka przychodzi z artefaktu buildu.
-  release:
-    name: 3. Release on GitHub
-    needs: [build-windows, build-macos]
+  # Wydania dopiero po zielonym buildzie, i tylko z main — reczny run na innej
+  # galezi to same testy + build. Kazdy system ma OSOBNE wydanie (vX.Y.Z-windows
+  # i vX.Y.Z-macos) z jedna paczka; aplikacja bierze najnowsze wydanie ze swoja
+  # paczka (src/updater.py). Wydanie Windows jest oznaczone jako „Latest" —
+  # starsze .exe pytaja wlasnie o releases/latest i dalej znajda swoja paczke.
+  #
+  # Wydanie leci SAMO z pushu na main: bierzemy APP_VERSION i publikujemy, o ile
+  # takiego wydania jeszcze nie ma — "commit and push" = nowa wersja u
+  # operatora, bez recznego tagowania (tag zaklada `gh release create`).
+  #
+  # Starsze wydania tego systemu sa usuwane razem z tagami (--cleanup-tag),
+  # wiec w repo zostaje po jednym wydaniu na system. Updater pyta o najnowsze,
+  # wiec usuniecie starszych niczego mu nie zabiera.
+  release-windows:
+    name: 3. Release · Windows
+    needs: build-windows
     if: github.ref == 'refs/heads/main'
     runs-on: windows-latest
     steps:
@@ -139,63 +150,89 @@ jobs:
           name: CameraCapture-windows
           path: dist/CameraCapture
 
-      - uses: actions/download-artifact@v8
-        with:
-          name: CameraCapture-macos
-          path: dist-macos
-
-      # Wydanie leci SAMO z pushu na main: bierzemy APP_VERSION i publikujemy
-      # v<APP_VERSION>, o ile takiego release'a jeszcze nie ma. Dzieki temu
-      # "commit and push" = nowa wersja u operatora, bez recznego tagowania
-      # (tag zaklada samo `gh release create` na biezacym commicie).
-      #
       # Zip pakowany Z POZIOMU katalogu (na wierzchu .exe i _internal/) —
       # updater kopiuje zawartosc obok istniejacego .exe, wiec .env i photos/
       # operatora zostaja nietkniete.
-      - name: Publish release for APP_VERSION
+      - name: Publish Windows release for APP_VERSION
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $ver = (Select-String -Path src/version.py -Pattern '^APP_VERSION = "(.+)"').Matches[0].Groups[1].Value
-          $tag = "v$ver"
-          # samo sprawdzenie "czy jest": brak release'a to normalny wynik, nie blad,
-          # wiec gasimy stderr i ErrorActionPreference na czas tego wywolania
+          $tag = "v$ver-windows"
+          # samo sprawdzenie "czy jest": brak wydania to normalny wynik, nie blad
           $ErrorActionPreference = 'Continue'
           gh release view $tag > $null 2> $null
           $exists = ($LASTEXITCODE -eq 0)
           $ErrorActionPreference = 'Stop'
           if ($exists) {
-            Write-Host "Release $tag juz istnieje — podbij APP_VERSION, zeby wydac nowa wersje."
-            exit 0
+            Write-Host "Wydanie $tag juz istnieje — podbij APP_VERSION, zeby wydac nowa wersje."
+          } else {
+            # nazwa paczki z „windows" — updater .exe szuka jej po tym slowie
+            $zip = "CameraCapture-windows-v$ver.zip"
+            Compress-Archive -Path dist\CameraCapture\* -DestinationPath $zip
+            gh release create $tag $zip --title "Camera Capture $ver · Windows" --generate-notes --target $env:GITHUB_SHA --latest
+            Write-Host "Opublikowano $tag"
           }
-          $zip = "CameraCapture-windows-$tag.zip"
-          Compress-Archive -Path dist\CameraCapture\* -DestinationPath $zip
-          # nazwa bez „windows" — updater .exe szuka zalacznika z „windows" w nazwie
-          $mac = "CameraCapture-macos-$tag.zip"
-          Move-Item dist-macos\CameraCapture-macos.zip $mac
-          gh release create $tag $zip $mac --title "Camera Capture $tag" --generate-notes --target $env:GITHUB_SHA
-          Write-Host "Opublikowano $tag"
 
-      # Zostaje tylko wydanie biezacej wersji: starsze (z paczkami po ~150 MB)
-      # sa usuwane razem z tagami (--cleanup-tag): w repo zostaje jedno wydanie
-      # i jeden tag. Numer wersji kazdego commita jest i tak w jego opisie.
-      # Updater pyta o releases/latest, wiec usuniecie starszych niczego mu nie
-      # zabiera. Krok idzie tez wtedy, gdy wydanie juz istnialo (push bez
-      # podbicia wersji), wiec sprzata zalegle.
-      - name: Remove older releases
+      # Usuwa starsze wydania Windows i dawne wspolne wydania (tag bez systemu,
+      # sprzed rozdzielenia). Bez wydania biezacej wersji niczego nie kasujemy —
+      # nieudana publikacja nie moze zostawic repo bez wydania.
+      - name: Remove older Windows releases
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $ver = (Select-String -Path src/version.py -Pattern '^APP_VERSION = "(.+)"').Matches[0].Groups[1].Value
-          $tag = "v$ver"
-          # bez wydania biezacej wersji niczego nie kasujemy — inaczej nieudana
-          # publikacja zostawilaby repo bez zadnego wydania
+          $tag = "v$ver-windows"
           gh release view $tag > $null
           if ($LASTEXITCODE -ne 0) { throw "Brak wydania $tag — nie usuwam starszych." }
-          $old = gh release list --limit 100 --json tagName --jq '.[].tagName' | Where-Object { $_ -ne $tag }
+          $old = gh release list --limit 100 --json tagName --jq '.[].tagName' |
+            Where-Object { $_ -ne $tag -and ($_ -like '*-windows' -or $_ -notlike '*-*') }
           foreach ($t in $old) {
             gh release delete $t --yes --cleanup-tag
             Write-Host "Usunieto wydanie i tag $t"
           }
+
+  release-macos:
+    name: 3. Release · macOS
+    needs: build-macos
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: CameraCapture-macos
+          path: dist-macos
+
+      - name: Publish macOS release for APP_VERSION
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ver=$(sed -n 's/^APP_VERSION = "\(.*\)"/\1/p' src/version.py)
+          tag="v$ver-macos"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Wydanie $tag juz istnieje — podbij APP_VERSION, zeby wydac nowa wersje."
+          else
+            zip="CameraCapture-macos-v$ver.zip"
+            mv dist-macos/CameraCapture-macos.zip "$zip"
+            gh release create "$tag" "$zip" --title "Camera Capture $ver · macOS" --generate-notes --target "$GITHUB_SHA" --latest=false
+            echo "Opublikowano $tag"
+          fi
+
+      - name: Remove older macOS releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ver=$(sed -n 's/^APP_VERSION = "\(.*\)"/\1/p' src/version.py)
+          tag="v$ver-macos"
+          gh release view "$tag" >/dev/null || { echo "Brak wydania $tag — nie usuwam starszych."; exit 1; }
+          # pipefail: brak starszych wydan (grep bez trafien) to nie blad
+          gh release list --limit 100 --json tagName --jq '.[].tagName' |
+            { grep -- '-macos$' || true; } | { grep -vx -- "$tag" || true; } |
+            while read -r t; do
+              gh release delete "$t" --yes --cleanup-tag
+              echo "Usunieto wydanie i tag $t"
+            done

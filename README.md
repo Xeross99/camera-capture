@@ -131,7 +131,7 @@ The app talks to the server through `/api/photo_studio` (address and token in Se
 Windows 10 or 11 with the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
 (Windows 11 has it built in).
 
-1. Download `CameraCapture-windows-vX.Y.Z.zip` from the latest release and unzip it anywhere.
+1. Download `CameraCapture-windows-vX.Y.Z.zip` from the latest Windows release and unzip it anywhere.
 2. Put `EDSDK.dll` and `EdsImage.dll` (x64) from Canon EDSDK next to the `.exe`. They are not in the
    repository because Canon's licence does not allow it: download Canon EDSDK from Canon's developer
    programme (a free account).
@@ -144,7 +144,7 @@ so it needs internet access once.
 
 ## Installing on macOS
 
-1. Download `CameraCapture-macos-vX.Y.Z.zip` from the latest release (a Mac with Apple silicon, M1 or newer)
+1. Download `CameraCapture-macos-vX.Y.Z.zip` from the latest macOS release (a Mac with Apple silicon, M1 or newer)
    and unzip it. You get a `Camera Capture` folder with `Camera Capture.app` inside.
 2. Put `EDSDK.framework` from Canon EDSDK for macOS into that folder, next to `Camera Capture.app`.
 3. Copy `.env.example` to `.env` and enter the API token (`AUTOMAT_TOKEN`). Photos go to `photos/` in the
@@ -152,8 +152,8 @@ so it needs internet access once.
 4. The app is not signed by Apple, so the first time right-click it and choose **Open**, or remove the
    quarantine: `xattr -dr com.apple.quarantine "Camera Capture.app" EDSDK.framework`.
 
-On macOS the app only tells you a new version is out. Unzip the new package in place of the old
-`Camera Capture.app`.
+On macOS the app tells you a new version is out and its **Download for macOS** button opens the new
+package. Unzip it in place of the old `Camera Capture.app`.
 
 ## Updates
 
@@ -161,8 +161,8 @@ The app checks for a newer version at start, and Settings can check on demand. O
 package, replaces the files and restarts the app. `.env`, `photos/` and the EDSDK files are left untouched.
 
 A new version ships by itself: bump `APP_VERSION` in `src/version.py` and push to `main`. GitHub Actions
-runs the tests, builds the Windows and macOS packages and publishes a release in this repository, where the
-app picks up its updates.
+runs the tests, builds the Windows and macOS packages and publishes a separate release for each system
+(`vX.Y.Z-windows` and `vX.Y.Z-macos`), where the app picks up its updates.
 
 ## Camera notes
 

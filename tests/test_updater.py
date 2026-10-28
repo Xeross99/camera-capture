@@ -27,24 +27,42 @@ EXE = "Trixbrix - Camera Capture.exe"
 VERSION = "9.9.9"
 
 
-def release_json(repo: str, assets=("windows", "macos")) -> dict:
-    """Odpowiedź GitHuba na /releases/latest."""
+def release_json(repo: str, kind: str = "windows", version: str = VERSION,
+                 asset_id: int = 1, **extra) -> dict:
+    """Jedno wydanie z listy GitHuba (/releases): osobne na system, tag
+    `vX.Y.Z-<system>`, w środku jedna paczka tego systemu."""
+    tag = f"v{version}-{kind}"
     return {
-        "tag_name": f"v{VERSION}",
+        "tag_name": tag,
         "published_at": "2026-10-28T07:00:00Z",
-        "body": "Co nowego\n",
-        "html_url": f"https://github.com/{repo}/releases/tag/v{VERSION}",
-        "assets": [
-            {
-                "name": f"CameraCapture-{kind}-v{VERSION}.zip",
-                "url": f"https://api.github.com/repos/{repo}/releases/assets/{i}",
-                "browser_download_url":
-                    f"https://github.com/{repo}/releases/download/v{VERSION}/CameraCapture-{kind}-v{VERSION}.zip",
-                "size": 1234 + i,
-            }
-            for i, kind in enumerate(assets, start=1)
-        ],
+        "body": f"Co nowego ({kind})\n",
+        "html_url": f"https://github.com/{repo}/releases/tag/{tag}",
+        "draft": False,
+        "prerelease": False,
+        "assets": [{
+            "name": f"CameraCapture-{kind}-v{version}.zip",
+            "url": f"https://api.github.com/repos/{repo}/releases/assets/{asset_id}",
+            "browser_download_url":
+                f"https://github.com/{repo}/releases/download/{tag}/CameraCapture-{kind}-v{version}.zip",
+            "size": 1000 + asset_id,
+        }],
+        **extra,
     }
+
+
+def releases(repo: str) -> list[dict]:
+    """Repo po wydaniu 9.9.9: Windows i macOS osobno, starsze niżej, a na
+    końcu dawne wspólne wydanie z obiema paczkami."""
+    combined = release_json(repo, "windows", "2.4.11", 9)
+    combined["tag_name"] = "v2.4.11"
+    combined["assets"] += release_json(repo, "macos", "2.4.11", 10)["assets"]
+    return [
+        release_json(repo, "macos", VERSION, 2),
+        release_json(repo, "windows", VERSION, 1),
+        release_json(repo, "windows", "9.9.8", 3),
+        release_json(repo, "macos", "9.9.8", 4),
+        combined,
+    ]
 
 
 def package_zip(files: dict[str, str]) -> bytes:
@@ -118,44 +136,74 @@ def fake_get(monkeypatch, responses: list, calls: list | None = None):
 
 # ---------- sprawdzenie wydania ----------
 
-def test_latest_release_picks_windows_package_and_macos_link(upd, monkeypatch):
+def test_each_system_takes_its_own_release(upd, monkeypatch):
     calls = []
-    fake_get(monkeypatch, [FakeResponse(json_data=release_json(upd.GITHUB_REPO))], calls)
-    rel = upd.latest_release()
-    assert calls[0][0] == upd.RELEASES_API
-    assert rel["version"] == VERSION and rel["tag"] == f"v{VERSION}"
+    fake_get(monkeypatch, [FakeResponse(json_data=releases(upd.GITHUB_REPO))] * 2, calls)
+    win = upd.latest_release("windows")
+    assert calls[0][0] == upd.RELEASES_API and calls[0][1]["params"] == {"per_page": 30}
+    assert win["version"] == VERSION and win["tag"] == f"v{VERSION}-windows"
     # Windows pobiera przez API (działa też z tokenem dla prywatnego repo)
-    assert rel["url"] == f"https://api.github.com/repos/{upd.GITHUB_REPO}/releases/assets/1"
-    assert rel["size"] == 1235
+    assert win["url"] == f"https://api.github.com/repos/{upd.GITHUB_REPO}/releases/assets/1"
+    assert win["size"] == 1001
+    assert win["notes"] == "Co nowego (windows)"
+    assert win["page"].endswith(f"/releases/tag/v{VERSION}-windows")
+    mac = upd.latest_release("macos")
+    assert mac["tag"] == f"v{VERSION}-macos"
     # macOS: zwykły link do paczki dla przeglądarki
-    assert rel["mac_url"].endswith(f"CameraCapture-macos-v{VERSION}.zip")
-    assert rel["mac_url"].startswith(f"https://github.com/{upd.GITHUB_REPO}/")
-    assert rel["notes"] == "Co nowego"
-    assert rel["page"].endswith(f"/releases/tag/v{VERSION}")
+    assert mac["download"] == (f"https://github.com/{upd.GITHUB_REPO}/releases/download/"
+                               f"v{VERSION}-macos/CameraCapture-macos-v{VERSION}.zip")
 
 
-def test_latest_release_without_release_or_packages(upd, monkeypatch):
+def test_newest_version_wins_whatever_the_list_order(upd, monkeypatch):
+    repo = upd.GITHUB_REPO
+    listed = [release_json(repo, "windows", "9.9.8", 1), release_json(repo, "windows", "9.10.0", 2),
+              release_json(repo, "macos", "9.11.0", 3)]
+    fake_get(monkeypatch, [FakeResponse(json_data=listed)])
+    assert upd.latest_release("windows")["version"] == "9.10.0"
+
+
+def test_without_the_new_split_old_combined_release_still_works(upd, monkeypatch):
+    """Zanim wyjdzie pierwsze osobne wydanie, w repo jest tylko wspólne."""
+    fake_get(monkeypatch, [FakeResponse(json_data=releases(upd.GITHUB_REPO)[-1:])] * 2)
+    assert upd.latest_release("windows")["url"].endswith("/assets/9")
+    assert upd.latest_release("macos")["download"].endswith("CameraCapture-macos-v2.4.11.zip")
+
+
+def test_system_decides_which_package_to_look_for(upd, monkeypatch):
+    fake_get(monkeypatch, [FakeResponse(json_data=releases(upd.GITHUB_REPO))] * 2)
+    monkeypatch.setattr(sys, "platform", "darwin")
+    assert upd.latest_release()["tag"].endswith("-macos")
+    monkeypatch.setattr(sys, "platform", "win32")
+    assert upd.latest_release()["tag"].endswith("-windows")
+
+
+def test_no_usable_release(upd, monkeypatch):
+    repo = upd.GITHUB_REPO
     fake_get(monkeypatch, [FakeResponse(status=404)])
-    assert upd.latest_release() is None
-    bad = release_json(upd.GITHUB_REPO)
-    bad["tag_name"] = "nightly"
-    fake_get(monkeypatch, [FakeResponse(json_data=bad)])
-    assert upd.latest_release() is None
-    fake_get(monkeypatch, [FakeResponse(json_data=release_json(upd.GITHUB_REPO, assets=()))])
-    rel = upd.latest_release()
-    assert rel["version"] == VERSION and rel["url"] == "" and rel["mac_url"] == ""
+    assert upd.latest_release("windows") is None
+    fake_get(monkeypatch, [FakeResponse(json_data=[])])
+    assert upd.latest_release("windows") is None
+    # tylko paczka macOS — Windows nie ma czego pobrać
+    fake_get(monkeypatch, [FakeResponse(json_data=[release_json(repo, "macos")])])
+    assert upd.latest_release("windows") is None
+    # szkic, wersja testowa i tag bez numeru wersji się nie liczą
+    skipped = [release_json(repo, "windows", "9.9.9", 1, draft=True),
+               release_json(repo, "windows", "9.9.8", 2, prerelease=True),
+               {**release_json(repo, "windows", "9.9.7", 3), "tag_name": "nightly"}]
+    fake_get(monkeypatch, [FakeResponse(json_data=skipped)])
+    assert upd.latest_release("windows") is None
     fake_get(monkeypatch, [FakeResponse(status=500)])
     with pytest.raises(requests.HTTPError):
-        upd.latest_release()
+        upd.latest_release("windows")
 
 
 def test_token_goes_only_into_the_header(upd, monkeypatch):
     calls = []
-    fake_get(monkeypatch, [FakeResponse(json_data=release_json(upd.GITHUB_REPO))] * 2, calls)
-    upd.latest_release()
+    fake_get(monkeypatch, [FakeResponse(json_data=releases(upd.GITHUB_REPO))] * 2, calls)
+    upd.latest_release("windows")
     assert "Authorization" not in calls[0][1]["headers"]
     monkeypatch.setattr(upd, "UPDATE_TOKEN", "ghp_test")
-    upd.latest_release()
+    upd.latest_release("windows")
     assert calls[1][1]["headers"]["Authorization"] == "Bearer ghp_test"
     assert "ghp_test" not in calls[1][0]
 
@@ -413,12 +461,13 @@ def test_user_files_live_next_to_the_app_not_inside_it(platform, executable, exp
 
 # ---------- przepływ w aplikacji ----------
 
-def release_info(upd) -> dict:
-    rel = release_json(upd.GITHUB_REPO)
+def release_info(upd, kind: str = "windows") -> dict:
+    """To, co `latest_release()` oddaje aplikacji dla danego systemu."""
+    rel = release_json(upd.GITHUB_REPO, kind)
+    asset = rel["assets"][0]
     return {
         "version": VERSION, "tag": rel["tag_name"], "published": rel["published_at"],
-        "url": rel["assets"][0]["url"], "size": 1235,
-        "mac_url": rel["assets"][1]["browser_download_url"],
+        "url": asset["url"], "size": asset["size"], "download": asset["browser_download_url"],
         "notes": "Co nowego", "page": rel["html_url"],
     }
 
@@ -504,7 +553,7 @@ def test_windows_banner_updates_with_one_click(windows_app, page: Page, monkeypa
 @pytest.fixture
 def mac_app(make_app, monkeypatch):
     from src import updater
-    monkeypatch.setattr(updater, "latest_release", lambda: release_info(updater))
+    monkeypatch.setattr(updater, "latest_release", lambda: release_info(updater, "macos"))
     monkeypatch.setattr(updater, "can_self_update", lambda: False)
     monkeypatch.setattr(updater, "packaged_mac", lambda: True)
     app = make_app()
@@ -516,7 +565,7 @@ def test_mac_app_points_to_the_macos_package(mac_app, monkeypatch):
     from src import updater
     u = mac_app.state()["update"]
     assert not u["canApply"] and u["packagedMac"]
-    assert u["macDownload"] == release_info(updater)["mac_url"]
+    assert u["macDownload"] == release_info(updater, "macos")["download"]
     texts = log_texts(mac_app)
     assert any("Pobierz paczkę dla macOS" in t for t in texts)
     assert not any("git pull" in t for t in texts)
@@ -539,7 +588,7 @@ def test_mac_banner_opens_the_macos_package(mac_app, page: Page, monkeypatch):
     expect(page.get_by_text("git pull")).to_have_count(0)
     page.get_by_role("button", name="Pobierz dla macOS").click()
     wait_for(lambda: opened, 10, "otwarcie paczki macOS")
-    assert opened == [release_info(updater)["mac_url"]]
+    assert opened == [release_info(updater, "macos")["download"]]
 
 
 def test_source_run_suggests_git_pull(make_app, monkeypatch):

@@ -1,8 +1,10 @@
 """Auto-aktualizacja z GitHub Releases.
 
-Kanal wydan: publiczne repo `GITHUB_REPO`, release z tagiem `vX.Y.Z` i
-zalacznikiem `CameraCapture-windows-vX.Y.Z.zip` (zawartosc `dist/CameraCapture`
-spakowana z poziomu katalogu — w zipie na wierzchu leza `.exe` i `_internal/`).
+Kanal wydan: publiczne repo `GITHUB_REPO`, osobne wydanie na system: tag
+`vX.Y.Z-windows` z `CameraCapture-windows-vX.Y.Z.zip` (zawartosc
+`dist/CameraCapture` spakowana z poziomu katalogu — w zipie na wierzchu leza
+`.exe` i `_internal/`) i tag `vX.Y.Z-macos` z `CameraCapture-macos-vX.Y.Z.zip`.
+Aplikacja bierze najnowsze wydanie, ktore ma paczke dla JEJ systemu.
 Repo jest publiczne, wiec token nie jest potrzebny. Opcjonalny
 `GITHUB_UPDATE_TOKEN` w `.env` (albo `src/update_token.py`, poza gitem) idzie
 w naglowku — przydaje sie przy limicie zapytan albo gdyby repo bylo prywatne.
@@ -65,7 +67,7 @@ except ImportError:
     UPDATE_TOKEN = ""
 UPDATE_TOKEN = os.environ.get("GITHUB_UPDATE_TOKEN", "").strip() or UPDATE_TOKEN
 
-RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases"
 ASSET_HINT = "windows"
 MAC_ASSET_HINT = "macos"
 HTTP_TIMEOUT = 10
@@ -106,40 +108,51 @@ def _zip_asset(rel: dict, hint: str) -> dict | None:
     )
 
 
-def latest_release() -> dict | None:
-    """Najnowszy release z GitHuba (niezaleznie od tego, czy jest nowszy)
-    albo None, gdy repo nie ma zadnego wydania.
+def platform_hint() -> str:
+    """Czyja paczka nas interesuje: macOS na Macu, Windows wszedzie indziej."""
+    return MAC_ASSET_HINT if sys.platform == "darwin" else ASSET_HINT
 
-    Zwraca {version, tag, published, url, size, mac_url, notes, page}; `url`
-    puste = release bez zalacznika dla Windows (mozna tylko pokazac, ze cos
-    wyszlo). `mac_url` to link do paczki macOS dla przegladarki."""
+
+def latest_release(hint: str | None = None) -> dict | None:
+    """Najnowsze wydanie z paczka dla tego systemu (`hint`: "windows" /
+    "macos", domyslnie wg platformy) — niezaleznie od tego, czy jest nowsze —
+    albo None, gdy takiego wydania nie ma.
+
+    Zwraca {version, tag, published, url, download, size, notes, page}: `url`
+    to adres paczki w API (pobiera go .exe, dziala tez z tokenem), `download`
+    zwykly link dla przegladarki (paczka macOS)."""
     import requests
 
+    hint = hint or platform_hint()
     r = requests.get(
-        RELEASES_API, timeout=HTTP_TIMEOUT,
+        RELEASES_API, timeout=HTTP_TIMEOUT, params={"per_page": 30},
         headers=_github_headers("application/vnd.github+json"),
     )
     if r.status_code == 404:
-        # repo bez zadnego wydania — nie ma z czym porownywac (prywatne repo
-        # bez tokena wyglada tak samo, stad token wpisany w .exe)
+        # repo bez dostepu (prywatne repo bez tokena) — nie ma z czym porownywac
         return None
     r.raise_for_status()
-    rel = r.json()
-    remote = parse_version(str(rel.get("tag_name") or ""))
-    if remote is None:
+    found = []
+    for rel in r.json() or []:
+        if rel.get("draft") or rel.get("prerelease"):
+            continue
+        remote = parse_version(str(rel.get("tag_name") or ""))
+        asset = _zip_asset(rel, hint)
+        if remote is not None and asset is not None:
+            found.append((remote, rel, asset))
+    if not found:
         return None
-    asset = _zip_asset(rel, ASSET_HINT)
-    mac = _zip_asset(rel, MAC_ASSET_HINT)
+    remote, rel, asset = max(found, key=lambda f: f[0])
     return {
         "version": ".".join(str(n) for n in remote),
         "tag": str(rel.get("tag_name") or ""),
         "published": str(rel.get("published_at") or ""),
         # adres zalacznika w API, nie `browser_download_url` — ten z prywatnego
         # repo bez zalogowanej przegladarki zwraca 404 nawet z tokenem
-        "url": str(asset.get("url", "")) if asset else "",
-        "size": int(asset.get("size") or 0) if asset else 0,
+        "url": str(asset.get("url", "")),
+        "size": int(asset.get("size") or 0),
         # paczke macOS pobiera przegladarka, wiec tu zwykly adres pobrania
-        "mac_url": str(mac.get("browser_download_url", "")) if mac else "",
+        "download": str(asset.get("browser_download_url", "")),
         "notes": str(rel.get("body") or "").strip(),
         "page": str(rel.get("html_url") or ""),
     }

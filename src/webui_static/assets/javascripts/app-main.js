@@ -134,7 +134,8 @@ let lastShellKey = "", lastSesja = "", lastUstawienia = "", lastStrip = "";
 const sesjaKey = st => JSON.stringify([st.session.name, st.session.dir,
   st.post, st.previewOn, st.edsdkMissing, st.focusSupported, S.selShot, S.logOpen, S.grid, S.reviewMode]);
 
-const stripSig = st => JSON.stringify([st.shots, st.processing, st.downloading]);
+const stripSig = st => JSON.stringify([st.shots, st.processing, st.downloading,
+  (st.progress || []).map(p => p.file)]);
 
 function renderShell(force) {
   const st = S.state;
@@ -723,6 +724,7 @@ async function tick() {
     S.logSeq = st.logSeq || 0;
     st.log = mergeLog(st.log);
     S.state = st;
+    S.procRecv = performance.now();   // app-progress.js: punkt odniesienia dla agoMs
     applyTheme(st.settings && st.settings.uiTheme);
     applyLang(st.settings && st.settings.uiLang);
     if (!lastShellKey) renderShell(true);

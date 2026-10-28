@@ -10,6 +10,8 @@ on:
 
 permissions:
   contents: write
+  # kasowanie artefaktu buildu po wydaniu (krok "Delete build artifact")
+  actions: write
 
 # Nowy push na te sama galaz anuluje starszy, niedokonczony przebieg — przy
 # kilku szybkich pushach wydaje sie tylko najnowsza wersja, a nie kazda po kolei
@@ -89,6 +91,10 @@ jobs:
           path: dist/CameraCapture
           # bez tego .env.example (dotfile) wypada z paczki
           include-hidden-files: true
+          # artefakt to tylko przekazanie paczki do joba wydania (paczka
+          # zostaje w Releases); ~145 MB z domyslnymi 90 dniami zjadalo
+          # darmowy limit storage Actions
+          retention-days: 1
 
   # Camera Capture.app dla macOS (Apple Silicon — runner macos-latest to arm64).
   # Bez podpisu Apple. W zipie katalog „Camera Capture" z .app i .env.example:
@@ -123,6 +129,7 @@ jobs:
         with:
           name: CameraCapture-macos
           path: CameraCapture-macos.zip
+          retention-days: 1
 
   # Wydania dopiero po zielonym buildzie, i tylko z main — reczny run na innej
   # galezi to same testy + build. Kazdy system ma OSOBNE wydanie (vX.Y.Z-windows
@@ -194,6 +201,20 @@ jobs:
             Write-Host "Usunieto wydanie i tag $t"
           }
 
+      # Paczka jest juz w Releases — artefakt nie musi czekac na retention-days.
+      # Przy nieudanym wydaniu zostaje (ponowienie joba go pobiera).
+      - name: Delete build artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
+            --jq '.artifacts[] | select(.name == "CameraCapture-windows") | .id' |
+            while read -r id; do
+              gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$id"
+              echo "Usunieto artefakt CameraCapture-windows ($id)"
+            done
+
   release-macos:
     name: 3. Release · macOS
     needs: build-macos
@@ -235,4 +256,18 @@ jobs:
             while read -r t; do
               gh release delete "$t" --yes --cleanup-tag
               echo "Usunieto wydanie i tag $t"
+            done
+
+      # Paczka jest juz w Releases — artefakt nie musi czekac na retention-days.
+      # Przy nieudanym wydaniu zostaje (ponowienie joba go pobiera).
+      - name: Delete build artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
+            --jq '.artifacts[] | select(.name == "CameraCapture-macos") | .id' |
+            while read -r id; do
+              gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$id"
+              echo "Usunieto artefakt CameraCapture-macos ($id)"
             done

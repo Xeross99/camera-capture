@@ -283,3 +283,36 @@ def test_series_with_overlay_keeps_product_in_the_same_place(center, zoom):
         out = {}
         got = _product_box_in(run(_shifted_shot(dx, dy, k), ref))
         assert np.abs(got - ref_box).max() <= 3, (dx, dy, k)
+
+
+def _rotation_between(img, ref_img):
+    """Kat (stopnie), o ktory trzeba obrocic produkt z `img`, zeby lezal jak
+    w `ref_img` — pomiar niezalezny od aplikacji (maski z progu jasnosci)."""
+    from scipy import ndimage
+    def mask(im):
+        return (np.asarray(im.convert("L").resize((500, 500))) < 200).astype(np.float32)
+    a, b = mask(ref_img), mask(img)
+    ca = ndimage.center_of_mass(a)
+    def cost(ang):
+        r = ndimage.rotate(b, ang, reshape=False, order=1)
+        cb = ndimage.center_of_mass(r)
+        return np.abs(ndimage.shift(r, (ca[0] - cb[0], ca[1] - cb[1]), order=1) - a).sum()
+    angles = np.arange(-3, 3.01, 0.1)
+    return float(angles[int(np.argmin([cost(x) for x in angles]))])
+
+
+def test_overlay_series_straightens_slightly_rotated_product():
+    """Prawdziwa seria (zwrotnica R148): drugie zdjecie z produktem obroconym
+    o ~1 stopien — po korekcie do nakladki gotowe zdjecie lezy jak pierwsze,
+    wiec przegladane strzalkami nie skacze (dol produktu rozjezdzal sie w X)."""
+    from src.background import clean_background
+    a = Image.open(FIXTURES / "series_r148_a.jpg")
+    b = Image.open(FIXTURES / "series_r148_b.jpg")
+    ref = {}
+    ref_img = clean_background(a, (1000, 1000), frame_out=ref)
+    plain = clean_background(b, (1000, 1000))
+    out = {}
+    fixed = clean_background(b, (1000, 1000), align_to=ref, frame_out=out)
+    assert abs(_rotation_between(plain, ref_img)) >= 0.8, "bez korekty produkt jest obrocony"
+    assert out.get("aligned", {}).get("rot"), "korekta obrotu zadzialala"
+    assert abs(_rotation_between(fixed, ref_img)) <= 0.2, "po korekcie lezy jak na zdjeciu wzorcowym"

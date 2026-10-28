@@ -50,6 +50,10 @@ ALIGN_MIN_IOU = 0.85      # pokrycie obrysow produktu (IoU), od ktorego pomagamy
 ALIGN_MAX_SHIFT = 0.02    # przesuniecie kadru: max ulamek szerokosci source
 ALIGN_MAX_SCALE = 0.03    # zmiana przyblizenia: max ±3 %
 ALIGN_EDGE_CLEAR = 0.01   # produkt dalej od krawedzi oryginalu = okno moze z niego wyjsc
+ALIGN_MAX_ROT = 3.0       # korekta obrotu: max ± stopni (dalej = swiadomie inaczej)
+ALIGN_ROT_STEP = 0.1      # dokladnosc szukania kata
+ALIGN_ROT_GAIN = 0.8      # obrot tylko, gdy zgodnosc ksztaltu poprawia sie o >= 20 %
+SHAPE_SIZE = 160          # odcisk ksztaltu produktu (kwadrat wokol obrysu) do szukania kata
 
 Bbox = tuple[int, int, int, int]  # (left, top, right, bottom)
 Window = tuple[int, int, int, int]  # okno cropu w pikselach source (sl, st, sr, sb)
@@ -724,6 +728,44 @@ def _align_to_reference(
     return new, {"iou": round(iou, 3), "dx": ncx - cx, "dy": ncy - cy, "scale": k}
 
 
+def _shape_signature(binary: Image.Image, bbox: Bbox) -> Image.Image:
+    """Odcisk ksztaltu produktu: kwadrat wokol obrysu (1,3 x dluzszy bok),
+    zmniejszony do SHAPE_SIZE — z nim porownujemy kolejne zdjecia, zeby
+    zmierzyc obrot. Zapisywany obok kadru (`frame_out["shape"]`)."""
+    cx, cy = (bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2
+    half = 0.65 * max(bbox[2] - bbox[0], bbox[3] - bbox[1])
+    box = (round(cx - half), round(cy - half), round(cx + half), round(cy + half))
+    return binary.crop(box).resize((SHAPE_SIZE, SHAPE_SIZE), Image.BILINEAR)
+
+
+def _estimate_rotation(shape: Image.Image, ref_shape: Image.Image) -> float | None:
+    """Kat (stopnie, jak w PIL `rotate`: dodatni = przeciwnie do wskazowek
+    zegara), o ktory trzeba obrocic produkt, zeby lezal jak w referencji.
+    Przeszukanie ±ALIGN_MAX_ROT co ALIGN_ROT_STEP z dopasowaniem srodkow masy.
+    None = obrotu nie ma, nie poprawia zgodnosci albo kat siega granicy
+    (wtedy produkt lezy swiadomie inaczej)."""
+    ref = np.asarray(ref_shape.convert("L"), dtype=np.float32) / 255
+    ref_c = ndimage.center_of_mass(ref)
+
+    def cost(ang: float) -> float:
+        arr = np.asarray(shape.rotate(ang, resample=Image.BILINEAR), dtype=np.float32) / 255
+        if not arr.any():
+            return float("inf")
+        c = ndimage.center_of_mass(arr)
+        arr = ndimage.shift(arr, (ref_c[0] - c[0], ref_c[1] - c[1]), order=1)
+        return float(np.abs(arr - ref).sum())
+
+    angles = np.arange(-ALIGN_MAX_ROT, ALIGN_MAX_ROT + 1e-9, ALIGN_ROT_STEP)
+    costs = [cost(a) for a in angles]
+    i = int(np.argmin(costs))
+    best = float(angles[i])
+    if abs(best) < 0.15 or abs(best) > ALIGN_MAX_ROT - ALIGN_ROT_STEP / 2:
+        return None
+    if costs[i] > cost(0.0) * ALIGN_ROT_GAIN:
+        return None
+    return round(best, 2)
+
+
 def _compose_on_canvas(
     img: Image.Image,
     alpha: Image.Image,
@@ -832,12 +874,31 @@ def clean_background(
         return Image.new("RGB", canvas_size, CLEAN_BG_COLOR)
 
     stage("crop")
+    # Korekta obrotu do zdjecia z nakladki: produkt postawiony lekko krzywo
+    # (do ALIGN_MAX_ROT) obracamy wokol jego srodka tak, zeby lezal jak tam.
+    # Tylko gdy produkt i tak prawie sie pokrywa (ten sam prog co przesuniecie).
+    rot = None
+    ref_shape = (align_to or {}).get("shape")
+    if (ref_shape is not None and list(align_to.get("src") or []) == [src_w, src_h]
+            and align_to.get("bbox") and _iou(bbox, tuple(align_to["bbox"])) >= ALIGN_MIN_IOU):
+        rot = _estimate_rotation(_shape_signature(binary, bbox), ref_shape)
+    if rot:
+        center = ((bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2)
+        img = img.rotate(rot, resample=Image.BICUBIC, center=center, fillcolor=CLEAN_BG_COLOR)
+        image = image.rotate(rot, resample=Image.BICUBIC, center=center, fillcolor=CLEAN_BG_COLOR)
+        alpha = alpha.rotate(rot, resample=Image.BICUBIC, center=center, fillcolor=0)
+        binary = binary.rotate(rot, resample=Image.NEAREST, center=center, fillcolor=0)
+        img_lum = np.array(image.convert("L"))
+        bbox = _mask_bbox(binary) or bbox
     window = _select_crop_window(
         image, alpha, bbox, canvas_w / canvas_h, auto_center, auto_zoom, img_lum
     )
     window, aligned = _align_to_reference(window, bbox, align_to, (src_w, src_h))
+    if rot:
+        aligned = {**(aligned or {"iou": None, "dx": 0.0, "dy": 0.0, "scale": 1.0}), "rot": rot}
     if frame_out is not None:
-        frame_out.update(window=list(window), bbox=list(bbox), src=[src_w, src_h])
+        frame_out.update(window=list(window), bbox=list(bbox), src=[src_w, src_h],
+                         shape=_shape_signature(binary, bbox))
         if aligned:
             # dx/dy w pikselach GOTOWEGO zdjecia (log), fx/fy/ox/oy jako ulamki
             # oryginalu — animacja korekty na live view (ten sam kadr co oryginal)

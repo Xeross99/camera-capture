@@ -74,6 +74,31 @@ def find_raw(session_dir: Path, final_name: str) -> Path | None:
 
 NOLOGO_DIR = ".nologo"
 GHOSTS_DIR = ".ghosts"   # zmniejszone oryginały do nakładki na live view
+FRAMES_DIR = ".frames"   # odciski kształtu produktu (korekta obrotu do nakładki)
+
+
+def save_frame(session_dir: Path, filename: str, review: dict, frame: dict) -> None:
+    """Kadr zdjęcia do `review["frame"]`, a odcisk kształtu (obraz) obok,
+    w `.frames/<plik>.png` — w JSON-ie byłby za ciężki dla każdego pollu."""
+    frame = dict(frame)
+    shape = frame.pop("shape", None)
+    if shape is not None:
+        (session_dir / FRAMES_DIR).mkdir(exist_ok=True)
+        shape.save(session_dir / FRAMES_DIR / f"{filename}.png")
+    review["frame"][filename] = frame
+
+
+def load_frame(session_dir: Path, filename: str, review: dict) -> dict | None:
+    """Kadr zdjęcia z nakładki razem z odciskiem kształtu (jeśli jest)."""
+    frame = review["frame"].get(filename)
+    if not frame:
+        return None
+    frame = dict(frame)
+    path = session_dir / FRAMES_DIR / f"{filename}.png"
+    if path.exists():
+        with Image.open(path) as im:
+            frame["shape"] = im.convert("L")
+    return frame
 
 
 def edit_base(session_dir: Path, final_name: str, review: dict) -> Path | None:

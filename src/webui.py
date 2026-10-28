@@ -63,6 +63,9 @@ from .progress import PhotoProgress, stages_for
 from .session_store import (
     NOLOGO_DIR,
     GHOSTS_DIR,
+    FRAMES_DIR,
+    save_frame,
+    load_frame,
     cover_path,
     edit_base,
     finals,
@@ -83,6 +86,7 @@ from .version import APP_VERSION
 from .webui_http import Handler
 
 EN.update({
+    ", obrót {r:+.1f}°": ", rotation {r:+.1f}°",
     "Dopasowano do nakładki ({ref}): przesunięcie {dx:+d}/{dy:+d} px, przybliżenie {z:+.1f} %":
         "Aligned to the overlay ({ref}): shift {dx:+d}/{dy:+d} px, zoom {z:+.1f} %",
     "→ kosz (usuwany po {days} dniach)": "→ trash (deleted after {days} days)",
@@ -998,7 +1002,7 @@ class WebUI:
         automat_ids = {}
         for f in files:
             for cache in (outdir / ".thumbs" / f, outdir / ".views" / f, outdir / NOLOGO_DIR / f,
-                          outdir / GHOSTS_DIR / f):
+                          outdir / GHOSTS_DIR / f, outdir / FRAMES_DIR / f"{f}.png"):
                 retry_locked(lambda c=cache: c.unlink(missing_ok=True))
             for p in ((outdir / f), find_raw(outdir, f)):
                 if p is None or not p.exists():
@@ -1202,7 +1206,7 @@ class WebUI:
         align_to = None
         if job.get("align"):
             with self._review_lock:
-                align_to = load_review(outdir)["frame"].get(job["align"])
+                align_to = load_frame(outdir, job["align"], load_review(outdir))
         frame: dict = {}
         t0 = time.perf_counter()
         try:
@@ -1250,7 +1254,7 @@ class WebUI:
             review = load_review(outdir)
             review["meta"][out.name] = " · ".join(bits)
             if frame:
-                review["frame"][out.name] = frame
+                save_frame(outdir, out.name, review, frame)
             n = len([f for f in finals(outdir) if f not in review["rejected"]])
             if announced_id:
                 # nawet gdy upload pozniej padnie, placeholder w Automacie
@@ -1261,9 +1265,10 @@ class WebUI:
                      name=out.name, n=n, steps=" · ".join(steps)), "ok")
         if frame.get("aligned"):
             a = frame["aligned"]
+            rot = tr(", obrót {r:+.1f}°", r=a["rot"]) if a.get("rot") else ""
             self._log(tr("Dopasowano do nakładki ({ref}): przesunięcie {dx:+d}/{dy:+d} px, "
                          "przybliżenie {z:+.1f} %",
-                         ref=job["align"], dx=a["dx"], dy=a["dy"], z=(1 / a["scale"] - 1) * 100))
+                         ref=job["align"], dx=a["dx"], dy=a["dy"], z=(1 / a["scale"] - 1) * 100) + rot)
         # Upload jako OSOBNY job na koncu kolejki: przy strzelaniu seriami
         # obrobka kolejnego zdjecia nie czeka na siec (~2-3 s na strzale).
         # Ten sam watek worker, wiec zero nowej wspolbieznosci; job niesie
@@ -1681,7 +1686,8 @@ class WebUI:
                 return
             outdir, _ = found
             with self._review_lock:
-                if load_review(outdir)["frame"].get(filename):
+                if (load_review(outdir)["frame"].get(filename)
+                        and (outdir / FRAMES_DIR / f"{filename}.png").exists()):
                     return
             raw = find_raw(outdir, filename)
             if raw is None:
@@ -1694,7 +1700,7 @@ class WebUI:
             if frame:
                 with self._review_lock:
                     review = load_review(outdir)
-                    review["frame"][filename] = frame
+                    save_frame(outdir, filename, review, frame)
                     save_review(outdir, review)
                 self._shots_cache = None
         finally:

@@ -1324,7 +1324,8 @@ function playAlignAnim(st, shot) {
     img.style.display = "block";
     img.style.transformOrigin = `${a.ox * 100}% ${a.oy * 100}%`;
     const op = Math.max(S.ghost.opacity, 0.45);
-    const end = `translate(${-a.fx * 100}%, ${-a.fy * 100}%) scale(${1 / a.scale})`;
+    // obrót z PIL (dodatni = przeciwnie do wskazówek) to w CSS ujemny kąt
+    const end = `translate(${-a.fx * 100}%, ${-a.fy * 100}%) scale(${1 / a.scale}) rotate(${-(a.rot || 0)}deg)`;
     const hide = () => { img.style.display = "none"; };
     try {
       const anim = img.animate([
@@ -1389,9 +1390,10 @@ function boxIou(a, b) {
 function alignGuideReconcile(st, shot) {
   const el = $("align-guide");
   if (!el) return;
-  // zdjęcie z oryginałem, ale sprzed zapisywania kadrów — backend raz
-  // policzy kadr z oryginału (job ghost_frame), kontur pojawi się sam
-  if (shot && S.ghost.align && !shot.box && shot.ghost === "raw" && S.ghostFrameAsked !== shot.file) {
+  // zdjęcie z oryginałem bez zapisanego kadru albo odcisku kształtu (sprzed
+  // tych wersji) — backend raz policzy je z oryginału (job ghost_frame, nic
+  // nie robi, gdy oba są); kontur pojawi się sam
+  if (shot && S.ghost.align && shot.ghost === "raw" && S.ghostFrameAsked !== shot.file) {
     S.ghostFrameAsked = shot.file;
     post({ action: "ghost_frame", file: shot.file });
   }

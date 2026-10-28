@@ -49,6 +49,7 @@ EN.update({
 ALIGN_MIN_IOU = 0.85      # pokrycie obrysow produktu (IoU), od ktorego pomagamy
 ALIGN_MAX_SHIFT = 0.02    # przesuniecie kadru: max ulamek szerokosci source
 ALIGN_MAX_SCALE = 0.03    # zmiana przyblizenia: max ±3 %
+ALIGN_EDGE_CLEAR = 0.01   # produkt dalej od krawedzi oryginalu = okno moze z niego wyjsc
 
 Bbox = tuple[int, int, int, int]  # (left, top, right, bottom)
 Window = tuple[int, int, int, int]  # okno cropu w pikselach source (sl, st, sr, sb)
@@ -668,8 +669,8 @@ def _align_to_reference(
     window: Window, bbox: Bbox, ref: dict | None, src_size: tuple[int, int]
 ) -> tuple[Window, dict | None]:
     """Dociaga okno cropu do kadru zdjecia referencyjnego (nakladka na live
-    view): docelowo ten sam rozmiar okna co tam i produkt w tym samym miejscu
-    kadru. Ruch jest przyciety do ALIGN_MAX_SHIFT / ALIGN_MAX_SCALE, a pomoc
+    view): docelowo produkt w tym samym miejscu i tej samej wielkosci
+    wzgledem kadru co w referencji. Ruch jest przyciety do ALIGN_MAX_SHIFT / ALIGN_MAX_SCALE, a pomoc
     rusza tylko przy pokryciu produktu >= ALIGN_MIN_IOU — produkt postawiony
     swiadomie inaczej zostaje nietkniety. Nigdy nie ucina produktu ani nie
     wyprowadza okna poza source, jesli wczesniej sie w nim miescilo."""
@@ -685,21 +686,38 @@ def _align_to_reference(
     sl, st, sr, sb = window
     cw, ch = sr - sl, sb - st
     cx, cy = (sl + sr) / 2, (st + sb) / 2
-    # cel: okno referencji przesuniete o tyle, o ile przesunal sie produkt
-    dx_prod = (bbox[0] + bbox[2] - rbox[0] - rbox[2]) / 2
-    dy_prod = (bbox[1] + bbox[3] - rbox[1] - rbox[3]) / 2
-    tcx = (rwin[0] + rwin[2]) / 2 + dx_prod
-    tcy = (rwin[1] + rwin[3]) / 2 + dy_prod
+    # Cel: okno, w ktorym produkt zajmuje TO SAMO miejsce i te sama wielkosc
+    # co w referencji — w gotowych zdjeciach przegladanych strzalkami produkt
+    # ma stac idealnie w jednym miejscu. Produkt blizej/dalej od aparatu
+    # (inny rozmiar obrysu) = okno proporcjonalnie wieksze/mniejsze.
+    sz = ((bbox[2] - bbox[0]) / (rbox[2] - rbox[0]) + (bbox[3] - bbox[1]) / (rbox[3] - rbox[1])) / 2
+    tcx = (bbox[0] + bbox[2]) / 2 + ((rwin[0] + rwin[2]) - (rbox[0] + rbox[2])) / 2 * sz
+    tcy = (bbox[1] + bbox[3]) / 2 + ((rwin[1] + rwin[3]) - (rbox[1] + rbox[3])) / 2 * sz
+    tw = (rwin[2] - rwin[0]) * sz
     lim = ALIGN_MAX_SHIFT * src_w
     clamp = lambda v, m: max(-m, min(m, v))
     ncx = cx + clamp(tcx - cx, lim)
     ncy = cy + clamp(tcy - cy, lim)
-    k = max(1 - ALIGN_MAX_SCALE, min(1 + ALIGN_MAX_SCALE, (rwin[2] - rwin[0]) / cw))
+    k = max(1 - ALIGN_MAX_SCALE, min(1 + ALIGN_MAX_SCALE, tw / cw))
     nw, nh = cw * k, ch * k
-    new = (round(ncx - nw / 2), round(ncy - nh / 2), round(ncx + nw / 2), round(ncy + nh / 2))
     inside = lambda w: w[0] >= 0 and w[1] >= 0 and w[2] <= src_w and w[3] <= src_h
     holds = lambda w: w[0] <= bbox[0] and w[1] <= bbox[1] and w[2] >= bbox[2] and w[3] >= bbox[3]
-    if (inside(window) and not inside(new)) or (holds(window) and not holds(new)):
+    # Produkt z dala od krawedzi oryginalu: okno moze wyjsc poza oryginal —
+    # tlo i tak jest wybielane, a dopelnienie poza oryginalem jest biale
+    # (_compose_on_canvas), wiec szwu nie widac. Bez tego bez przyblizania
+    # (okno = cala wysokosc oryginalu) korekta w pionie byla niemozliwa.
+    edge = ALIGN_EDGE_CLEAR * min(src_w, src_h)
+    free = (bbox[0] > edge and bbox[1] > edge
+            and bbox[2] < src_w - edge and bbox[3] < src_h - edge)
+    if inside(window) and not free:
+        # produkt przy krawedzi (np. swiadomie uciety) — okno zostaje
+        # w oryginale; poprawiamy tyle, ile sie miesci
+        fit = min(1.0, src_w / nw, src_h / nh)
+        nw, nh, k = nw * fit, nh * fit, k * fit
+        ncx = min(max(ncx, nw / 2), src_w - nw / 2)
+        ncy = min(max(ncy, nh / 2), src_h - nh / 2)
+    new = (round(ncx - nw / 2), round(ncy - nh / 2), round(ncx + nw / 2), round(ncy + nh / 2))
+    if (inside(window) and not free and not inside(new)) or (holds(window) and not holds(new)):
         return window, None
     if new == tuple(window):
         return window, None

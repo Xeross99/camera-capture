@@ -116,6 +116,34 @@ def test_align_correction_is_animated_on_live_view(app, ui):
     expect(anim).to_be_hidden(timeout=4000)
 
 
+def test_overlay_stays_on_its_photo_after_next_shot(app, ui):
+    start_session(ui)
+    ui.keyboard.press("Enter")
+    wait_for(lambda: app.state()["session"]["count"] == 1 and not app.state()["busy"], 120, "zdjecie")
+    ui.wait_for_function("S.state.shots.length === 1")
+    ui.keyboard.press("o")
+    ghost = ui.locator("#ghost")
+    expect(ghost).to_be_visible()
+    first = ghost.get_attribute("src")
+    ui.keyboard.press("Enter")
+    wait_for(lambda: app.state()["session"]["count"] == 2 and not app.state()["busy"], 120, "drugie zdjecie")
+    ui.wait_for_function("S.state.shots.length === 2")
+    ui.wait_for_timeout(700)
+    assert ghost.get_attribute("src") == first, "nakladka zostaje na swoim zdjeciu"
+
+
+def test_overlay_shows_live_alignment_guide(app, ui):
+    start_session(ui)
+    ui.keyboard.press("Enter")
+    wait_for(lambda: app.state()["session"]["count"] == 1 and not app.state()["busy"], 120, "zdjecie")
+    ui.wait_for_function("S.state.shots.length === 1 && !!S.state.shots[0].box")
+    ui.keyboard.press("o")
+    guide = ui.locator("#align-guide")
+    expect(guide).to_be_visible()
+    expect(ui.locator("#align-guide-label")).to_have_text(re.compile("korekta|za daleko"))
+    ui.locator("#live").locator("..").screenshot(path="/private/tmp/claude-501/-Users-xeross-Desktop-camera-capture/b4dc7c83-3263-4a48-96b0-c364b2a3c006/scratchpad/guide.png")
+
+
 def test_backspace_in_preview_deletes_photo(app, ui):
     start_session(ui)
     ui.keyboard.press("Enter")

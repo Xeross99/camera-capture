@@ -89,6 +89,13 @@ def edit_base(session_dir: Path, final_name: str, review: dict) -> Path | None:
     return None
 
 
+def _frame_box(frame: dict | None) -> list[float] | None:
+    if not frame or not frame.get("bbox") or not frame.get("src"):
+        return None
+    (l, t, r, b), (w, h) = frame["bbox"], frame["src"]
+    return [l / w, t / h, r / w, b / h]
+
+
 def shot_entries(session_dir: Path | None, review: dict) -> list[dict]:
     """Wpisy zdjec dla frontu (filmstrip sesji). `v` (mtime) idzie w adres
     obrazka: adres zmienia sie tylko ze zmiana pliku, wiec przegladarka moze
@@ -125,6 +132,8 @@ def shot_entries(session_dir: Path | None, review: dict) -> list[dict]:
             "ghost": "raw" if find_raw(session_dir, f) else "final",
             # kadr lekko dociągnięty do nakładki — front animuje korektę na live view
             "aligned": (review.get("frame", {}).get(f) or {}).get("aligned"),
+            # obrys produktu jako ułamki kadru — live view pokazuje, czy korekta zadziała
+            "box": _frame_box(review.get("frame", {}).get(f)),
         }
         for f in (finals(session_dir) if session_dir else [])
     ]

@@ -252,3 +252,34 @@ def test_align_never_cuts_the_product():
     window = (1990, 990, 4010, 3010)
     new, info = _align_to_reference(window, (2000, 1000, 4000, 3000), ref, src)
     assert new[0] <= 2000 and new[2] >= 4000 and new[1] <= 1000 and new[3] >= 3000
+
+
+def _shifted_shot(dx, dy, k):
+    base = Image.open(FIXTURES / "product_raw.jpg").convert("RGB")
+    w, h = base.size
+    sc = base.resize((round(w * k), round(h * k)), Image.LANCZOS)
+    im = Image.new("RGB", (w, h), base.getpixel((5, 5)))
+    im.paste(sc, ((w - sc.width) // 2 + round(dx * w), (h - sc.height) // 2 + round(dy * h)))
+    return im
+
+
+def _product_box_in(img):
+    ys, xs = np.nonzero(np.asarray(img.convert("L")) < 235)
+    return np.array([xs.min(), ys.min(), xs.max(), ys.max()])
+
+
+@pytest.mark.parametrize("center,zoom", [(True, True), (True, False), (False, True), (False, False)])
+def test_series_with_overlay_keeps_product_in_the_same_place(center, zoom):
+    """Seria przy nakladce: produkt postawiony lekko obok (przesuniety, blizej,
+    dalej) w GOTOWYCH zdjeciach stoi tam, gdzie na zdjeciu wzorcowym —
+    przegladane strzalkami nie skacze. Kazda kombinacja centrowania/przyblizania."""
+    from src.background import clean_background
+    run = lambda im, ref=None: clean_background(im, (1000, 1000), auto_center=center,
+                                                auto_zoom=zoom, align_to=ref, frame_out=out)
+    out = {}
+    ref_box = _product_box_in(run(_shifted_shot(0, 0, 1)))
+    ref = dict(out)
+    for dx, dy, k in [(0.015, 0, 1), (-0.01, 0.005, 1), (0, 0, 1.02), (0.01, 0.01, 1.02), (-0.008, 0, 0.985)]:
+        out = {}
+        got = _product_box_in(run(_shifted_shot(dx, dy, k), ref))
+        assert np.abs(got - ref_box).max() <= 3, (dx, dy, k)

@@ -141,6 +141,20 @@ def test_shot_with_overlay_remembers_frame_and_aligns(app):
     assert second, "kadr drugiego zdjecia tez zapisany"
 
 
+def test_overlay_photo_without_frame_gets_one_from_original(app):
+    """Zdjecie sprzed zapisywania kadrow: kadr liczony raz z oryginalu,
+    zeby kontur na live view i korekta dzialaly tez z nim."""
+    from src.session_store import save_review
+    sdir = open_session(app)
+    f = shoot_and_wait(app)
+    review = load_review(sdir)
+    review["frame"].pop(f)
+    save_review(sdir, review)
+    app.action({"action": "ghost_frame", "file": f})
+    wait_for(lambda: load_review(sdir)["frame"].get(f), 60, "kadr policzony z oryginalu")
+    assert shot_entries(sdir, load_review(sdir))[0]["box"]
+
+
 def test_reject_and_accept(app):
     sdir = open_session(app)
     f = shoot_and_wait(app)

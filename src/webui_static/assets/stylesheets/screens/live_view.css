@@ -604,3 +604,57 @@
 .align-illu {
   flex: 0 0 44px;
 }
+/* kontur produktu ze zdjęcia nakładki: zielony = korekta kadru zadziała,
+   szary = produkt za daleko (alignGuideReconcile) */
+.align-guide {
+  position: absolute;
+  z-index: 2;
+  box-sizing: border-box;
+  border: 1.5px dashed rgba(255, 255, 255, .85);
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .25);
+  pointer-events: none;
+  transition: border-color .2s;
+}
+.align-guide > span {
+  position: absolute;
+  left: -1.5px;
+  bottom: calc(100% + 4px);
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: rgba(29, 29, 31, .72);
+  color: #fff;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.align-guide.ok {
+  border: 2px solid #22c55e;
+}
+.align-guide.ok > span {
+  background: #16a34a;
+}
+.align-guide.appear {
+  animation: alignGuideIn .42s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.align-guide.appear > span {
+  animation: alignLabelIn .42s cubic-bezier(0.32, 0.72, 0, 1) .08s backwards;
+}
+.align-guide.pop > span {
+  animation: alignLabelPop .32s cubic-bezier(0.32, 0.72, 0, 1);
+}
+@keyframes alignGuideIn {
+  from { opacity: 0; transform: scale(1.06); }
+}
+@keyframes alignLabelIn {
+  from { opacity: 0; transform: translateY(4px); }
+}
+@keyframes alignLabelPop {
+  40% { transform: scale(1.12); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .align-guide.appear,
+  .align-guide.appear > span,
+  .align-guide.pop > span {
+    animation: none;
+  }
+}

@@ -32,6 +32,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import numpy as np
+from scipy import ndimage
 from PIL import Image
 
 from .automat_uploader import (AutomatNotFound, AutomatUploader,
@@ -486,6 +487,8 @@ class WebUI:
         self.busy = ""
         self.fps = 0.0
         self.bg_range: tuple[int, int] | None = None
+        self.live_box: list[float] | None = None   # obrys produktu na live view
+        self.ghost_framing: set[str] = set()       # zdjęcia nakładki, którym liczy się kadr
         # {"current", "choices"} albo None, gdy aparat nie oddaje kompensacji
         # (tryb bez niej, backend jej nie umie, aparat rozłączony)
         self.ev: dict | None = None
@@ -687,6 +690,7 @@ class WebUI:
             self.connected = False
             self.fps = 0.0
             self.bg_range = None
+            self.live_box = None
             self.ev = None
         self._ev_logged = False   # po ponownym połączeniu warto wypisać raz jeszcze
         with self._frame_cond:
@@ -762,6 +766,8 @@ class WebUI:
                     fps_t0 = now
                 if frames % 40 == 1:
                     self._update_bg_stats(data)
+                if frames % 6 == 1:
+                    self._update_live_box(data)
         finally:
             self.session.close()
 
@@ -852,6 +858,34 @@ class WebUI:
             with self.lock:
                 self.bg_range = (int(np.percentile(border, 10)),
                                  int(np.percentile(border, 90)))
+        except Exception:
+            pass
+
+    def _update_live_box(self, jpeg: bytes) -> None:
+        """Obrys produktu na klatce live view (ułamki kadru) — front porównuje
+        go z obrysem ze zdjęcia nakładki i pokazuje, czy lekka korekta kadru
+        zadziała. Tanio: miniatura 240 px, próg jasności względem tła z brzegów
+        (stół produktowy jest jasny), drobiny odsiane, ~2 Hz."""
+        try:
+            img = Image.open(io.BytesIO(jpeg)).convert("L")
+            img.thumbnail((240, 240))
+            arr = np.asarray(img, dtype=np.float32)
+            h, w = arr.shape
+            b = max(2, h // 20)
+            border = np.concatenate([arr[:b].ravel(), arr[-b:].ravel(),
+                                     arr[:, :b].ravel(), arr[:, -b:].ravel()])
+            mask = arr < np.percentile(border, 90) * 0.88
+            labels, n = ndimage.label(mask)
+            box = None
+            if n:
+                sizes = ndimage.sum_labels(mask, labels, index=np.arange(1, n + 1))
+                keep = np.flatnonzero(sizes >= max(sizes.max() * 0.03, w * h * 0.001)) + 1
+                ys, xs = np.nonzero(np.isin(labels, keep))
+                if len(xs):
+                    box = [float(xs.min() / w), float(ys.min() / h),
+                           float((xs.max() + 1) / w), float((ys.max() + 1) / h)]
+            with self.lock:
+                self.live_box = box
         except Exception:
             pass
 
@@ -1635,6 +1669,38 @@ class WebUI:
             with self.lock:
                 self.edit_preparing = None
 
+    def _job_ghost_frame(self, session: str, filename: str) -> None:
+        """Kadr (okno cropu + obrys produktu) dla zdjęcia z nakładki, które go
+        nie ma — zrobione przed zapisywaniem kadrów. Liczony RAZ z oryginału
+        z aparatu z bieżącymi ustawieniami (sam kadr, obraz idzie do kosza)
+        i zapisany w .review.json; od tej pory działa i kontur na live view,
+        i lekka korekta kadru."""
+        try:
+            found = self._session_file(session, filename)
+            if found is None:
+                return
+            outdir, _ = found
+            with self._review_lock:
+                if load_review(outdir)["frame"].get(filename):
+                    return
+            raw = find_raw(outdir, filename)
+            if raw is None:
+                return
+            from .background import clean_background
+            frame: dict = {}
+            with Image.open(raw) as im, contextlib.redirect_stdout(io.StringIO()):
+                clean_background(im, (OUTPUT_SIZE, OUTPUT_SIZE), auto_center=self.auto_center,
+                                 auto_zoom=self.auto_zoom, frame_out=frame)
+            if frame:
+                with self._review_lock:
+                    review = load_review(outdir)
+                    review["frame"][filename] = frame
+                    save_review(outdir, review)
+                self._shots_cache = None
+        finally:
+            with self.lock:
+                self.ghost_framing.discard(filename)
+
     def _job_edit_logo(self, session: str, filename: str, logo: str, position: str) -> None:
         """Nowe logo (albo zadne) na zdjeciu: wersja bez logo + overlay,
         podmiana pliku w miejscu i ponowny upload do TEGO SAMEGO rekordu
@@ -1711,6 +1777,7 @@ class WebUI:
     _JOBS = {
         "edit_base": _job_edit_base,
         "edit_logo": _job_edit_logo,
+        "ghost_frame": _job_ghost_frame,
         "warmup": _job_warmup,
         "photo": _job_photo,
         "upload_photo": _job_upload_photo,
@@ -1897,6 +1964,15 @@ class WebUI:
             session = self.name
         self._jobs.put(("edit_base", session, f))
 
+    def _act_ghost_frame(self, data: dict) -> dict | None:
+        f = Path(str(data.get("file", ""))).name
+        with self.lock:
+            if not self.name or not f or f in self.ghost_framing:
+                return None
+            self.ghost_framing.add(f)
+            session = self.name
+        self._jobs.put(("ghost_frame", session, f))
+
     def _act_edit_save(self, data: dict) -> dict | None:
         f = Path(str(data.get("file", ""))).name
         logo = str(data.get("logo") or "")
@@ -1926,6 +2002,7 @@ class WebUI:
     _ACTIONS = {
         "open_url": _act_open_url,
         "edit_prepare": _act_edit_prepare,
+        "ghost_frame": _act_ghost_frame,
         "edit_save": _act_edit_save,
         "set_session": _act_set_session,
         "clear_session": _act_clear_session,
@@ -2154,6 +2231,7 @@ class WebUI:
                     "bg": f"{bg[0]}–{bg[1]}" if bg else "—",
                     "bgStatus": _bg_status(bg),
                     "ev": self.ev,
+                    "productBox": self.live_box,
                 },
                 "post": {
                     "logo": self.add_logo,

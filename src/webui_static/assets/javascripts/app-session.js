@@ -10,6 +10,8 @@ Object.assign(I18N_EN, {
   "Poprzednie zdjęcie na podglądzie": "Previous photo over live view",
   "Krycie nakładki": "Overlay opacity",
   "Dopasuj kadr": "Align framing",
+  "korekta": "aligning",
+  "za daleko": "too far",
   "Lekka korekta kadru": "Slight framing fix",
   "Na podgląd": "Overlay",
   "Przygotowuję silnik czyszczenia tła": "Preparing the background cleanup engine",
@@ -146,6 +148,7 @@ function sesjaScreen() {
           ${liveOn ? `<img id="live" src="/stream" alt="${t("Podgląd na żywo")}" ${st.focusSupported ? `class="live-focusable" title="${t("Kliknij, żeby ustawić ostrość w tym miejscu")}" onclick="focusAt(event)"` : ""} style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;" />` : ""}
           <img id="ghost" class="ghost" alt="" style="display: none;" />
           <img id="align-anim" class="ghost" alt="" style="display: none;" />
+          <div id="align-guide" class="align-guide" hidden><span id="align-guide-label"></span></div>
           ${afBoxHtml(st)}
           <div id="grid-overlay" style="position: absolute; inset: 0; pointer-events: none; display: ${grid.cols && liveOn ? "block" : "none"}; background: ${gridBackground(grid.cols, grid.rows)};"></div>
 
@@ -1269,13 +1272,19 @@ function filmstrip() {
 const ghostUrl = (st, shot) =>
   `/img?s=${encodeURIComponent(st.session.name)}&f=${encodeURIComponent(shot.file)}&v=${shot.v || 0}&ghost=1`;
 
+// Nakładka jest ZABLOKOWANA na jednym zdjęciu: włączona bierze ostatnie
+// (z oryginałem z aparatu, a gdy takiego nie ma — po prostu ostatnie)
+// i przypina je w S.ghost.file — kolejne strzały jej nie podmieniają.
+// Inne zdjęcie: O w podglądzie zdjęcia. Przypięte zdjęcie skasowane =
+// przypina się znowu ostatnie.
 function ghostShot(st) {
-  // przypiąć można każde zdjęcie; „ostatnie" to ostatnie z oryginałem
-  // z aparatu, a gdy takiego nie ma — po prostu ostatnie
   const shots = st.shots || [];
   const pinned = S.ghost.file && shots.find(s => s.file === S.ghost.file);
+  if (pinned) return pinned;
   const raw = shots.filter(s => s.ghost === "raw");
-  return pinned || raw[raw.length - 1] || shots[shots.length - 1] || null;
+  const shot = raw[raw.length - 1] || shots[shots.length - 1] || null;
+  if (shot && S.ghost.on) S.ghost.file = shot.file;
+  return shot;
 }
 
 // Obrazek do „Dopasuj kadr": przerywany kontur = nakładka, szary klocek =
@@ -1362,6 +1371,49 @@ function ghostCardHtml() {
         </section>`;
 }
 
+// Na żywo: kontur produktu ze zdjęcia nakładki na podglądzie. Zielony
+// „✓ korekta" = produkt na stole pokrywa się z nim na tyle, że przy strzale
+// kadr zostanie lekko dociągnięty; szary „za daleko" = nie zostanie. Obrys
+// z live view liczy backend (_update_live_box, ~2 Hz), próg jak w
+// background.ALIGN_MIN_IOU.
+const ALIGN_MIN_IOU = 0.85;
+
+function boxIou(a, b) {
+  const iw = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
+  const ih = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
+  if (iw <= 0 || ih <= 0) return 0;
+  const area = r => (r[2] - r[0]) * (r[3] - r[1]);
+  return iw * ih / (area(a) + area(b) - iw * ih);
+}
+
+function alignGuideReconcile(st, shot) {
+  const el = $("align-guide");
+  if (!el) return;
+  // zdjęcie z oryginałem, ale sprzed zapisywania kadrów — backend raz
+  // policzy kadr z oryginału (job ghost_frame), kontur pojawi się sam
+  if (shot && S.ghost.align && !shot.box && shot.ghost === "raw" && S.ghostFrameAsked !== shot.file) {
+    S.ghostFrameAsked = shot.file;
+    post({ action: "ghost_frame", file: shot.file });
+  }
+  const box = shot && S.ghost.align && shot.box;
+  if (!box) { el.hidden = true; return; }
+  const live = st.camera && st.camera.productBox;
+  const ok = !!live && boxIou(live, box) >= ALIGN_MIN_IOU;
+  // wejście ramki (z ukrycia) i „pyknięcie" dopisku, gdy korekta zaczyna działać
+  const replay = cls => { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); };
+  if (el.hidden) replay("appear");
+  else if (ok && !el.classList.contains("ok")) replay("pop");
+  el.hidden = false;
+  el.style.left = `${box[0] * 100}%`;
+  el.style.top = `${box[1] * 100}%`;
+  el.style.width = `${(box[2] - box[0]) * 100}%`;
+  el.style.height = `${(box[3] - box[1]) * 100}%`;
+  el.classList.toggle("ok", ok);
+  const label = $("align-guide-label");
+  const text = ok ? `✓ ${t("korekta")}` : t("za daleko");
+  if (label && label.textContent !== text) label.textContent = text;
+}
+
 function ghostReconcile(st) {
   const img = $("ghost");
   if (!img) return;
@@ -1374,6 +1426,7 @@ function ghostReconcile(st) {
     img.style.opacity = S.ghostFlying ? 0 : S.ghost.opacity;
   }
   img.style.display = shot ? "block" : "none";
+  alignGuideReconcile(st, shot);
   const sw = $("ghost-switch");
   if (sw) sw.setAttribute("aria-checked", S.ghost.on ? "true" : "false");
   const body = $("ghost-body");
@@ -1382,8 +1435,7 @@ function ghostReconcile(st) {
 
 function setGhost(on) {
   S.ghost.on = on;
-  // wyłączenie odpina przypięte zdjęcie — po ponownym włączeniu nakładka
-  // idzie znów za ostatnim
+  // wyłączenie odpina zdjęcie — ponowne włączenie przypina ostatnie
   if (!on) S.ghost.file = null;
   ghostReconcile(S.state);
 }

@@ -2,6 +2,7 @@
 kasowanie do kosza, recenzja, ostrosc, kompensacja, edycja logo, ustawienia,
 dostep do serwera tylko z tokenem."""
 
+import io
 import json
 import urllib.error
 import urllib.request
@@ -11,7 +12,7 @@ import pytest
 from PIL import Image
 
 from conftest import log_texts, shoot_and_wait, wait_for
-from src.session_store import load_review
+from src.session_store import load_review, shot_entries
 
 
 def open_session(app, name="sesja testowa"):
@@ -101,6 +102,43 @@ def test_backspace_moves_photo_and_raw_to_trash(app):
     names = sorted(p.name for p in trash[0].iterdir())
     assert names == sorted([f, f.replace(".jpg", "_raw.jpg")]), "do kosza idzie zdjecie i oryginal"
     assert app.state()["session"]["count"] == 0
+
+
+def test_overlay_on_live_view_is_the_camera_original(app):
+    """Nakladka na live view: zmniejszony ORYGINAL z aparatu (ten sam kadr co
+    podglad), nie przyciety 3000x3000 — i znika razem ze zdjeciem."""
+    sdir = open_session(app)
+    f = shoot_and_wait(app)
+    shot = app.state()["shots"][0]
+    assert shot["ghost"] == "raw"
+    data = app.image_bytes(sdir.name, f, thumb=False, ghost=True)
+    with Image.open(sdir / "raw" / f.replace(".jpg", "_raw.jpg")) as raw, Image.open(io.BytesIO(data)) as im:
+        assert abs(im.width / im.height - raw.width / raw.height) < 0.01, "proporcje oryginalu"
+        assert max(im.size) <= 1600
+    app.action({"action": "delete", "session": sdir.name, "files": [f]})
+    wait_for(lambda: not (sdir / f).exists(), 10, "zdjecie zniknelo z sesji")
+    assert not (sdir / ".ghosts" / f).exists()
+    assert app.image_bytes(sdir.name, f, thumb=False, ghost=True) is None
+
+
+def test_overlay_without_original_falls_back_to_final(app):
+    sdir = open_session(app)
+    f = shoot_and_wait(app)
+    (sdir / "raw" / f.replace(".jpg", "_raw.jpg")).unlink()
+    assert shot_entries(sdir, load_review(sdir))[0]["ghost"] == "final"
+    with Image.open(io.BytesIO(app.image_bytes(sdir.name, f, thumb=False, ghost=True))) as im:
+        assert im.width == im.height, "gotowe zdjecie 1:1"
+
+
+def test_shot_with_overlay_remembers_frame_and_aligns(app):
+    sdir = open_session(app)
+    first = shoot_and_wait(app)
+    frame = load_review(sdir)["frame"][first]
+    assert set(frame) == {"window", "bbox", "src"}
+    app.action({"action": "shoot", "align": first})
+    wait_for(lambda: sum(t.startswith("Zapisano ") for t in log_texts(app)) == 2, 120, "drugie zdjecie")
+    second = [f for f in load_review(sdir)["frame"] if f != first]
+    assert second, "kadr drugiego zdjecia tez zapisany"
 
 
 def test_reject_and_accept(app):

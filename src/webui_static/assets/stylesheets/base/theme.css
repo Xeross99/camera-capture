@@ -173,6 +173,13 @@ html[data-theme="light"] {
 }
 
 html,
+/* obrazki (live view, nakładka, podgląd zdjęcia, logo) nie dają się
+   przeciągać — Safari przy kliknięciu z ruchem wyciągał półprzezroczystą
+   kopię podglądu nad ramkę */
+img {
+  -webkit-user-drag: none;
+  user-select: none;
+}
 body {
   margin: 0;
   height: 100%;
@@ -325,14 +332,6 @@ html[data-theme="light"] .ev-btn:active {
 }
 .ev-btn.off {
   pointer-events: none;
-}
-/* Spinner NAD wartością EV w trakcie czekania na potwierdzenie z aparatu:
-   absolutny, więc nie wpływa na wysokość celi (inline'owy podnosił wiersz
-   o 2 px i całe menu drgało). */
-.ev-spin {
-  position: absolute;
-  inset: 0;
-  margin: auto;
 }
 /* Kręciołek przy operacjach sieciowych (sprawdzanie/pobieranie aktualizacji). */
 .spinner {

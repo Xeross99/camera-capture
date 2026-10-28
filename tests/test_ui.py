@@ -57,6 +57,65 @@ def test_space_opens_photo_and_escape_returns(app, ui):
     expect(ui.locator("#review-wrap")).to_have_count(0)
 
 
+def test_o_in_preview_puts_photo_over_live_view(app, ui):
+    start_session(ui)
+    ui.keyboard.press("Enter")
+    wait_for(lambda: app.state()["session"]["count"] == 1 and not app.state()["busy"], 120, "zdjecie")
+    ui.wait_for_timeout(700)
+    ui.keyboard.press(" ")
+    expect(ui.locator("#review-img")).to_be_visible()
+    ui.keyboard.press("o")
+    expect(ui.locator("#review-wrap")).to_have_count(0)
+    ghost = ui.locator("#ghost")
+    expect(ghost).to_be_visible()
+    expect(ghost).to_have_attribute("src", re.compile(r"ghost=1"))
+    expect(ui.locator(".ghost-fly")).to_have_count(0)
+    ui.wait_for_function("getComputedStyle(document.getElementById('ghost')).opacity === '0.4'")
+    ui.locator(".session-side .side-card").nth(1).screenshot(path="/private/tmp/claude-501/-Users-xeross-Desktop-camera-capture/b4dc7c83-3263-4a48-96b0-c364b2a3c006/scratchpad/ghost.png")
+    ui.keyboard.press("o")
+    expect(ghost).to_be_hidden()
+
+
+def test_ev_pill_steps_and_meter_follows(app, ui, camera):
+    start_session(ui)
+    expect(ui.locator("#ev-value")).to_have_text("±0")
+    ui.get_by_role("button", name="Jaśniej").click()
+    wait_for(lambda: camera.ev == "+1/3", 10, "EV o krok w gore")
+    expect(ui.locator("#ev-value")).to_have_text("+1/3")
+    width = ui.eval_on_selector("#ev-meter-fill", "e => parseFloat(e.style.width)")
+    assert width > 0, "pasek odchylki od zera"
+    ui.locator(".ev-row").screenshot(path="/private/tmp/claude-501/-Users-xeross-Desktop-camera-capture/b4dc7c83-3263-4a48-96b0-c364b2a3c006/scratchpad/ev.png")
+
+
+def test_logo_tiles_and_corner_pill(app, ui):
+    start_session(ui)
+    ui.get_by_role("radio", name="Bez logo").first.click()
+    wait_for(lambda: app.add_logo is False, 10, "logo wylaczone")
+    expect(ui.locator("#logo-corner")).to_have_css("pointer-events", "none")
+    ui.locator('[data-logo="kids"]').click()
+    wait_for(lambda: app.add_logo is True and app.state()["post"]["logoChoice"] == "kids", 10, "logo KIDS")
+    ui.locator('[data-corner="top-left"]').click()
+    wait_for(lambda: app.logo_position == "top-left", 10, "rog")
+    pill = ui.locator("#logo-corner-seg .seg-pill")
+    btn = ui.locator('[data-corner="top-left"]')
+    ui.wait_for_timeout(450)   # przejazd tla .32 s
+    assert abs(pill.bounding_box()["x"] - btn.bounding_box()["x"]) < 1
+    ui.locator(".session-side .side-card").last.screenshot(path="/private/tmp/claude-501/-Users-xeross-Desktop-camera-capture/b4dc7c83-3263-4a48-96b0-c364b2a3c006/scratchpad/logo.png")
+
+
+def test_align_correction_is_animated_on_live_view(app, ui):
+    start_session(ui)
+    ui.keyboard.press("Enter")
+    wait_for(lambda: app.state()["session"]["count"] == 1 and not app.state()["busy"], 120, "zdjecie")
+    ui.wait_for_function("S.state.shots.length === 1")
+    ui.keyboard.press("o")
+    anim = ui.locator("#align-anim")
+    ui.evaluate("""() => playAlignAnim(S.state, {...S.state.shots[0],
+        aligned: {fx: 0.02, fy: -0.01, ox: 0.5, oy: 0.5, scale: 1.03}})""")
+    expect(anim).to_be_visible()
+    expect(anim).to_be_hidden(timeout=4000)
+
+
 def test_backspace_in_preview_deletes_photo(app, ui):
     start_session(ui)
     ui.keyboard.press("Enter")

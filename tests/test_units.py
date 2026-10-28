@@ -161,7 +161,7 @@ def test_review_roundtrip_and_finals(tmp_path):
         Image.new("RGB", (10, 10)).save(tmp_path / name)
     assert finals(tmp_path) == ["photo_1.jpg", "photo_2.jpg"], "raw nie jest zdjeciem sesji"
     review = load_review(tmp_path)
-    assert review == {"rejected": [], "uploaded": [], "meta": {}, "automat": {}}
+    assert review == {"rejected": [], "uploaded": [], "meta": {}, "automat": {}, "frame": {}}
     review["rejected"].append("photo_2.jpg")
     save_review(tmp_path, review)
     entries = {e["file"]: e for e in shot_entries(tmp_path, load_review(tmp_path))}
@@ -212,3 +212,43 @@ def test_purge_originals_drops_old_raw_and_nologo_only(tmp_path):
     entries = {e["file"]: e for e in shot_entries(sess, load_review(sess))}
     assert entries["old.jpg"]["edit"] == "", "bez oryginału i kopii bez logo edycji logo nie ma"
     assert entries["new.jpg"]["edit"] == "ready"
+
+
+# ---------- lekkie dopasowanie do nakladki ----------
+
+def test_align_nudges_window_towards_reference_but_only_slightly():
+    from src.background import ALIGN_MAX_SHIFT, _align_to_reference
+    src = (6000, 4000)
+    # referencja: produkt 2000..4000 x 1000..3000, okno wokol niego
+    ref = {"src": list(src), "bbox": [2000, 1000, 4000, 3000], "window": [1500, 500, 4500, 3500]}
+    # ten sam produkt przesuniety o 100 px w prawo, kadr wycentrowany na nim
+    bbox = (2100, 1000, 4100, 3000)
+    window = (1600, 500, 4600, 3500)
+    new, info = _align_to_reference(window, bbox, ref, src)
+    assert info is None and new == window, "z centrowaniem produkt i tak stoi tam, gdzie w referencji"
+    # bez centrowania: stale okno, produkt uciekl o 150 px — kadr idzie za nim, ale max 2 %
+    bbox = (2150, 1000, 4150, 3000)
+    new, info = _align_to_reference((1500, 500, 4500, 3500), bbox, ref, src)
+    assert info is not None
+    assert new[0] - 1500 == round(ALIGN_MAX_SHIFT * src[0]), "przesuniecie przyciete do limitu"
+
+
+def test_align_leaves_differently_placed_product_alone():
+    from src.background import _align_to_reference
+    src = (6000, 4000)
+    ref = {"src": list(src), "bbox": [2000, 1000, 4000, 3000], "window": [1500, 500, 4500, 3500]}
+    window = (500, 500, 3500, 3500)
+    new, info = _align_to_reference(window, (1000, 1000, 3000, 3000), ref, src)
+    assert info is None and new == window, "maly overlap = swiadomie inaczej, bez pomocy"
+    new, info = _align_to_reference(window, (2000, 1000, 4000, 3000), {**ref, "src": [3000, 2000]}, src)
+    assert info is None, "inna rozdzielczosc zrodla = nie porownujemy"
+
+
+def test_align_never_cuts_the_product():
+    from src.background import _align_to_reference
+    src = (6000, 4000)
+    ref = {"src": list(src), "bbox": [2000, 1000, 4000, 3000], "window": [2000, 1000, 4000, 3000]}
+    # okno ciasno na produkcie; referencja kaze zmniejszyc okno — produkt by wypadl
+    window = (1990, 990, 4010, 3010)
+    new, info = _align_to_reference(window, (2000, 1000, 4000, 3000), ref, src)
+    assert new[0] <= 2000 and new[2] >= 4000 and new[1] <= 1000 and new[3] >= 3000

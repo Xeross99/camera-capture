@@ -29,6 +29,10 @@ const S = {           // stan klienta
   pickIdx: -1,        // zaznaczony kafelek na ekranie startowym (nawigacja
   pickList: null,     // strzałkami/hover, ENTER wchodzi); lista = widoczne sesje
   edit: null,         // edycja logo w podglądzie: {file, logo, pos} — logo "" = bez logo
+  ghost: { on: false, file: null, opacity: 0.4, align: true },  // nakładka zdjęcia na live view
+                      // (align = lekkie dociąganie kadru do niej przy strzale)
+                      // (file null = ostatnie zdjęcie z oryginałem; app-session.js)
+  ghostFlying: false, // zdjęcie leci z podglądu w ramkę live view (pinGhost)
 };
 const $ = id => document.getElementById(id);
 const post = (payload) => fetch("/api/action", { method: "POST", body: JSON.stringify(payload) });

@@ -192,6 +192,8 @@ function updateVolatile(st) {
   evReconcile(st);
   editReconcile(st);
   afReconcile(st);
+  ghostReconcile(st);
+  alignReconcile(st);
   const sl = $("shoot-label");
   if (sl && performance.now() - shootErrAt > 4000) {
     sl.textContent = st.busy || t("Zrób zdjęcie");
@@ -331,6 +333,8 @@ function renderScreens(force) {
       restoreCards($("screen-sesja"), cards);
       S.stripItems = stripItemCount(st);
       placeSegPill($("grid-seg"), true);
+      placeSegPill($("logo-corner-seg"), true);
+      ghostReconcile(st);   // świeży <img id="ghost"> nie może czekać do pollu
       if (fromStart) playScreenIn();
       ["filmstrip", "review-strip"].forEach(id => {
         const strip = $(id);
@@ -405,6 +409,8 @@ function leaveSession() {
   // widziec pelna liste, a nie ogryzek po starym wyszukiwaniu
   S.sessionFilter = S.photosMin = S.photosMax = S.dateFilter = "";
   S.pickIdx = -1;
+  S.ghost.on = false;
+  S.ghost.file = null;
   post({ action: "clear_session" });
 }
 
@@ -415,7 +421,11 @@ function shoot() {
   // („trwa aktualizacja", „aparat nie jest połączony") wyglądała identycznie jak zdjęcie
   // zrobione poprawnie: błysk i nic więcej. Powód ląduje na przycisku, bo tam
   // patrzy operator po naciśnięciu ENTER.
-  post({ action: "shoot" }).then(r => r.json()).then(res => {
+  // włączona nakładka z oryginałem z aparatu (i „Dopasuj kadr") = kadr lekko
+  // dociągany do niej
+  const g = S.ghost.on && S.ghost.align ? ghostShot(S.state) : null;
+  const align = g && g.ghost === "raw" ? g.file : "";
+  post({ action: "shoot", align }).then(r => r.json()).then(res => {
     if (res && res.ok === false) shootError(res.error);
   }).catch(e => shootError(t("brak odpowiedzi aplikacji")));
 }
@@ -556,6 +566,12 @@ function reviewSelected(verdict) {
 
 // ---------- klawiatura ----------
 
+// przeciąganie obrazków wyłączone w całej aplikacji (CSS -webkit-user-drag
+// łapie Safari/WKWebView, to — resztę przeglądarek)
+document.addEventListener("dragstart", e => {
+  if (e.target instanceof HTMLImageElement) e.preventDefault();
+});
+
 document.addEventListener("keydown", e => {
   // ⌘K / Ctrl+K z każdego ekranu (także z pola tekstowego): wyszukiwarka sesji.
   // Gdy jest otwarta, klawisze obsługuje jej pole (paletteKey) — nic nie może
@@ -595,7 +611,7 @@ document.addEventListener("keydown", e => {
   // preventDefault na wszystkim co obslugujemy — bez tego WKWebView puszcza
   // klawisz w gore responder chain i macOS robi systemowy beep
   if (["Enter", " ", "Escape", "Backspace", "ArrowLeft", "ArrowRight",
-       "p", "P", "a", "A", "x", "X", "e", "E"].includes(e.key)) {
+       "p", "P", "a", "A", "x", "X", "e", "E", "o", "O"].includes(e.key)) {
     e.preventDefault();
   }
   // przy otwartym potwierdzeniu wyjscia reaguja TYLKO ESC (anuluj)
@@ -629,6 +645,10 @@ document.addEventListener("keydown", e => {
       break;
     case "p": case "P": toggle("preview", !S.state.previewOn); break;
     case "e": case "E": if (S.reviewMode) toggleEdit(); break;
+    case "o": case "O":
+      if (S.reviewMode) { if (!S.edit) pinGhost(); }
+      else if (S.state && S.state.session.name) setGhost(!S.ghost.on);
+      break;
     case "ArrowLeft": navShot(-1); break;
     case "ArrowRight": navShot(1); break;
     case "a": case "A": reviewSelected("accepted"); break;

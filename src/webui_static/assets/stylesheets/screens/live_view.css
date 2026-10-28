@@ -1,25 +1,41 @@
-/* Kompensacja ekspozycji: −/+ zawsze klikalne (debounce w stepEv) */
-.ev-stepper {
-  flex-shrink: 0;
+/* Kompensacja ekspozycji (projekt w Claude Design, wariant B): tytuł po
+   lewej, pigułka − wartość + po prawej, pod spodem cienki pasek odchyłki od
+   zera. −/+ zawsze klikalne (debounce w stepEv). */
+.ev-row {
+  flex-direction: column;
+  gap: 12px;
+}
+.ev-head {
   display: flex;
   align-items: center;
-  border: 1px solid var(--border-strong);
-  border-radius: 9px;
-  overflow: hidden;
+  gap: 12px;
+}
+.ev-stepper {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  height: 34px;
+  padding: 2px;
+  box-sizing: border-box;
+  border-radius: 17px;
+  background: var(--seg);
 }
 .ev-step {
-  width: 36px;
-  height: 36px;
+  width: 30px;
+  height: 30px;
   padding: 0;
   border: none;
-  background: var(--surface);
+  border-radius: 15px;
+  background: transparent;
   color: var(--text-2);
   font-size: 16px;
+  line-height: 1;
   cursor: pointer;
   user-select: none;
+  transition: background .15s, color .15s;
 }
 .ev-step:hover {
-  background: var(--seg);
+  background: var(--surface);
   color: var(--text);
 }
 .ev-step:active:not(:disabled) {
@@ -30,14 +46,73 @@
 }
 #ev-value {
   position: relative;
-  width: 58px;
-  line-height: 36px;
-  text-align: center;
+  min-width: 52px;
+  height: 30px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 15px;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(17, 24, 39, .12);
   font-size: 13px;
-  font-weight: 500;
-  color: var(--text);
-  border-left: 1px solid var(--border);
-  border-right: 1px solid var(--border);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-fg);
+  white-space: nowrap;
+}
+#ev-value .pending {
+  opacity: .55;
+}
+/* czekanie na potwierdzenie z aparatu: cienki pasek przesuwający się u dołu
+   pola z wartością (wartość zostaje czytelna) */
+.ev-load {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 3px;
+  height: 2px;
+  border-radius: 1px;
+  overflow: hidden;
+  background: var(--accent-soft);
+}
+.ev-load::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 40%;
+  border-radius: 1px;
+  background: var(--accent);
+  animation: evLoad .9s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+@keyframes evLoad {
+  from { left: -40%; }
+  to { left: 100%; }
+}
+/* pasek odchyłki: kreska w zerze, wypełnienie od zera do wartości */
+.ev-meter {
+  position: relative;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--seg);
+}
+.ev-meter-zero {
+  position: absolute;
+  top: -3px;
+  width: 1px;
+  height: 10px;
+  background: var(--muted-2);
+}
+.ev-meter-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: left .26s cubic-bezier(0.32, 0.72, 0, 1), width .26s cubic-bezier(0.32, 0.72, 0, 1);
 }
 .cam-off {
   align-items: flex-start;
@@ -490,4 +565,42 @@
     transform: scale(0.6);
     opacity: 0;
   }
+}
+
+/* Nakładka poprzedniego zdjęcia (oryginał z aparatu) nad live view —
+   krycie z suwaka w sidebarze, kliki przechodzą do #live (ostrość) */
+.ghost {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+.ghost-range {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+/* Klon lecący z podglądu zdjęcia w ramkę live view (pinGhost) — nad
+   overlayem podglądu (z-index 60), zaokrąglony jak ramka live view */
+.ghost-fly {
+  position: fixed;
+  z-index: 70;
+  object-fit: contain;
+  border-radius: 12px;
+  pointer-events: none;
+  transform-origin: center;
+  will-change: transform, opacity;
+}
+/* „Dopasuj kadr" w karcie nakładki: obrazek + opis + przełącznik */
+.ghost-align {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--hair);
+}
+.align-illu {
+  flex: 0 0 44px;
 }

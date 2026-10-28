@@ -61,6 +61,7 @@ from .naming import sanitize_name
 from .progress import PhotoProgress, stages_for
 from .session_store import (
     NOLOGO_DIR,
+    GHOSTS_DIR,
     cover_path,
     edit_base,
     finals,
@@ -81,6 +82,8 @@ from .version import APP_VERSION
 from .webui_http import Handler
 
 EN.update({
+    "Dopasowano do nakładki ({ref}): przesunięcie {dx:+d}/{dy:+d} px, przybliżenie {z:+.1f} %":
+        "Aligned to the overlay ({ref}): shift {dx:+d}/{dy:+d} px, zoom {z:+.1f} %",
     "→ kosz (usuwany po {days} dniach)": "→ trash (deleted after {days} days)",
     "— usunięte": "— deleted",
     # fazy watku aparatu (watchdog, odmowa migawki) i nazwy watkow
@@ -252,6 +255,7 @@ EN.update({
 
 THUMB_SIZE = 360
 VIEW_SIZE = 1800   # podgląd na całe okno — ostry na ekranie, lekki do dekodowania
+GHOST_SIZE = 1600  # nakładka na live view — klatka EVF i tak ma ~960 px
 AUTHOR_URL = "https://github.com/Xeross99"
 # program deweloperski Canona — stad pobiera sie EDSDK (karta „Brak sterownika")
 CANON_SDK_URL = "https://developercommunity.usa.canon.com/s/"
@@ -959,7 +963,8 @@ class WebUI:
         batch = trash_batch(self.base_output, session) if TRASH_RETENTION_DAYS > 0 else None
         automat_ids = {}
         for f in files:
-            for cache in (outdir / ".thumbs" / f, outdir / ".views" / f, outdir / NOLOGO_DIR / f):
+            for cache in (outdir / ".thumbs" / f, outdir / ".views" / f, outdir / NOLOGO_DIR / f,
+                          outdir / GHOSTS_DIR / f):
                 retry_locked(lambda c=cache: c.unlink(missing_ok=True))
             for p in ((outdir / f), find_raw(outdir, f)):
                 if p is None or not p.exists():
@@ -972,6 +977,7 @@ class WebUI:
                 if f in review[key]:
                     review[key].remove(f)
             review["meta"].pop(f, None)
+            review["frame"].pop(f, None)
             pid = review["automat"].pop(f, None)
             if pid:
                 automat_ids[f] = int(pid)
@@ -1159,6 +1165,11 @@ class WebUI:
                 steps.append(f"announce {time.perf_counter() - t0:.1f} s")
             except Exception as e:
                 self._log(tr("✗ Announce do API nie wyszedł: {e}", e=e), "err")
+        align_to = None
+        if job.get("align"):
+            with self._review_lock:
+                align_to = load_review(outdir)["frame"].get(job["align"])
+        frame: dict = {}
         t0 = time.perf_counter()
         try:
             with contextlib.redirect_stdout(_LogPipe(self)):
@@ -1170,6 +1181,7 @@ class WebUI:
                     out_name=filename,
                     base_out=outdir / NOLOGO_DIR / filename,
                     on_stage=lambda key: self.progress.stage(filename, key),
+                    align_to=align_to, frame_out=frame,
                 )
             done = True
         except Exception as e:
@@ -1203,6 +1215,8 @@ class WebUI:
         with self._review_lock:
             review = load_review(outdir)
             review["meta"][out.name] = " · ".join(bits)
+            if frame:
+                review["frame"][out.name] = frame
             n = len([f for f in finals(outdir) if f not in review["rejected"]])
             if announced_id:
                 # nawet gdy upload pozniej padnie, placeholder w Automacie
@@ -1211,6 +1225,11 @@ class WebUI:
             save_review(outdir, review)
         self._log(tr("Zapisano {name} (#{n}) · {steps}",
                      name=out.name, n=n, steps=" · ".join(steps)), "ok")
+        if frame.get("aligned"):
+            a = frame["aligned"]
+            self._log(tr("Dopasowano do nakładki ({ref}): przesunięcie {dx:+d}/{dy:+d} px, "
+                         "przybliżenie {z:+.1f} %",
+                         ref=job["align"], dx=a["dx"], dy=a["dy"], z=(1 / a["scale"] - 1) * 100))
         # Upload jako OSOBNY job na koncu kolejki: przy strzelaniu seriami
         # obrobka kolejnego zdjecia nie czeka na siec (~2-3 s na strzale).
         # Ten sam watek worker, wiec zero nowej wspolbieznosci; job niesie
@@ -1805,6 +1824,9 @@ class WebUI:
                 logo_path=self.logo_path, logo_position=self.logo_position,
                 auto_center=self.auto_center, auto_zoom=self.auto_zoom,
                 upload=self.upload_enabled,
+                # zdjecie z nakladki na live view — kadr bedzie do niego lekko
+                # dociagniety (background._align_to_reference)
+                align=Path(str(data.get("align") or "")).name,
             )
         self._cam_q.put(("shoot", opts))
         return None
@@ -2219,20 +2241,30 @@ class WebUI:
             return None
         return path.read_bytes() if path.is_file() else None
 
-    def image_bytes(self, session: str, filename: str, thumb: bool, view: bool = False) -> bytes | None:
-        """Plik zdjęcia sesji: oryginał, miniatura paska (`thumb`, .thumbs/) albo
-        wersja do podglądu na całe okno (`view`, .views/, VIEW_SIZE px). Podgląd
-        na pełnym 3000×3000 dekodował kilka MB przy każdej strzałce i przy
-        szybkim przełączaniu zdjęć wszystko się zacinało."""
+    def image_bytes(self, session: str, filename: str, thumb: bool, view: bool = False,
+                    ghost: bool = False) -> bytes | None:
+        """Plik zdjęcia sesji: oryginał, miniatura paska (`thumb`, .thumbs/),
+        wersja do podglądu na całe okno (`view`, .views/, VIEW_SIZE px) albo
+        nakładka na live view (`ghost`, .ghosts/) — ta ostatnia z ORYGINAŁU
+        z aparatu, bo tylko on ma ten sam kadr co podgląd. Podgląd na pełnym
+        3000×3000 dekodował kilka MB przy każdej strzałce i przy szybkim
+        przełączaniu zdjęć wszystko się zacinało."""
         base = self.base_output.resolve()
         path = (base / sanitize_name(session) / Path(filename).name).resolve()
         if not str(path).startswith(str(base)) or not path.exists():
             return None
-        if not (thumb or view):
+        if not (thumb or view or ghost):
             return path.read_bytes()
-        size, quality = (THUMB_SIZE, 80) if thumb else (VIEW_SIZE, 88)
-        tdir = path.parent / (".thumbs" if thumb else ".views")
-        tpath = tdir / path.name
+        out_name = path.name
+        if ghost:
+            session_dir = path.parent
+            # bez oryginału (zdjęcie z Automatu, skasowany raw) — gotowe zdjęcie
+            path = find_raw(session_dir, out_name) or path
+            size, quality, tdir = GHOST_SIZE, 85, session_dir / GHOSTS_DIR
+        else:
+            size, quality = (THUMB_SIZE, 80) if thumb else (VIEW_SIZE, 88)
+            tdir = path.parent / (".thumbs" if thumb else ".views")
+        tpath = tdir / out_name
         if not tpath.exists() or tpath.stat().st_mtime < path.stat().st_mtime:
             tdir.mkdir(exist_ok=True)
             # Uciety/nieczytelny JPEG (np. plik sprzed zapisu atomowego) nie moze
@@ -2240,7 +2272,7 @@ class WebUI:
             # odswiezeniu paska. Miniatura tez idzie przez tmp + rename, zeby
             # przerwany zapis nie zostawil w cache uciętej miniatury ze swiezym
             # mtime (taka nigdy nie zostalaby przeliczona).
-            ttmp = tdir / (path.name + ".part")
+            ttmp = tdir / (out_name + ".part")
             try:
                 img = Image.open(path)
                 img.thumbnail((size, size))

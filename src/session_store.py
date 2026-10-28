@@ -41,6 +41,7 @@ def load_review(session_dir: Path) -> dict:
     data.setdefault("uploaded", [])
     data.setdefault("meta", {})
     data.setdefault("automat", {})  # plik -> id zdjecia w Automacie (do DELETE)
+    data.setdefault("frame", {})    # plik -> kadr z obrobki (dopasowanie do nakladki)
     return data
 
 
@@ -72,6 +73,7 @@ def find_raw(session_dir: Path, final_name: str) -> Path | None:
 
 
 NOLOGO_DIR = ".nologo"
+GHOSTS_DIR = ".ghosts"   # zmniejszone oryginały do nakładki na live view
 
 
 def edit_base(session_dir: Path, final_name: str, review: dict) -> Path | None:
@@ -117,6 +119,12 @@ def shot_entries(session_dir: Path | None, review: dict) -> list[dict]:
             # najpierw zrobic z oryginalu z aparatu, "" = nie da sie
             "edit": ("ready" if edit_base(session_dir, f, review)
                      else "raw" if find_raw(session_dir, f) else ""),
+            # nakładka na live view: "raw" = oryginał z aparatu (ten sam kadr
+            # co podgląd), "final" = brak oryginału, nakładamy gotowe zdjęcie
+            # — przycięte i przybliżone, więc pozycja tylko orientacyjna
+            "ghost": "raw" if find_raw(session_dir, f) else "final",
+            # kadr lekko dociągnięty do nakładki — front animuje korektę na live view
+            "aligned": (review.get("frame", {}).get(f) or {}).get("aligned"),
         }
         for f in (finals(session_dir) if session_dir else [])
     ]
@@ -217,6 +225,7 @@ def purge_originals(base_output: Path, days: int) -> int:
             removed += 1
             final = raw.name[: -len("_raw.jpg")] + ".jpg"
             (session / NOLOGO_DIR / final).unlink(missing_ok=True)
+            (session / GHOSTS_DIR / final).unlink(missing_ok=True)
     return removed
 
 

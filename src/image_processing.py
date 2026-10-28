@@ -114,6 +114,8 @@ def process(
     out_name: str | None = None,
     base_out: Path | None = None,
     on_stage=None,
+    align_to: dict | None = None,
+    frame_out: dict | None = None,
 ) -> Path:
     """`on_stage(klucz)` dostaje początek kolejnych etapów (src/progress.py)."""
     stage = on_stage or (lambda key: None)
@@ -135,7 +137,7 @@ def process(
         canvas_size = target or (OUTPUT_SIZE, OUTPUT_SIZE)
         image = clean_background(
             image, canvas_size, auto_center=auto_center, auto_zoom=auto_zoom,
-            on_stage=stage,
+            on_stage=stage, align_to=align_to, frame_out=frame_out,
         )
     else:
         stage("crop")

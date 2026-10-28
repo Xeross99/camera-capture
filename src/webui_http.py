@@ -159,6 +159,7 @@ class Handler(BaseHTTPRequestHandler):
                 q.get("s", [""])[0], q.get("f", [""])[0],
                 thumb=q.get("thumb", ["0"])[0] == "1",
                 view=q.get("view", ["0"])[0] == "1",
+                ghost=q.get("ghost", ["0"])[0] == "1",
             )
         if data is None:
             self.send_error(404)

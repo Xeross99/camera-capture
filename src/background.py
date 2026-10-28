@@ -43,6 +43,13 @@ EN.update({
     "Czyszczenie tła: {total:.1f} s ({detail})": "Background cleaning: {total:.1f} s ({detail})",
 })
 
+# Lekkie dopasowanie do zdjecia z nakladki (live view): tylko gdy produkt
+# w duzym stopniu pokrywa sie z produktem ze zdjecia referencyjnego, i tylko
+# o tyle, zeby operator nie mial wrazenia, ze kadr wyszedl inaczej niz ustawil.
+ALIGN_MIN_IOU = 0.85      # pokrycie obrysow produktu (IoU), od ktorego pomagamy
+ALIGN_MAX_SHIFT = 0.02    # przesuniecie kadru: max ulamek szerokosci source
+ALIGN_MAX_SCALE = 0.03    # zmiana przyblizenia: max ±3 %
+
 Bbox = tuple[int, int, int, int]  # (left, top, right, bottom)
 Window = tuple[int, int, int, int]  # okno cropu w pikselach source (sl, st, sr, sb)
 
@@ -647,6 +654,58 @@ def _select_crop_window(
     return _window_fit_both(bbox, edges, src_w, src_h, canvas_aspect)
 
 
+def _iou(a: Bbox, b: Bbox) -> float:
+    iw = min(a[2], b[2]) - max(a[0], b[0])
+    ih = min(a[3], b[3]) - max(a[1], b[1])
+    if iw <= 0 or ih <= 0:
+        return 0.0
+    inter = iw * ih
+    area = lambda r: (r[2] - r[0]) * (r[3] - r[1])
+    return inter / (area(a) + area(b) - inter)
+
+
+def _align_to_reference(
+    window: Window, bbox: Bbox, ref: dict | None, src_size: tuple[int, int]
+) -> tuple[Window, dict | None]:
+    """Dociaga okno cropu do kadru zdjecia referencyjnego (nakladka na live
+    view): docelowo ten sam rozmiar okna co tam i produkt w tym samym miejscu
+    kadru. Ruch jest przyciety do ALIGN_MAX_SHIFT / ALIGN_MAX_SCALE, a pomoc
+    rusza tylko przy pokryciu produktu >= ALIGN_MIN_IOU — produkt postawiony
+    swiadomie inaczej zostaje nietkniety. Nigdy nie ucina produktu ani nie
+    wyprowadza okna poza source, jesli wczesniej sie w nim miescilo."""
+    if not ref or list(ref.get("src") or []) != list(src_size):
+        return window, None
+    rbox, rwin = ref.get("bbox"), ref.get("window")
+    if not rbox or not rwin:
+        return window, None
+    iou = _iou(bbox, tuple(rbox))
+    if iou < ALIGN_MIN_IOU:
+        return window, None
+    src_w, src_h = src_size
+    sl, st, sr, sb = window
+    cw, ch = sr - sl, sb - st
+    cx, cy = (sl + sr) / 2, (st + sb) / 2
+    # cel: okno referencji przesuniete o tyle, o ile przesunal sie produkt
+    dx_prod = (bbox[0] + bbox[2] - rbox[0] - rbox[2]) / 2
+    dy_prod = (bbox[1] + bbox[3] - rbox[1] - rbox[3]) / 2
+    tcx = (rwin[0] + rwin[2]) / 2 + dx_prod
+    tcy = (rwin[1] + rwin[3]) / 2 + dy_prod
+    lim = ALIGN_MAX_SHIFT * src_w
+    clamp = lambda v, m: max(-m, min(m, v))
+    ncx = cx + clamp(tcx - cx, lim)
+    ncy = cy + clamp(tcy - cy, lim)
+    k = max(1 - ALIGN_MAX_SCALE, min(1 + ALIGN_MAX_SCALE, (rwin[2] - rwin[0]) / cw))
+    nw, nh = cw * k, ch * k
+    new = (round(ncx - nw / 2), round(ncy - nh / 2), round(ncx + nw / 2), round(ncy + nh / 2))
+    inside = lambda w: w[0] >= 0 and w[1] >= 0 and w[2] <= src_w and w[3] <= src_h
+    holds = lambda w: w[0] <= bbox[0] and w[1] <= bbox[1] and w[2] >= bbox[2] and w[3] >= bbox[3]
+    if (inside(window) and not inside(new)) or (holds(window) and not holds(new)):
+        return window, None
+    if new == tuple(window):
+        return window, None
+    return new, {"iou": round(iou, 3), "dx": ncx - cx, "dy": ncy - cy, "scale": k}
+
+
 def _compose_on_canvas(
     img: Image.Image,
     alpha: Image.Image,
@@ -706,8 +765,15 @@ def clean_background(
     auto_center: bool = AUTO_CENTER,
     auto_zoom: bool = AUTO_ZOOM,
     on_stage=None,
+    align_to: dict | None = None,
+    frame_out: dict | None = None,
 ) -> Image.Image:
-    """`on_stage(klucz)` dostaje początek kolejnych etapów (src/progress.py)."""
+    """`on_stage(klucz)` dostaje początek kolejnych etapów (src/progress.py).
+
+    `align_to` = kadr zdjęcia z nakładki ({window, bbox, src}, patrz
+    `frame_out`) — przy dużym pokryciu produktu kadr jest do niego lekko
+    dociągany (`_align_to_reference`). `frame_out` (słownik) dostaje kadr
+    TEGO zdjęcia, żeby kolejne mogły się do niego dopasować."""
     from rembg import remove
 
     stage = on_stage or (lambda key: None)
@@ -751,6 +817,18 @@ def clean_background(
     window = _select_crop_window(
         image, alpha, bbox, canvas_w / canvas_h, auto_center, auto_zoom, img_lum
     )
+    window, aligned = _align_to_reference(window, bbox, align_to, (src_w, src_h))
+    if frame_out is not None:
+        frame_out.update(window=list(window), bbox=list(bbox), src=[src_w, src_h])
+        if aligned:
+            # dx/dy w pikselach GOTOWEGO zdjecia (log), fx/fy/ox/oy jako ulamki
+            # oryginalu — animacja korekty na live view (ten sam kadr co oryginal)
+            px = canvas_w / (window[2] - window[0])
+            frame_out["aligned"] = {
+                **aligned, "dx": round(aligned["dx"] * px), "dy": round(aligned["dy"] * px),
+                "fx": aligned["dx"] / src_w, "fy": aligned["dy"] / src_h,
+                "ox": (window[0] + window[2]) / 2 / src_w, "oy": (window[1] + window[3]) / 2 / src_h,
+            }
     _mark(tr("kadr"))
     stage("compose")
     result = _compose_on_canvas(img, alpha, window, canvas_size)

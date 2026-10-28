@@ -6,6 +6,12 @@ Object.assign(I18N_EN, {
   "Kliknij, żeby ustawić ostrość w tym miejscu": "Click to focus at this point",
   "Siatka kadrowania": "Framing grid",
   "bez siatki": "no grid",
+  "Nakładka zdjęcia": "Photo overlay",
+  "Poprzednie zdjęcie na podglądzie": "Previous photo over live view",
+  "Krycie nakładki": "Overlay opacity",
+  "Dopasuj kadr": "Align framing",
+  "Lekka korekta kadru": "Slight framing fix",
+  "Na podgląd": "Overlay",
   "Przygotowuję silnik czyszczenia tła": "Preparing the background cleanup engine",
   "Karta graficzna kompiluje model do usuwania tła. Zdjęcia można robić już teraz: poczekają w kolejce.": "The graphics card is compiling the background removal model. You can take photos now: they will wait in the queue.",
   'Zwykle ok. {eta} na tym komputerze · zostało ok. <span class="mono">{left}</span>': 'Usually about {eta} on this computer · about <span class="mono">{left}</span> left',
@@ -16,7 +22,8 @@ Object.assign(I18N_EN, {
   "Sesja luźna": "Unlinked session",
   "Aparat": "Camera",
   "Kompensacja ekspozycji": "Exposure compensation",
-  "Jaśniej, gdy tło wychodzi szare.": "Go brighter when the background comes out grey.",
+  "Ekspozycja": "Exposure",
+  "Jaśniej, gdy tło szare": "Brighter if the background is grey",
   "Ciemniej": "Darker",
   "Jaśniej": "Brighter",
   "Obróbka po zdjęciu": "Processing after the shot",
@@ -26,7 +33,7 @@ Object.assign(I18N_EN, {
   "Kadr dociąga się do produktu": "The frame tightens around the product",
   "Centrowanie": "Centering",
   "Produkt na środku kadru": "Product in the centre of the frame",
-  "Logo w rogu": "Corner logo",
+  "Róg": "Corner",
   "Zrób zdjęcie": "Take photo",
   // brak Canon EDSDK
   "Brak sterownika aparatu Canon": "Canon camera driver missing",
@@ -137,6 +144,8 @@ function sesjaScreen() {
           <!-- obraz PO karcie: pierwsza klatka zawsze ją przykrywa (przed nią
                <img> MJPEG jest przezroczysty i karta jest widoczna) -->
           ${liveOn ? `<img id="live" src="/stream" alt="${t("Podgląd na żywo")}" ${st.focusSupported ? `class="live-focusable" title="${t("Kliknij, żeby ustawić ostrość w tym miejscu")}" onclick="focusAt(event)"` : ""} style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;" />` : ""}
+          <img id="ghost" class="ghost" alt="" style="display: none;" />
+          <img id="align-anim" class="ghost" alt="" style="display: none;" />
           ${afBoxHtml(st)}
           <div id="grid-overlay" style="position: absolute; inset: 0; pointer-events: none; display: ${grid.cols && liveOn ? "block" : "none"}; background: ${gridBackground(grid.cols, grid.rows)};"></div>
 
@@ -183,19 +192,24 @@ function sesjaScreen() {
 
         <section class="side-card">
           <h2 class="eyebrow" style="margin-bottom: 12px;">${t("Aparat")}</h2>
-          <div id="ev-row" style="display: ${evActive ? "flex" : "none"}; align-items: center; gap: 12px;">
-            <div style="flex: 1; min-width: 0;">
-              <div class="row-title">${t("Kompensacja ekspozycji")}</div>
-              <div id="ev-hint" class="row-desc">${t("Jaśniej, gdy tło wychodzi szare.")}</div>
+          <div id="ev-row" class="ev-row" style="display: ${evActive ? "flex" : "none"};">
+            <div class="ev-head">
+              <div style="flex: 1; min-width: 0;">
+                <div class="row-title">${t("Ekspozycja")}</div>
+                <div id="ev-hint" class="row-desc">${t("Jaśniej, gdy tło szare")}</div>
+              </div>
+              <div class="ev-stepper">
+                <button type="button" class="ev-step" aria-label="${t("Ciemniej")}" onclick="stepEv(-1)">−</button>
+                <span id="ev-value">${evValueHtml(cam.ev)}</span>
+                <button type="button" class="ev-step" aria-label="${t("Jaśniej")}" onclick="stepEv(1)">+</button>
+              </div>
             </div>
-            <div class="ev-stepper">
-              <button type="button" class="ev-step" aria-label="${t("Ciemniej")}" onclick="stepEv(-1)">−</button>
-              <span id="ev-value" class="mono">${evValueHtml(cam.ev)}</span>
-              <button type="button" class="ev-step" aria-label="${t("Jaśniej")}" onclick="stepEv(1)">+</button>
-            </div>
+            <div class="ev-meter" aria-hidden="true"><span class="ev-meter-zero" id="ev-meter-zero"></span><span class="ev-meter-fill" id="ev-meter-fill"></span></div>
           </div>
           <div id="ev-off" class="cam-off" style="display: ${evActive ? "none" : "flex"};">${camOffHtml(st)}</div>
         </section>
+
+        ${ghostCardHtml()}
 
         <section class="side-card" style="padding: 4px 14px;">
           <h2 class="eyebrow" style="margin: 10px 0 4px;">${t("Obróbka po zdjęciu")}</h2>
@@ -203,10 +217,7 @@ function sesjaScreen() {
           ${optRow("zoom", post_.zoom, t("Przybliżanie"), t("Kadr dociąga się do produktu"))}
           ${optRow("center", post_.center, t("Centrowanie"), t("Produkt na środku kadru"))}
           <div style="padding: 10px 0 14px; display: flex; flex-direction: column; gap: 10px;">
-            <div style="display: flex; align-items: center; gap: 12px;">
-              <div style="flex: 1;" class="row-title">${t("Logo w rogu")}</div>
-              ${switchHtml(post_.logo, "toggle('logo', switchOn(this))", t("Logo w rogu"))}
-            </div>
+            <div class="row-title">${t("Logo")}</div>
             ${logoPicker(post_)}
           </div>
         </section>
@@ -464,14 +475,31 @@ function sendEv() {
   post({ action: "set_ev", value: t.label });
 }
 
-// Zawartość celi z wartością EV: docelowa (klikanie albo wysyłka) przygaszona,
-// a w trakcie wysyłki ze spinnerem POZYCJONOWANYM ABSOLUTNIE nad nią
-// (`.ev-spin`) — spinner w miejscu tekstu podnosił całą kartę o 2 px.
+// Zawartość pola z wartością EV: docelowa (klikanie) i wysłana w kolorze
+// akcentu; czekanie na aparat to cienki pasek `.ev-load` POZYCJONOWANY
+// ABSOLUTNIE u dołu pola (nie zmienia jego wysokości, nie zasłania wartości).
+function evShown(ev) {
+  if (S.evTarget) return { n: S.evTarget.n, label: S.evTarget.label, mode: "target" };
+  if (S.evPending) return { n: S.evPending.target, label: S.evPending.label, mode: "pending" };
+  return ev ? { n: evNumber(ev.current), label: ev.current, mode: "" } : null;
+}
+
 function evValueHtml(ev) {
-  if (S.evTarget) return `<span style="color: var(--accent-fg);">${evLabel(S.evTarget.label)}</span>`;
-  if (S.evPending)
-    return `<span style="opacity: .3;">${evLabel(S.evPending.label)}</span><span class="spinner ev-spin"></span>`;
-  return ev ? evLabel(ev.current) : "—";
+  const shown = evShown(ev);
+  if (!shown) return "—";
+  if (shown.mode === "pending") return `<span class="pending">${evLabel(shown.label)}</span><span class="ev-load"></span>`;
+  return evLabel(shown.label);
+}
+
+// Pasek odchyłki pod kontrolką: skala to zakres kroków z aparatu (zwykle
+// −3…+3), kreska w zerze, wypełnienie od zera do pokazywanej wartości.
+function evMeter(ev) {
+  const opts = evOptions(ev), shown = evShown(ev);
+  if (!opts.length || !shown || shown.n === null) return null;
+  const lo = Math.min(opts[0].n, 0), hi = Math.max(opts[opts.length - 1].n, 0);
+  const pos = n => hi > lo ? (n - lo) / (hi - lo) * 100 : 50;
+  const z = pos(0), v = pos(shown.n);
+  return { zero: z, left: Math.min(z, v), width: Math.abs(v - z) };
 }
 
 // Łatka kontrolki EV wołana z updateVolatile() przy każdym pollu (kontrolka
@@ -497,6 +525,12 @@ function evReconcile(st) {
   if (!ev) { S.evTarget = null; clearTimeout(evTimer); }
   const html = evValueHtml(ev);
   if (val.dataset.html !== html) { val.innerHTML = html; val.dataset.html = html; }
+  const m = evMeter(ev), mz = $("ev-meter-zero"), mf = $("ev-meter-fill");
+  if (m && mz && mf) {
+    mz.style.left = `${m.zero}%`;
+    mf.style.left = `${m.left}%`;
+    mf.style.width = `${m.width}%`;
+  }
   const row = $("ev-row"), off = $("ev-off");
   if (row) row.style.display = ev ? "flex" : "none";
   if (off) {
@@ -620,6 +654,7 @@ function reviewOverlay() {
         <span id="review-size" class="vtag" style="display: none;"></span>
         <span id="review-status">${reviewStatusHtml(shot)}</span>
         <div style="flex: 1;"></div>
+        <button type="button" class="vbtn" onclick="pinGhost()" title="${t("Poprzednie zdjęcie na podglądzie")}">${icon("camera", 16, 1.8)}${t("Na podgląd")}<span class="kbd">O</span></button>
         <button type="button" id="edit-btn" class="vbtn" onclick="toggleEdit()">${icon("pencil", 16, 1.8)}${t("Edytuj")}<span class="kbd">E</span></button>
         <button type="button" class="vbtn vbtn-danger" onclick="deleteReviewed()">${icon("trash", 16, 1.8)}${t("Usuń")}<span class="kbd">BACKSPACE</span></button>
       </div>
@@ -670,10 +705,10 @@ function editPanelHtml() {
   return `${head}
     <div style="display: flex; flex-direction: column; gap: 8px;">
       <div class="eyebrow">Logo</div>
-      ${logoTiles(post_.logos, S.edit.logo, "editPickLogo", "data-elogo", true)}
+      ${logoTiles(post_.logos, S.edit.logo, "editPickLogo", "data-elogo")}
     </div>
     <div id="edit-corner" style="${S.edit.logo ? "" : "opacity: .4; pointer-events: none;"}">
-      ${cornerRow(post_.logoPositions, S.edit.pos, "editPickPos", "data-ecorner", "edit-pos-text")}
+      ${cornerRow(post_.logoPositions, S.edit.pos, "editPickPos", "data-ecorner", "edit-corner-seg")}
     </div>
     <div class="row-desc">${t("Podgląd obok pokazuje zdjęcie dokładnie tak, jak zostanie zapisane.")}</div>
     <div style="flex: 1;"></div>
@@ -691,6 +726,7 @@ function renderEditPanel() {
   panel.dataset.status = shot ? shot.edit : "";
   panel.innerHTML = editPanelHtml();
   panel.hidden = false;
+  placeSegPill($("edit-corner-seg"), false);
   const btn = $("edit-btn");
   if (btn) btn.classList.add("on");
   editPreview();
@@ -746,13 +782,7 @@ function editPickLogo(key) {
 function editPickPos(pos) {
   if (!S.edit) return;
   S.edit.pos = pos;
-  document.querySelectorAll("[data-ecorner]").forEach(b => {
-    const on = b.dataset.ecorner === pos;
-    b.classList.toggle("on", on);
-    b.setAttribute("aria-checked", on);
-  });
-  const txt = $("edit-pos-text");
-  if (txt) txt.textContent = cap(t(LOGO_POS_PL[pos] || pos));
+  markCorner("data-ecorner", "edit-corner-seg", pos);
   editPreview();
 }
 
@@ -831,66 +861,91 @@ function logBar(prefix) {
     </div>`;
 }
 
-// Wybor logo: dwa kafelki z prawdziwym plikiem logo (na bieli, jak na zdjeciu —
-// czarne TRIXBRIX.eu znikneloby na ciemnym motywie) i obok wybor rogu kadru na
-// malym kwadracie. Zmiana latana W MIEJSCU, bez rebuildu ekranu (ten zrywa
-// stream live view).
-const LOGO_CORNERS = { "top-left": "left: 5px; top: 5px;", "top-right": "right: 5px; top: 5px;",
-  "bottom-left": "left: 5px; bottom: 5px;", "bottom-right": "right: 5px; bottom: 5px;" };
+// Wybor logo (projekt w Claude Design, wariant B): „bez logo" jako pierwszy,
+// waski kafelek (zamiast osobnego przelacznika), potem kafelki z prawdziwym
+// plikiem logo (na bieli, jak na zdjeciu — czarne TRIXBRIX.eu znikneloby na
+// ciemnym motywie), pod spodem rog kadru w pigulce z ikonkami kadru; biale
+// tlo wybranego rogu przejezdza plynnie (placeSegPill). Zmiana latana W
+// MIEJSCU, bez rebuildu ekranu (ten zrywa stream live view).
+const NO_LOGO_SVG = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M6.5 17.5l11-11"/></svg>`;
 
-function logoTiles(logos, cur, onPick, attr = "data-logo", withNone = false) {
-  const tile = (key, inner, labelText) => `<button type="button" role="radio" ${attr}="${key}" aria-checked="${key === cur}" aria-label="${labelText}" title="${labelText}" class="logo-tile${key === cur ? " on" : ""}" onclick="${onPick}('${key}')">${inner}</button>`;
-  const n = logos.length + (withNone ? 1 : 0);
+function logoTiles(logos, cur, onPick, attr = "data-logo") {
+  const tile = (key, inner, labelText, extra = "") => `<button type="button" role="radio" ${attr}="${key}" aria-checked="${key === cur}" aria-label="${labelText}" title="${labelText}" class="logo-tile${extra}${key === cur ? " on" : ""}" onclick="${onPick}('${key}')">${inner}</button>`;
   return `
-    <div role="radiogroup" aria-label="Logo" style="display: grid; grid-template-columns: repeat(${n}, minmax(0, 1fr)); gap: 8px;">
-      ${withNone ? tile("", `<span style="font-size: 12.5px; font-weight: 500; color: #5e5e66;">${t("Bez logo")}</span>`, t("Bez logo")) : ""}
+    <div role="radiogroup" aria-label="Logo" style="display: grid; grid-template-columns: 56px repeat(${logos.length}, minmax(0, 1fr)); gap: 8px;">
+      ${tile("", NO_LOGO_SVG, t("Bez logo"), " none")}
       ${logos.map(l => tile(l.key, `<img src="/logo?k=${l.key}" alt="" />`, l.label)).join("")}
     </div>`;
 }
 
-function cornerRow(positions, cur, onPick, attr = "data-corner", textId = "logo-pos-text") {
+const CORNER_GLYPH = { "top-left": "left: 2px; top: 2px;", "top-right": "right: 2px; top: 2px;",
+  "bottom-left": "left: 2px; bottom: 2px;", "bottom-right": "right: 2px; bottom: 2px;" };
+
+const CORNER_ORDER = ["top-left", "top-right", "bottom-left", "bottom-right"];
+
+function cornerRow(positions, cur, onPick, attr = "data-corner", segId = "logo-corner-seg") {
+  // stała kolejność jak na kadrze (↖ ↗ ↙ ↘), niezależnie od listy z backendu
+  positions = [...positions].sort((a, b) => CORNER_ORDER.indexOf(a) - CORNER_ORDER.indexOf(b));
   return `
     <div style="display: flex; align-items: center; gap: 12px;">
-      <div style="flex: 1; min-width: 0;">
-        <div class="row-title">${t("Pozycja")}</div>
-        <div id="${textId}" class="row-desc">${cap(t(LOGO_POS_PL[cur] || cur))}</div>
-      </div>
-      <div class="corner-pick" role="radiogroup" aria-label="${t("Róg kadru")}">
-        ${positions.map(p => `<button type="button" role="radio" ${attr}="${p}" aria-checked="${p === cur}" aria-label="${t(LOGO_POS_PL[p] || p)}" title="${t(LOGO_POS_PL[p] || p)}" class="${p === cur ? "on" : ""}" onclick="${onPick}('${p}')" style="${LOGO_CORNERS[p] || ""}"></button>`).join("")}
+      <div style="flex: 1; min-width: 0;" class="row-desc">${t("Róg")}</div>
+      <div id="${segId}" class="corner-seg" role="radiogroup" aria-label="${t("Róg kadru")}">
+        <span class="seg-pill"></span>
+        ${positions.map(p => `<button type="button" role="radio" ${attr}="${p}" aria-checked="${p === cur}" aria-label="${t(LOGO_POS_PL[p] || p)}" title="${cap(t(LOGO_POS_PL[p] || p))}" class="${p === cur ? "on" : ""}" onclick="${onPick}('${p}')"><span class="corner-glyph"><span style="${CORNER_GLYPH[p] || ""}"></span></span></button>`).join("")}
       </div>
     </div>`;
+}
+
+// zaznaczenie rogu w pigulce + przejazd bialego tla
+function markCorner(attr, segId, pos) {
+  document.querySelectorAll(`[${attr}]`).forEach(b => {
+    const on = b.getAttribute(attr) === pos;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-checked", on);
+  });
+  placeSegPill($(segId), true);
 }
 
 const cap = t => t ? t[0].toUpperCase() + t.slice(1) : t;
 
 function logoPicker(post_) {
   return `
-    ${logoTiles(post_.logos, post_.logoChoice, "pickLogo")}
-    ${cornerRow(post_.logoPositions, post_.logoPosition, "setLogoPos")}`;
+    ${logoTiles(post_.logos, post_.logo ? post_.logoChoice : "", "pickLogo")}
+    <div id="logo-corner" style="${post_.logo ? "" : "opacity: .4; pointer-events: none;"}">
+      ${cornerRow(post_.logoPositions, post_.logoPosition, "setLogoPos")}
+    </div>`;
 }
 
+// "" = bez logo (wylacza nakladanie), klucz = to logo (i wlacza nakladanie)
 function pickLogo(key) {
-  if (key === S.state.post.logoChoice) return;
-  S.state.post.logoChoice = key;   // echo od razu, poll potwierdzi
+  const post_ = S.state.post;
+  if ((post_.logo ? post_.logoChoice : "") === key) return;
   document.querySelectorAll("[data-logo]").forEach(b => {
     const on = b.dataset.logo === key;
     b.classList.toggle("on", on);
     b.setAttribute("aria-checked", on);
   });
+  const corner = $("logo-corner");
+  if (corner) corner.style.cssText = key ? "" : "opacity: .4; pointer-events: none;";
+  // echo od razu, poll potwierdzi
+  if (!key) {
+    post_.logo = false;
+    lastSesja = sesjaKey(S.state);
+    toggle("logo", false);
+    return;
+  }
+  const wasOff = !post_.logo;
+  post_.logo = true;
+  post_.logoChoice = key;
   lastSesja = sesjaKey(S.state);
+  if (wasOff) toggle("logo", true);
   post({ action: "set_post", key: "logo", value: key });
 }
 
 function setLogoPos(pos) {
   if (pos === S.state.post.logoPosition) return;
   S.state.post.logoPosition = pos;
-  document.querySelectorAll("[data-corner]").forEach(b => {
-    const on = b.dataset.corner === pos;
-    b.classList.toggle("on", on);
-    b.setAttribute("aria-checked", on);
-  });
-  const txt = $("logo-pos-text");
-  if (txt) txt.textContent = cap(t(LOGO_POS_PL[pos] || pos));
+  markCorner("data-corner", "logo-corner-seg", pos);
   lastSesja = sesjaKey(S.state);
   post({ action: "set_post", key: "logo_position", value: pos });
 }
@@ -1202,3 +1257,202 @@ function filmstrip() {
   });
   return items.join("") || `<div style="font-size: 12.5px; color: var(--muted-2); align-self: center;">${t("Brak zdjęć. Naciśnij ENTER, żeby zrobić pierwsze.")}</div>`;
 }
+
+// ---------- nakładka poprzedniego zdjęcia na live view ----------
+// Półprzezroczyste zdjęcie nad obrazem z aparatu, żeby kolejny produkt stanął
+// dokładnie w tym samym miejscu. Źródłem jest ORYGINAŁ z aparatu (/img?ghost=1)
+// — gotowe zdjęcie jest przycięte i przybliżone do produktu, więc nie trafia
+// w kadr podglądu. Domyślnie ostatnie zdjęcie (idzie za każdym strzałem),
+// O w podglądzie zdjęcia przypina wybrane. Całość łatana po id (ghostReconcile
+// z updateVolatile) — rebuild ekranu zerwałby stream MJPEG.
+
+const ghostUrl = (st, shot) =>
+  `/img?s=${encodeURIComponent(st.session.name)}&f=${encodeURIComponent(shot.file)}&v=${shot.v || 0}&ghost=1`;
+
+function ghostShot(st) {
+  // przypiąć można każde zdjęcie; „ostatnie" to ostatnie z oryginałem
+  // z aparatu, a gdy takiego nie ma — po prostu ostatnie
+  const shots = st.shots || [];
+  const pinned = S.ghost.file && shots.find(s => s.file === S.ghost.file);
+  const raw = shots.filter(s => s.ghost === "raw");
+  return pinned || raw[raw.length - 1] || shots[shots.length - 1] || null;
+}
+
+// Obrazek do „Dopasuj kadr": przerywany kontur = nakładka, szary klocek =
+// produkt postawiony lekko obok, strzałka = kierunek korekty kadru.
+const ALIGN_ILLUSTRATION = `
+  <svg class="align-illu" viewBox="0 0 44 32" width="44" height="32" aria-hidden="true">
+    <rect x="0.5" y="0.5" width="43" height="31" rx="5" fill="var(--surface-2)" stroke="var(--border)"/>
+    <rect x="8" y="10" width="14" height="14" rx="2.5" fill="none" stroke="var(--accent)" stroke-width="1.4" stroke-dasharray="2.5 2"/>
+    <rect x="19" y="12" width="14" height="14" rx="2.5" fill="var(--muted-2)" opacity=".7"/>
+    <path d="M35 6.5H23.5M26.5 3.8 23.5 6.5l3 2.7" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+
+// Animacja korekty na live view: świeżo zrobione zdjęcie (oryginał, jak
+// nakładka) wchodzi na podgląd i przesuwa się/skaluje dokładnie o tyle, o ile
+// dociągnięto kadr — widać, jak „wskakuje" na nakładkę. Okno cropu przesunięte
+// o +d = treść w kadrze przesunięta o −d; okno ×k = treść ×1/k wokół środka
+// okna. Zdjęcia obecne przy wejściu w sesję nie animują (S.alignSeen).
+function alignReconcile(st) {
+  const name = st.session && st.session.name;
+  if (S.alignSession !== name) {
+    S.alignSession = name;
+    S.alignSeen = new Set((st.shots || []).map(s => s.file));
+    return;
+  }
+  for (const shot of st.shots || []) {
+    if (S.alignSeen.has(shot.file)) continue;
+    S.alignSeen.add(shot.file);
+    if (shot.aligned && S.ghost.on) playAlignAnim(st, shot);
+  }
+}
+
+function playAlignAnim(st, shot) {
+  const img = $("align-anim"), a = shot.aligned;
+  if (!img || !st.previewOn || !st.connected) return;
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const show = () => {
+    img.style.display = "block";
+    img.style.transformOrigin = `${a.ox * 100}% ${a.oy * 100}%`;
+    const op = Math.max(S.ghost.opacity, 0.45);
+    const end = `translate(${-a.fx * 100}%, ${-a.fy * 100}%) scale(${1 / a.scale})`;
+    const hide = () => { img.style.display = "none"; };
+    try {
+      const anim = img.animate([
+        { transform: "none", opacity: 0, offset: 0 },
+        { transform: "none", opacity: op, offset: 0.2 },
+        { transform: end, opacity: op, offset: 0.7 },
+        { transform: end, opacity: 0, offset: 1 },
+      ], { duration: 1800, easing: "cubic-bezier(0.32, 0.72, 0, 1)" });
+      anim.onfinish = hide;
+      anim.oncancel = hide;
+    } catch (_) { hide(); }
+    setTimeout(hide, 2200);   // gdyby onfinish nie przyszedł
+  };
+  img.onload = show;
+  img.src = ghostUrl(st, shot);
+}
+
+function setGhostAlign(on) {
+  S.ghost.align = on;
+}
+
+function ghostCardHtml() {
+  const g = S.ghost;
+  return `
+        <section class="side-card">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div class="row-title" style="flex: 1; min-width: 0;" title="${t("Poprzednie zdjęcie na podglądzie")}">${t("Nakładka zdjęcia")} ${kHint("O")}</div>
+            ${switchHtml(g.on, "setGhost(switchOn(this))", t("Nakładka zdjęcia"), "ghost-switch")}
+          </div>
+          <div id="ghost-body" style="display: ${g.on ? "flex" : "none"}; flex-direction: column; gap: 6px; margin-top: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <input id="ghost-opacity" class="ghost-range" type="range" min="10" max="90" step="5" value="${Math.round(g.opacity * 100)}" aria-label="${t("Krycie nakładki")}" oninput="setGhostOpacity(this.value)" />
+              <span id="ghost-opacity-val" class="mono" style="width: 36px; text-align: right; font-size: 12px; color: var(--muted-2);">${Math.round(g.opacity * 100)}%</span>
+            </div>
+            <div class="ghost-align">
+              ${ALIGN_ILLUSTRATION}
+              <div style="flex: 1; min-width: 0;">
+                <div class="row-title" style="font-size: 12.5px;">${t("Dopasuj kadr")}</div>
+                <div class="row-desc" style="margin: 0;">${t("Lekka korekta kadru")}</div>
+              </div>
+              ${switchHtml(g.align, "setGhostAlign(switchOn(this))", t("Dopasuj kadr"), "ghost-align-switch")}
+            </div>
+          </div>
+        </section>`;
+}
+
+function ghostReconcile(st) {
+  const img = $("ghost");
+  if (!img) return;
+  const shot = S.ghost.on && st.previewOn && st.connected ? ghostShot(st) : null;
+  if (shot) {
+    const src = ghostUrl(st, shot);
+    if (img.dataset.src !== src) { img.dataset.src = src; img.src = src; }
+    // w trakcie przelotu z podglądu (pinGhost) nakładkę udaje klon — ta
+    // prawdziwa czeka niewidoczna, aż klon wyląduje dokładnie na niej
+    img.style.opacity = S.ghostFlying ? 0 : S.ghost.opacity;
+  }
+  img.style.display = shot ? "block" : "none";
+  const sw = $("ghost-switch");
+  if (sw) sw.setAttribute("aria-checked", S.ghost.on ? "true" : "false");
+  const body = $("ghost-body");
+  if (body) body.style.display = S.ghost.on ? "flex" : "none";
+}
+
+function setGhost(on) {
+  S.ghost.on = on;
+  // wyłączenie odpina przypięte zdjęcie — po ponownym włączeniu nakładka
+  // idzie znów za ostatnim
+  if (!on) S.ghost.file = null;
+  ghostReconcile(S.state);
+}
+
+function setGhostOpacity(v) {
+  S.ghost.opacity = v / 100;
+  const val = $("ghost-opacity-val");
+  if (val) val.textContent = `${v}%`;
+  ghostReconcile(S.state);
+}
+
+// O w podglądzie zdjęcia: to zdjęcie na live view i powrót do aparatu.
+// Zdjęcie „odlatuje" z podglądu w ramkę live view (FLIP: klon z oryginałem
+// ustawiony w ramce, startuje przeskalowany na miejsce zdjęcia w podglądzie)
+// i ląduje z kryciem nakładki — wtedy podmienia go prawdziwy #ghost.
+async function pinGhost() {
+  const shot = reviewShot();
+  if (!shot) return;
+  if (ghostLand) ghostLand();   // poprzedni przelot jeszcze trwa — ląduje od razu
+  const fromEl = $("review-img"), ghostEl = $("ghost");
+  const from = fromEl && fromEl.getBoundingClientRect();
+  const box = ghostEl && ghostEl.parentElement.getBoundingClientRect();
+  const fly = new Image();
+  fly.src = ghostUrl(S.state, shot);
+  try { await fly.decode(); } catch (_) { /* animacja i tak się uda, najwyżej pusta */ }
+  S.ghost.file = shot.file;
+  S.ghost.on = true;
+  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!from || !box || !box.width || still) {
+    closeReview();
+    ghostReconcile(S.state);
+    return;
+  }
+  S.ghostFlying = true;
+  fly.className = "ghost-fly";
+  Object.assign(fly.style, {
+    left: `${box.left}px`, top: `${box.top}px`,
+    width: `${box.width}px`, height: `${box.height}px`,
+  });
+  document.body.appendChild(fly);
+  // start: ramka 3:2 przeskalowana tak, żeby zdjęcie zajęło miejsce podglądu
+  const k = Math.min(from.width / box.width, from.height / box.height);
+  const dx = from.left + from.width / 2 - (box.left + box.width / 2);
+  const dy = from.top + from.height / 2 - (box.top + box.height / 2);
+  // Lądowanie także na timerze: onfinish potrafi nie przyjść (karta w tle,
+  // przeglądarka bez pełnego Web Animations) — bez tego ghostFlying zostawało
+  // na zawsze, nakładka miała krycie 0, a każde kolejne O było ignorowane.
+  let timer = 0;
+  const land = () => {
+    if (ghostLand !== land) return;
+    ghostLand = null;
+    clearTimeout(timer);
+    S.ghostFlying = false;
+    ghostReconcile(S.state);
+    fly.remove();
+  };
+  ghostLand = land;
+  timer = setTimeout(land, 700);
+  closeReview();
+  ghostReconcile(S.state);
+  try {
+    const anim = fly.animate([
+      { transform: `translate(${dx}px, ${dy}px) scale(${k})`, opacity: 1 },
+      { transform: "none", opacity: S.ghost.opacity },
+    ], { duration: 560, easing: "cubic-bezier(0.32, 0.72, 0, 1)", fill: "forwards" });
+    anim.onfinish = land;
+    anim.oncancel = land;
+  } catch (_) {
+    land();
+  }
+}
+let ghostLand = null;

@@ -111,9 +111,8 @@
   .logo-tile img {
     max-height: 32px;
   }
-  .corner-pick {
-    width: 52px;
-    height: 52px;
+  .corner-seg button {
+    height: 26px;
   }
   .shutter {
     height: 40px;

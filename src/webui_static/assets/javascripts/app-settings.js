@@ -40,6 +40,7 @@ Object.assign(I18N_EN, {
   "Najnowsze wydanie": "Latest release",
   "Ostatnie sprawdzenie": "Last checked",
   "Uruchomienie ze źródeł: zaktualizuj przez <b>git pull</b>. Automatyczna podmiana działa tylko w .exe na Windowsie.": "Running from source: update with <b>git pull</b>. Automatic replacement only works in the Windows .exe.",
+  "Na macOS nowa wersja instaluje się ręcznie: pobierz <b>CameraCapture-macos</b> z wydania i rozpakuj w miejsce Camera Capture.app.": "On macOS a new version is installed by hand: download <b>CameraCapture-macos</b> from the release and unzip it in place of Camera Capture.app.",
   "Aplikacja sprawdza też przy każdym starcie. Nowa wersja instaluje się jednym przyciskiem.": "The app also checks on every start. A new version installs with one click.",
   "Aktualizuję…": "Updating…",
   "Zainstaluj {v}": "Install {v}",
@@ -212,7 +213,9 @@ function ustawieniaScreen() {
             </div>
           </div>
           ${uv.text ? `<div style="padding: 10px 20px; border-top: 1px solid var(--hair); font-size: 12.5px; color: var(--err-fg);">${uv.text}</div>` : ""}
-          ${u.available && !u.canApply ? `<div style="padding: 10px 20px; border-top: 1px solid var(--hair); font-size: 12.5px; color: var(--muted);">${t("Uruchomienie ze źródeł: zaktualizuj przez <b>git pull</b>. Automatyczna podmiana działa tylko w .exe na Windowsie.")}</div>` : ""}
+          ${u.available && !u.canApply ? `<div style="padding: 10px 20px; border-top: 1px solid var(--hair); font-size: 12.5px; color: var(--muted);">${u.packagedMac
+            ? t("Na macOS nowa wersja instaluje się ręcznie: pobierz <b>CameraCapture-macos</b> z wydania i rozpakuj w miejsce Camera Capture.app.")
+            : t("Uruchomienie ze źródeł: zaktualizuj przez <b>git pull</b>. Automatyczna podmiana działa tylko w .exe na Windowsie.")}</div>` : ""}
           ${u.available && u.notes ? `<div class="mono" style="padding: 10px 20px; border-top: 1px solid var(--hair); font-size: 11px; color: var(--muted); white-space: pre-wrap; max-height: 96px; overflow: auto;">${u.notes}</div>` : ""}
           <div style="display: flex; align-items: center; gap: 10px; padding: 12px 20px; border-top: 1px solid var(--hair); background: var(--surface-2);">
             <span style="flex: 1; font-size: 12.5px; color: var(--muted);">${t("Aplikacja sprawdza też przy każdym starcie. Nowa wersja instaluje się jednym przyciskiem.")}</span>

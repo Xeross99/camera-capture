@@ -6,6 +6,8 @@ Object.assign(I18N_EN, {
   "Zaktualizuj i uruchom ponownie": "Update and restart",
   "Uruchomienie ze źródeł: zaktualizuj przez <b class=\"mono\" style=\"font-weight: 500; color: var(--text-2);\">git pull</b>": "Running from source: update with <b class=\"mono\" style=\"font-weight: 500; color: var(--text-2);\">git pull</b>",
   "Ukryj": "Hide",
+  "Rozpakuj paczkę w miejsce Camera Capture.app": "Unzip the package in place of Camera Capture.app",
+  "Pobierz dla macOS": "Download for macOS",
   "Dostępna wersja <span class=\"mono\">{v}</span>": "Version <span class=\"mono\">{v}</span> available",
   "masz <span class=\"mono\">{v}</span>": "you have <span class=\"mono\">{v}</span>",
   "brak połączenia": "no connection",
@@ -36,6 +38,10 @@ function updateBanner() {
   const right = u.canApply
     ? `<button type="button" class="btn btn-sm" onclick="${hide}" ${u.busy ? "disabled" : ""}>${t("Później")}</button>
        <button type="button" class="btn btn-primary btn-sm" onclick="applyUpdate()" ${u.busy ? "disabled" : ""}>${u.busy ? `<span class="spinner" style="border-color: rgba(255,255,255,.35); border-top-color: #fff;"></span>${t("Aktualizuję…")}` : `${icon("download", 14, 2)}${t("Zaktualizuj i uruchom ponownie")}`}</button>`
+    : u.packagedMac
+    ? `<span style="font-size: 12px; color: var(--muted);">${t("Rozpakuj paczkę w miejsce Camera Capture.app")}</span>
+       <button type="button" class="btn btn-sm" onclick="${hide}">${t("Później")}</button>
+       <button type="button" class="btn btn-primary btn-sm" onclick="post({action:'open_url', url: '${u.macDownload}'})">${icon("download", 14, 2)}${t("Pobierz dla macOS")}</button>`
     : `<span style="font-size: 12px; color: var(--muted);">${t('Uruchomienie ze źródeł: zaktualizuj przez <b class="mono" style="font-weight: 500; color: var(--text-2);">git pull</b>')}</span>
        <button type="button" class="btn btn-sm" onclick="${hide}">${t("Ukryj")}</button>`;
   return `

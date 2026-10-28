@@ -163,6 +163,8 @@ EN.update({
     "Aktualizacje: masz najnowszą wersję ({v}).": "Updates: you have the latest version ({v}).",
     "Dostępna aktualizacja {v} (masz {cur}).": "Update {v} available (you have {cur}).",
     "Uruchomienie ze źródeł — zaktualizuj przez `git pull`.": "Running from source — update with `git pull`.",
+    "Pobierz paczkę dla macOS z GitHub Releases i podmień Camera Capture.app.":
+        "Download the macOS package from GitHub Releases and replace Camera Capture.app.",
     "✗ Brak paczki aktualizacji do pobrania.": "✗ No update package to download.",
     "✗ Samo-aktualizacja działa tylko dla .exe (Windows).": "✗ Self-update works only for the .exe (Windows).",
     "✗ Trwa zdjęcie/obróbka — spróbuj aktualizacji za chwilę.":
@@ -1415,7 +1417,10 @@ class WebUI:
             return
         self._log(tr("Dostępna aktualizacja {v} (masz {cur}).",
                      v=info['version'], cur=APP_VERSION), "warn")
-        if not updater.can_self_update():
+        if updater.packaged_mac():
+            self._log(tr("Pobierz paczkę dla macOS z GitHub Releases i podmień Camera Capture.app."),
+                      "warn")
+        elif not updater.can_self_update():
             self._log(tr("Uruchomienie ze źródeł — zaktualizuj przez `git pull`."), "warn")
 
     def _job_apply_update(self) -> None:
@@ -1990,6 +1995,9 @@ class WebUI:
             "notes": info.get("notes", "")[:400],
             "page": info.get("page", ""),
             "canApply": bool(info.get("url")) and updater.can_self_update(),
+            # macOS .app: przycisk otwiera paczke macOS (albo strone wydania)
+            "packagedMac": updater.packaged_mac(),
+            "macDownload": info.get("mac_url") or info.get("page", ""),
             "checking": self.update_checking,
             "busy": self.update_busy,
             "progress": self.update_progress,

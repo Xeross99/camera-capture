@@ -22,8 +22,10 @@ objaw byl zawsze ten sam: aplikacja znika i nic sie nie dzieje. Aktualizator w
 Pythonie dostaje sciezki jako liste argv (zero parsowania), pisze log obok .exe,
 a przy wtopie pokazuje MessageBox i podnosi z powrotem stara wersje.
 
-Uruchomienie ze zrodel (macOS/dev) tylko informuje o nowszym tagu — tam
-aktualizuje sie przez `git pull`.
+Spakowana aplikacja na macOS (`Camera Capture.app`) tylko informuje o nowej
+wersji i daje link do zalacznika `CameraCapture-macos-vX.Y.Z.zip`, ktory
+rozpakowuje sie recznie w miejsce starej `.app`. Uruchomienie ze zrodel tylko
+informuje o nowszym tagu — tam aktualizuje sie przez `git pull`.
 """
 
 import ctypes
@@ -65,6 +67,7 @@ UPDATE_TOKEN = os.environ.get("GITHUB_UPDATE_TOKEN", "").strip() or UPDATE_TOKEN
 
 RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 ASSET_HINT = "windows"
+MAC_ASSET_HINT = "macos"
 HTTP_TIMEOUT = 10
 
 APPLY_FLAG = "--apply-update"      # gui.py rozpoznaje ja przed reszta importow
@@ -89,12 +92,27 @@ def can_self_update() -> bool:
     return bool(getattr(sys, "frozen", False)) and sys.platform == "win32"
 
 
+def packaged_mac() -> bool:
+    """Spakowana `Camera Capture.app` — aktualizacja reczna z paczki macOS."""
+    return bool(getattr(sys, "frozen", False)) and sys.platform == "darwin"
+
+
+def _zip_asset(rel: dict, hint: str) -> dict | None:
+    return next(
+        (a for a in rel.get("assets", [])
+         if str(a.get("name", "")).lower().endswith(".zip")
+         and hint in str(a.get("name", "")).lower()),
+        None,
+    )
+
+
 def latest_release() -> dict | None:
     """Najnowszy release z GitHuba (niezaleznie od tego, czy jest nowszy)
     albo None, gdy repo nie ma zadnego wydania.
 
-    Zwraca {version, tag, published, url, size, notes, page}; `url` puste =
-    release bez zalacznika dla Windows (mozna tylko pokazac, ze cos wyszlo)."""
+    Zwraca {version, tag, published, url, size, mac_url, notes, page}; `url`
+    puste = release bez zalacznika dla Windows (mozna tylko pokazac, ze cos
+    wyszlo). `mac_url` to link do paczki macOS dla przegladarki."""
     import requests
 
     r = requests.get(
@@ -110,12 +128,8 @@ def latest_release() -> dict | None:
     remote = parse_version(str(rel.get("tag_name") or ""))
     if remote is None:
         return None
-    asset = next(
-        (a for a in rel.get("assets", [])
-         if str(a.get("name", "")).lower().endswith(".zip")
-         and ASSET_HINT in str(a.get("name", "")).lower()),
-        None,
-    )
+    asset = _zip_asset(rel, ASSET_HINT)
+    mac = _zip_asset(rel, MAC_ASSET_HINT)
     return {
         "version": ".".join(str(n) for n in remote),
         "tag": str(rel.get("tag_name") or ""),
@@ -124,6 +138,8 @@ def latest_release() -> dict | None:
         # repo bez zalogowanej przegladarki zwraca 404 nawet z tokenem
         "url": str(asset.get("url", "")) if asset else "",
         "size": int(asset.get("size") or 0) if asset else 0,
+        # paczke macOS pobiera przegladarka, wiec tu zwykly adres pobrania
+        "mac_url": str(mac.get("browser_download_url", "")) if mac else "",
         "notes": str(rel.get("body") or "").strip(),
         "page": str(rel.get("html_url") or ""),
     }

@@ -38,7 +38,8 @@ The same products straight from the camera and after processing in the app, with
 2. **Processing**, each step switchable in the post-processing panel:
    - **White background:** the background is pushed to pure white and the shadows under the product fade out.
    - **Zoom and centring:** the frame closes in on the product and puts it in the centre instead of wherever
-     it happened to land on the table. A photo taken at an angle stays at that angle: nothing is straightened.
+     it happened to land on the table. A photo taken at an angle stays at that angle: nothing is straightened
+     (apart from the small correction to the photo overlay, see [Photo overlay](#photo-overlay-and-alignment)).
    - **Logo:** one of two logo variants (or none), in the chosen corner of the frame. The README images use
      a sample "ACME.studio" logo.
 3. **Saving and upload.** The finished file is stored in `photos/<session>/` with the raw camera original
@@ -62,13 +63,39 @@ searched and narrowed to a day, week or month and to a number of photos, and the
 
 ### Session
 
-Live view from the camera with a framing grid like the camera's own (3×3 or 6×4), a badge telling whether the
-background is bright enough, and exposure compensation. On the right, the processing steps and the logo with
-its corner; at the bottom, the session's photo strip (green dot: the photo is already in the API, orange:
-waiting to upload). Photos taken on another computer are downloaded from the API automatically.
+Live view from the camera with a framing grid like the camera's own (3×3 or 6×4) and a badge telling whether
+the background is bright enough. At the bottom, the session's photo strip (green dot: the photo is already in
+the API, orange: waiting to upload). Photos taken on another computer are downloaded from the API automatically.
 
-<img src="assets/readme/session.jpg" width="100%" alt="Session: camera live view with a framing grid, processing settings and the photo strip">
-<sub>Captured without a camera connected: one of the session's photos stands in for the live view.</sub>
+<img src="assets/readme/session.jpg" width="100%" alt="Session: camera live view with the photo overlay and the alignment frame, the side panel and the photo strip">
+<sub>Captured with a stand-in camera: the photo overlay is on and the green frame says the next shot will be aligned to it.</sub>
+
+<img src="assets/readme/sidebar.jpg" width="300" align="right" alt="Side panel: exposure, photo overlay, processing and logo">
+
+The side panel, top to bottom:
+
+- **Exposure:** − and + change the camera's exposure compensation; the bar underneath shows how far it is
+  from zero.
+- **Photo overlay:** an earlier photo over the live view with an opacity slider, and **Align framing**
+  (see below).
+- **Processing after the shot:** white background, zoom and centring.
+- **Logo:** no logo or one of two variants, and the corner of the frame it goes in.
+
+<br clear="right">
+
+### Photo overlay and alignment
+
+Shooting a series, every photo should have the product in exactly the same place, so that flipping through
+them with the arrow keys nothing jumps. <kbd>O</kbd> lays the last photo over the live view, half transparent:
+put the next product on top of it. The overlay stays on that photo; to use another one, open it
+(<kbd>Space</kbd>) and press <kbd>O</kbd>.
+
+With **Align framing** on, the app helps a little: when the product almost covers the overlay, the frame of
+the finished photo is pulled onto it, by at most 2 % sideways, 3 % in size and 3° of rotation. A product placed
+differently on purpose is left alone. Over the live view, the overlay's outline turns green ("aligning") when
+the next shot will be corrected and stays grey ("too far") when it will not.
+
+<img src="assets/readme/alignment.jpg" width="100%" alt="The same photo with the overlay laid over it: without correction the product is doubled, with correction it sits exactly in the overlay">
 
 ### Photo viewer and editing
 
@@ -104,6 +131,7 @@ theme switches with the icon in the top right corner.
 | <kbd>Space</kbd> | opens the photo viewer full window |
 | <kbd>←</kbd> <kbd>→</kbd> | moves between photos |
 | <kbd>E</kbd> | edits the logo on the photo being viewed |
+| <kbd>O</kbd> | turns the photo overlay on and off (in the viewer: lays the photo being viewed over the live view) |
 | <kbd>Backspace</kbd> | deletes the photo: it goes to the trash on disk and disappears from the API |
 | <kbd>Esc</kbd> | closes the viewer or leaves the session |
 | <kbd>P</kbd> | turns the camera live view on and off |

@@ -1,0 +1,208 @@
+/* ---------- układ sesji i dopasowanie do mniejszych ekranów ---------- */
+:root {
+  --shot-w: 112px;
+  --shot-h: 84px;
+  --side-w: 360px;
+}
+.session-side {
+  width: var(--side-w);
+  flex: 0 0 var(--side-w);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+}
+.session-side-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 18px 18px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.shutter-bar {
+  flex: 0 0 auto;
+  padding: 12px 18px 14px;
+  border-top: 1px solid var(--border);
+}
+/* stała wysokość pasa: kafelek + 8 px na poziomy scrollbar (pusty stan nie
+   może być niższy, bo menu pod spodem podskakiwało przy pierwszym zdjęciu);
+   padding z ujemnym marginesem daje miejsce na powiększenie kafelka na hover */
+.strip-box {
+  height: calc(var(--shot-h) + 8px);
+  padding: 6px;
+  margin: -6px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.shot-skel {
+  width: var(--shot-w);
+  height: var(--shot-h);
+  flex: 0 0 var(--shot-w);
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11.5px;
+  color: var(--muted-2);
+}
+
+/* węższe okno (laptop): węższy panel boczny */
+@media (max-width: 1400px) {
+  :root {
+    --side-w: 320px;
+  }
+  .session-side-scroll {
+    padding: 14px 14px 10px;
+    gap: 12px;
+  }
+  .shutter-bar {
+    padding: 10px 14px 12px;
+  }
+}
+
+/* niskie okno (laptop 1366×768, Windows ze skalowaniem 150%): mniejsze
+   kafelki, ciaśniejsze karty, bez opisów pod przełącznikami */
+@media (max-height: 860px) {
+  :root {
+    --shot-w: 92px;
+    --shot-h: 66px;
+  }
+  .topbar {
+    height: 46px;
+    flex-basis: 46px;
+  }
+  .strip-panel {
+    padding: 8px 16px 10px;
+  }
+  .strip-panel > div:first-child {
+    margin-bottom: 6px !important;
+  }
+  .statusbar-line {
+    height: 30px;
+  }
+  .session-side-scroll {
+    padding-top: 12px;
+    gap: 10px;
+  }
+  .session-side h1 {
+    font-size: 17px !important;
+  }
+  .side-card {
+    padding: 10px 12px;
+  }
+  .opt {
+    padding: 7px 0;
+  }
+  .session-side .opt .row-desc,
+  .session-side #ev-hint {
+    display: none;
+  }
+  .logo-tile {
+    height: 50px;
+  }
+  .logo-tile img {
+    max-height: 32px;
+  }
+  .corner-pick {
+    width: 52px;
+    height: 52px;
+  }
+  .shutter {
+    height: 40px;
+    font-size: 14px;
+    border-radius: 10px;
+  }
+  .shutter-bar {
+    padding: 8px 14px 10px;
+  }
+  .viewer-bar {
+    height: 48px;
+    flex-basis: 48px;
+  }
+}
+@media (max-height: 720px) {
+  :root {
+    --shot-w: 80px;
+    --shot-h: 56px;
+  }
+  .side-card h2.eyebrow {
+    margin-bottom: 6px !important;
+  }
+}
+.brand-line {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 10px 10px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted-2);
+}
+.brand-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.brand-line img {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.theme-dark {
+  display: none;
+}
+html[data-theme="dark"] .theme-dark,
+html:not([data-theme]) .theme-dark {
+  display: block;
+}
+html[data-theme="dark"] .theme-light,
+html:not([data-theme]) .theme-light {
+  display: none;
+}
+
+/* Okno aplikacji na macOS (WKWebView) nie pokazywało łapki nad treścią
+   klikalnych kafelków, mimo cursor: pointer na samym kafelku — kursor
+   ustawiony jawnie także na elementach w środku (tak jak przy .author). */
+.session-card,
+.session-card *,
+.shot,
+.shot *,
+.day-row,
+.day-row *,
+.set-nav,
+.set-nav *,
+.seg-btn,
+.seg-btn *,
+.logo-tile,
+.logo-tile *,
+.overlay-seg button,
+.overlay-seg button *,
+.btn,
+.btn *,
+.vbtn,
+.vbtn *,
+.vnav,
+.vnav *,
+.icon-btn,
+.icon-btn *,
+.shutter,
+.shutter *,
+.switch,
+.crumbs a {
+  cursor: pointer;
+}
+.btn:disabled,
+.btn:disabled *,
+.vnav:disabled,
+.vnav:disabled * {
+  cursor: default;
+}

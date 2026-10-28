@@ -1,0 +1,234 @@
+/* Podglad zdjecia — kolory z tokenow --viewer*, jasne albo ciemne wg motywu */
+.viewer-bar {
+  height: 56px;
+  flex: 0 0 56px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--viewer-line);
+  background: var(--viewer);
+  color: var(--viewer-fg);
+}
+.vbtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--viewer-border);
+  border-radius: 9px;
+  background: var(--viewer-btn);
+  color: var(--viewer-fg);
+  font-size: 13px;
+  cursor: pointer;
+}
+.vbtn:hover {
+  background: var(--viewer-hover);
+}
+.vbtn .kbd {
+  background: var(--seg);
+  color: var(--viewer-fg-2);
+}
+.vbtn-danger {
+  border-color: var(--err-line);
+  background: var(--err-soft);
+  color: var(--err-fg);
+}
+.vbtn-danger:hover {
+  background: var(--err-soft);
+  filter: brightness(0.97);
+}
+.vbtn-danger .kbd {
+  background: rgba(240, 68, 56, 0.14);
+  color: var(--err-fg);
+}
+.vtag {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--viewer-btn);
+  border: 1px solid var(--viewer-line);
+  color: var(--viewer-fg-2);
+}
+.vnav {
+  position: absolute;
+  top: 50%;
+  margin-top: -24px;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--viewer-border);
+  border-radius: 50%;
+  background: var(--nav-bg);
+  color: var(--viewer-fg);
+  cursor: pointer;
+  z-index: 2;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.vnav:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.vnav svg {
+  width: 20px;
+  height: 20px;
+}
+.edit-panel {
+  width: 340px;
+  flex: 0 0 340px;
+  box-sizing: border-box;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+  animation: editIn 0.26s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.edit-panel[hidden] {
+  display: none;
+}
+@keyframes editIn {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.vbtn.on {
+  background: var(--viewer-fg);
+  color: var(--viewer);
+  border-color: var(--viewer-fg);
+}
+.vbtn.on .kbd {
+  background: rgba(127, 127, 127, 0.3);
+  color: var(--viewer);
+}
+.shot.saving::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.6);
+}
+.shot.saving::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  margin: -10px 0 0 -10px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 2px solid rgba(37, 99, 235, 0.25);
+  border-top-color: var(--accent);
+  animation: spin 0.7s linear infinite;
+}
+.shot.edited {
+  animation: editedPop 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes editedPop {
+  0% {
+    transform: scale(0.88);
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.55);
+  }
+  45% {
+    transform: scale(1.07);
+    box-shadow: 0 0 0 8px rgba(37, 99, 235, 0.18);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 3px var(--accent-ring);
+  }
+}
+.set-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 40px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.set-nav:hover {
+  background: var(--seg);
+}
+.set-nav:active:not(:disabled) {
+  transform: none;
+  filter: none;
+}
+.set-nav.on {
+  background: var(--surface);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.08),
+    0 0 0 1px var(--border);
+  font-weight: 600;
+}
+.set-nav-icon {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  background: var(--seg);
+  color: var(--text-2);
+}
+.set-nav.on .set-nav-icon {
+  background: var(--text);
+  color: var(--surface);
+}
+#settings-scroll section {
+  scroll-margin-top: 28px;
+}
+.author {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 10px;
+  background: rgba(120, 120, 128, 0.07);
+  color: var(--muted-2);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+.author * {
+  cursor: pointer;
+}
+.author:hover {
+  background: rgba(120, 120, 128, 0.18);
+  color: var(--text-2);
+}
+.author:active:not(:disabled) {
+  transform: none;
+  filter: none;
+}
+.author img {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 3px var(--border);
+}

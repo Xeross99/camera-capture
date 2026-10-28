@@ -118,7 +118,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _serve_static(self, path: str):
-        """Statyki frontendu (style.css / app.js) z webui_static — tylko
+        """Statyki frontendu (style-*.css / app-*.js) z webui_static — tylko
         rozszerzenia z STATIC_TYPES, sama nazwa pliku (bez podkatalogow)."""
         name = Path(path).name
         ctype = STATIC_TYPES.get(Path(name).suffix)

@@ -96,10 +96,13 @@ def test_logo_tiles_and_corner_pill(app, ui):
     wait_for(lambda: app.add_logo is True and app.state()["post"]["logoChoice"] == "kids", 10, "logo KIDS")
     ui.locator('[data-corner="top-left"]').click()
     wait_for(lambda: app.logo_position == "top-left", 10, "rog")
-    pill = ui.locator("#logo-corner-seg .seg-pill")
-    btn = ui.locator('[data-corner="top-left"]')
-    ui.wait_for_timeout(450)   # przejazd tla .32 s
-    assert abs(pill.bounding_box()["x"] - btn.bounding_box()["x"]) < 1
+    # tlo przejezdza pod klikniety rog (.32 s) — czekamy, az dojedzie, zamiast
+    # sztywnego odczekania: na wolnym runnerze Windows animacja trwala dluzej
+    ui.wait_for_function("""() => {
+        const pill = document.querySelector('#logo-corner-seg .seg-pill');
+        const btn = document.querySelector('[data-corner="top-left"]');
+        return Math.abs(pill.getBoundingClientRect().x - btn.getBoundingClientRect().x) < 1;
+    }""", timeout=5000)
     ui.locator(".session-side .side-card").last.screenshot(path="/private/tmp/claude-501/-Users-xeross-Desktop-camera-capture/b4dc7c83-3263-4a48-96b0-c364b2a3c006/scratchpad/logo.png")
 
 

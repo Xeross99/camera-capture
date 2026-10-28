@@ -1,51 +1,92 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 220" width="540" height="220" role="img" aria-label="Camera Capture: Enter na laptopie, aparat robi zdjęcie, laptop usuwa tło">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 220" width="540" height="220" role="img" aria-label="Camera Capture: ręka naciska Enter na laptopie, aparat robi zdjęcie, laptop usuwa tło">
   <title>Camera Capture</title>
   <style>
-    /* Jedna pętla 6 s. Klatka 0% i 100% są identyczne (podgląd na żywo
+    /* Jedna pętla 9 s. Klatka 0% i 100% są identyczne (podgląd na żywo
        w laptopie), więc nie widać, gdzie animacja się zaczyna i kończy:
-       Enter → migawka → zdjęcie leci kablem do laptopa → tło się wybiela
-       → „gotowe" → powrót do podglądu. */
+       rączka naciska Enter → migawka → zdjęcie leci kablem do laptopa →
+       tło się wybiela → „gotowe" → gotowe zdjęcie produktu wychodzi z
+       ekranu i przykrywa scenę → powrót do podglądu. */
     * { transform-box: view-box; }
-    .enter   { transform-origin: 475px 172px; animation: enter 6s ease-in-out infinite; }
-    .enterHi { animation: enterHi 6s ease-in-out infinite; }
-    .ripple  { transform-origin: 475px 172px; animation: ripple 6s ease-out infinite; }
-    .iris    { transform-origin: 110px 126px; animation: iris 6s cubic-bezier(.34,1.56,.64,1) infinite; }
-    .flash   { animation: flash 6s ease-out infinite; }
-    .led     { animation: led 6s steps(1) infinite; }
-    .body    { transform-origin: 110px 174px; animation: press 6s ease-out infinite; }
-    .data    { animation: data 6s linear infinite; }
-    .card    { transform-origin: 0 0; animation: card 6s cubic-bezier(.45,0,.25,1) infinite; }
-    .snap    { animation: snap 6s ease-out infinite; }
-    .wipe    { transform-origin: 308px 99px; animation: wipe 6s cubic-bezier(.65,0,.35,1) infinite; }
-    .scan    { animation: scan 6s cubic-bezier(.65,0,.35,1) infinite; }
-    .shadowRaw { animation: shadowRaw 6s ease-in-out infinite; }
-    .check   { transform-origin: 452px 66px; animation: check 6s cubic-bezier(.34,1.56,.64,1) infinite; }
-    .rec     { animation: rec 6s steps(1) infinite; }
+    .enter   { transform-origin: 475px 172px; animation: enter 9s ease-in-out infinite; }
+    .enterHi { animation: enterHi 9s ease-in-out infinite; }
+    .ripple  { transform-origin: 475px 172px; animation: ripple 9s ease-out infinite; }
+    .iris    { transform-origin: 110px 126px; animation: iris 9s cubic-bezier(.34,1.56,.64,1) infinite; }
+    .flash   { animation: flash 9s ease-out infinite; }
+    .led     { animation: led 9s steps(1) infinite; }
+    .body    { transform-origin: 110px 174px; animation: press 9s ease-out infinite; }
+    .data    { animation: data 9s linear infinite; }
+    .card    { transform-origin: 0 0; animation: card 9s cubic-bezier(.45,0,.25,1) infinite; }
+    .snap    { animation: snap 9s ease-out infinite; }
+    .wipe    { transform-origin: 308px 99px; animation: wipe 9s cubic-bezier(.65,0,.35,1) infinite; }
+    .scan    { animation: scan 9s cubic-bezier(.65,0,.35,1) infinite; }
+    .shadowRaw { animation: shadowRaw 9s ease-in-out infinite; }
+    .check   { transform-origin: 452px 66px; animation: check 9s cubic-bezier(.34,1.56,.64,1) infinite; }
+    .rec     { animation: rec 9s steps(1) infinite; }
 
-    @keyframes enter   { 0%, 11%, 17%, 100% { transform: translateY(0); } 13%, 15% { transform: translateY(1.6px); } }
-    @keyframes enterHi { 0%, 11%, 19%, 100% { opacity: 0; } 13%, 16% { opacity: 1; } }
-    @keyframes ripple  { 0%, 13% { transform: scale(.4); opacity: 0; } 14% { opacity: .55; } 22%, 100% { transform: scale(2.6); opacity: 0; } }
-    @keyframes iris    { 0%, 16%, 100% { transform: scale(1); } 18.5% { transform: scale(.5); } 23% { transform: scale(1.06); } 26% { transform: scale(1); } }
-    @keyframes flash   { 0%, 17% { opacity: 0; } 18.5% { opacity: .95; } 25%, 100% { opacity: 0; } }
-    @keyframes led     { 0%, 16% { opacity: 1; } 17% { opacity: .2; } 19% { opacity: 1; } 21% { opacity: .2; } 23%, 100% { opacity: 1; } }
-    @keyframes press   { 0%, 16%, 100% { transform: scale(1); } 18% { transform: scale(.985, .97); } 22% { transform: scale(1); } }
-    @keyframes data    { 0%, 20% { stroke-dashoffset: 0; opacity: 0; } 22% { opacity: 1; } 40% { stroke-dashoffset: -60; opacity: 1; } 43%, 100% { stroke-dashoffset: -66; opacity: 0; } }
+    @keyframes enter   { 0%, 17.33%, 21.33%, 100% { transform: translateY(0); } 18.67%, 20% { transform: translateY(1.6px); } }
+    @keyframes enterHi { 0%, 17.33%, 22.67%, 100% { opacity: 0; } 18.67%, 20.67% { opacity: 1; } }
+    @keyframes ripple  { 0%, 18.67% { transform: scale(.4); opacity: 0; } 19.33% { opacity: .55; } 24.67%, 100% { transform: scale(2.6); opacity: 0; } }
+    @keyframes iris    { 0%, 20.67%, 100% { transform: scale(1); } 22.33% { transform: scale(.5); } 25.33% { transform: scale(1.06); } 27.33% { transform: scale(1); } }
+    @keyframes flash   { 0%, 21.33% { opacity: 0; } 22.33% { opacity: .95; } 26.67%, 100% { opacity: 0; } }
+    @keyframes led     { 0%, 20.67% { opacity: 1; } 21.33% { opacity: .2; } 22.67% { opacity: 1; } 24% { opacity: .2; } 25.33%, 100% { opacity: 1; } }
+    @keyframes press   { 0%, 20.67%, 100% { transform: scale(1); } 22% { transform: scale(.985, .97); } 24.67% { transform: scale(1); } }
+    @keyframes data    { 0%, 23.33% { stroke-dashoffset: 0; opacity: 0; } 24.67% { opacity: 1; } 36.67% { stroke-dashoffset: -60; opacity: 1; } 38.67%, 100% { stroke-dashoffset: -66; opacity: 0; } }
     @keyframes card {
-      0%, 19%  { transform: translate(110px, 126px) scale(.15); opacity: 0; }
-      22%      { transform: translate(110px, 126px) scale(.42); opacity: 1; }
-      31%      { transform: translate(240px, 30px) scale(.72); opacity: 1; }
-      40%      { transform: translate(390px, 99px) scale(1); opacity: 1; }
-      43%      { transform: translate(390px, 99px) scale(1.02); opacity: 0; }
-      44%, 100% { transform: translate(110px, 126px) scale(.15); opacity: 0; }
+      0%, 22.67%  { transform: translate(110px, 126px) scale(.15); opacity: 0; }
+      24.67%      { transform: translate(110px, 126px) scale(.42); opacity: 1; }
+      30.67%      { transform: translate(240px, 30px) scale(.72); opacity: 1; }
+      36.67%      { transform: translate(390px, 99px) scale(1); opacity: 1; }
+      38.67%      { transform: translate(390px, 99px) scale(1.02); opacity: 0; }
+      39.33%, 100% { transform: translate(110px, 126px) scale(.15); opacity: 0; }
     }
-    @keyframes snap    { 0%, 39% { opacity: 0; } 41% { opacity: .5; } 46%, 100% { opacity: 0; } }
-    @keyframes wipe    { 0%, 45% { transform: scaleX(0); opacity: 1; } 62% { transform: scaleX(1); opacity: 1; } 86% { transform: scaleX(1); opacity: 1; } 97%, 100% { transform: scaleX(1); opacity: 0; } }
-    @keyframes scan    { 0%, 45% { transform: translateX(0); opacity: 0; } 46% { opacity: 1; } 61% { opacity: 1; } 62% { transform: translateX(164px); opacity: 0; } 100% { transform: translateX(164px); opacity: 0; } }
-    @keyframes shadowRaw { 0%, 45% { opacity: 1; } 60%, 88% { opacity: 0; } 97%, 100% { opacity: 1; } }
-    @keyframes check   { 0%, 62% { transform: scale(0); opacity: 0; } 65% { transform: scale(1.18); opacity: 1; } 68%, 86% { transform: scale(1); opacity: 1; } 93%, 100% { transform: scale(.6); opacity: 0; } }
-    @keyframes rec     { 0%, 10% { opacity: 1; } 10.01%, 92% { opacity: 0; } 92.01%, 100% { opacity: 1; } }
+    @keyframes snap    { 0%, 36% { opacity: 0; } 37.33% { opacity: .5; } 40.67%, 100% { opacity: 0; } }
+    @keyframes wipe    { 0%, 40% { transform: scaleX(0); opacity: 1; } 51.33% { transform: scaleX(1); opacity: 1; } 95% { transform: scaleX(1); opacity: 1; } 99%, 100% { transform: scaleX(1); opacity: 0; } }
+    @keyframes scan    { 0%, 40% { transform: translateX(0); opacity: 0; } 40.67% { opacity: 1; } 50.67% { opacity: 1; } 51.33% { transform: translateX(164px); opacity: 0; } 100% { transform: translateX(164px); opacity: 0; } }
+    @keyframes shadowRaw { 0%, 40% { opacity: 1; } 50%, 95% { opacity: 0; } 99%, 100% { opacity: 1; } }
+    @keyframes check   { 0%, 51.33% { transform: scale(0); opacity: 0; } 53.33% { transform: scale(1.18); opacity: 1; } 55.33%, 67.33% { transform: scale(1); opacity: 1; } 72%, 100% { transform: scale(.6); opacity: 0; } }
+    @keyframes rec     { 0%, 16.67% { opacity: 1; } 16.67%, 97.99% { opacity: 0; } 98%, 100% { opacity: 1; } }
+  
+    /* rączka: podchodzi z prawego dołu, naciska Enter (razem z klawiszem), odchodzi */
+    .hand    { animation: hand 9s cubic-bezier(.45,0,.25,1) infinite; }
+    .finger  { transform-origin: 0 0; animation: finger 9s ease-in-out infinite; }
+    @keyframes hand {
+      0%, 3%   { transform: translate(560px, 262px); opacity: 0; }
+      5%       { opacity: 1; }
+      15%      { transform: translate(476px, 165px); opacity: 1; }
+      18.7%    { transform: translate(476px, 170px); }
+      21%      { transform: translate(476px, 165px); opacity: 1; }
+      28%      { transform: translate(560px, 262px); opacity: 0; }
+      100%     { transform: translate(560px, 262px); opacity: 0; }
+    }
+    @keyframes finger { 0%, 17.5%, 21%, 100% { transform: scale(1); } 18.7%, 20% { transform: scale(.94); } }
+    /* na koniec: gotowe zdjęcie wychodzi z ekranu laptopa i przykrywa scenę */
+    .veil    { animation: veil 9s ease-in-out infinite; }
+    .final   { transform-origin: 0 0; animation: final 9s cubic-bezier(.32,.72,0,1) infinite; }
+    @keyframes veil  { 0%, 63% { opacity: 0; } 69%, 93% { opacity: .92; } 99%, 100% { opacity: 0; } }
+    @keyframes final {
+      0%, 63%  { transform: translate(390px, 99px) scale(.42); opacity: 0; }
+      64%      { opacity: 1; }
+      70%      { transform: translate(270px, 110px) scale(1); opacity: 1; }
+      93%      { transform: translate(270px, 110px) scale(1); opacity: 1; }
+      99%, 100% { transform: translate(270px, 110px) scale(.96); opacity: 0; }
+    }
+    .sk      { transform-origin: 0 50%; transform-box: fill-box; }
+    .sk1     { animation: sk1 9s cubic-bezier(.32,.72,0,1) infinite; }
+    .sk2     { animation: sk2 9s cubic-bezier(.32,.72,0,1) infinite; }
+    .sk3     { animation: sk3 9s cubic-bezier(.32,.72,0,1) infinite; }
+    .sk4     { animation: sk4 9s cubic-bezier(.32,.72,0,1) infinite; }
+    @keyframes sk1 { 0%, 64% { transform: scaleX(0); } 66.5%, 100% { transform: scaleX(1); } }
+    @keyframes sk2 { 0%, 65% { transform: scaleX(0); } 67.5%, 100% { transform: scaleX(1); } }
+    @keyframes sk3 { 0%, 66% { transform: scaleX(0); } 68.5%, 100% { transform: scaleX(1); } }
+    @keyframes sk4 { 0%, 67% { transform: scaleX(0); } 69.5%, 100% { transform: scaleX(1); } }
   </style>
   <defs>
+    <linearGradient id="skel" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#e5e7eb"/>
+      <stop offset=".5" stop-color="#f3f4f6"/>
+      <stop offset="1" stop-color="#e5e7eb"/>
+      <animateTransform attributeName="gradientTransform" type="translate" from="-1 0" to="1 0" dur="1.4s" repeatCount="indefinite"/>
+    </linearGradient>
     <radialGradient id="rawBg" cx="50%" cy="45%" r="70%">
       <stop offset="0" stop-color="#d3d8e1"/>
       <stop offset="1" stop-color="#9aa3b2"/>
@@ -110,5 +151,30 @@
     <rect x="-41" y="-31" width="82" height="62" rx="4" fill="#ffffff"/>
     <rect x="-37" y="-27" width="74" height="54" rx="2" fill="url(#rawBg)"/>
     <use href="#product" transform="scale(.62)"/>
+  </g>
+  <!-- rączka z wyciągniętym palcem (rysowana od czubka palca w 0,0) -->
+  <g class="hand">
+    <g class="finger">
+      <path d="M-5 0 a5 5 0 0 1 10 0 v20 h8 a5 5 0 0 1 5 5 v1 a4.5 4.5 0 0 1 4.5 4.5 v14 c0 10 -7 17 -18 17 h-6 c-9 0 -15 -6 -18 -13 l-6 -13 a4 4 0 0 1 6.5 -4.4 l5.5 6 z"
+            fill="#f2c7a5" stroke="#e3a882" stroke-width="1.6" stroke-linejoin="round"/>
+      <path d="M5 20 v8 M13 25 v8 M22.5 30.5 v7" fill="none" stroke="#b9825d" stroke-width="1.3" stroke-linecap="round" opacity=".7"/>
+      <path d="M-11 59 h30 v10 h-30 z" fill="#2563eb"/>
+    </g>
+  </g>
+
+  <!-- koniec pętli: gotowe zdjęcie produktu na białym tle przykrywa scenę -->
+  <rect class="veil" x="0" y="0" width="540" height="220" fill="#0d1117"/>
+  <g class="final">
+    <rect x="-92" y="-102" width="184" height="204" rx="10" fill="#ffffff" stroke="#30363d" stroke-width="1.5"/>
+    <use href="#product" transform="translate(0 -40) scale(2.1)"/>
+    <!-- skeleton tytułu i opisu: paski wchodzą kolejno i mienią się jak wczytywana treść -->
+    <rect class="sk sk1" x="-76" y="30" width="112" height="11" rx="5.5" fill="url(#skel)"/>
+    <rect class="sk sk2" x="-76" y="52" width="152" height="7" rx="3.5" fill="url(#skel)"/>
+    <rect class="sk sk3" x="-76" y="66" width="120" height="7" rx="3.5" fill="url(#skel)"/>
+    <rect class="sk sk4" x="-76" y="80" width="84" height="7" rx="3.5" fill="url(#skel)"/>
+    <g transform="translate(70 -84)">
+      <circle r="13" fill="#22c55e"/>
+      <path d="M-6 0.5 l4 4 l8 -8.5" fill="none" stroke="#ffffff" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
   </g>
 </svg>

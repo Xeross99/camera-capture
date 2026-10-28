@@ -1409,6 +1409,9 @@ function alignGuideReconcile(st, shot) {
   el.style.width = `${(box[2] - box[0]) * 100}%`;
   el.style.height = `${(box[3] - box[1]) * 100}%`;
   el.classList.toggle("ok", ok);
+  // duży produkt pod górną krawędzią kadru: dopisek nad ramką wypadałby poza
+  // podgląd — wtedy siedzi w środku ramki, w jej lewym górnym rogu
+  el.classList.toggle("label-inside", box[1] < 0.07);
   const label = $("align-guide-label");
   const text = ok ? `✓ ${t("korekta")}` : t("za daleko");
   if (label && label.textContent !== text) label.textContent = text;

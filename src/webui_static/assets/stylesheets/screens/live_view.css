@@ -627,11 +627,20 @@
   font-size: 11px;
   white-space: nowrap;
 }
+/* korekta zadziała: delikatna zieleń — cienka półprzezroczysta ramka
+   i lekkie podbarwienie środka, bez przykrywania produktu */
 .align-guide.ok {
-  border: 2px solid #22c55e;
+  border: 1.5px solid rgba(34, 197, 94, .7);
+  background: rgba(34, 197, 94, .07);
+  box-shadow: none;
 }
 .align-guide.ok > span {
-  background: #16a34a;
+  background: rgba(22, 163, 74, .85);
+}
+.align-guide.label-inside > span {
+  top: 6px;
+  left: 6px;
+  bottom: auto;
 }
 .align-guide.appear {
   animation: alignGuideIn .42s cubic-bezier(0.32, 0.72, 0, 1);

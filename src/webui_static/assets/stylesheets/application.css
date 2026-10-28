@@ -1,0 +1,22 @@
+/* Manifest stylow, jak app/assets/stylesheets/application.css w Rails:
+ *
+ *   base/        fonty, tokeny motywu (kolory jasny/ciemny) i elementy bazowe
+ *   components/  pasek gorny, przyciski i pola, okna, wyszukiwarka ⌘K
+ *   layout/      dopasowanie do mniejszych ekranow, kursory
+ *   screens/     ekrany: lista sesji, sesja, plansze podgladu, podglad zdjecia
+ *
+ * Kolejnosc importow = kaskada (pozniejszy wygrywa przy rownej
+ * specyficznosci) i odpowiada dawnemu jednemu style.css — nie przestawiac,
+ * nowy plik dopisywac w miejscu, w ktorym jego reguly maja wygrywac.
+ */
+@import url("base/fonts.css");
+@import url("base/theme.css");
+@import url("components/topbar.css");
+@import url("components/controls.css");
+@import url("screens/start.css");
+@import url("screens/session.css");
+@import url("screens/viewer.css");
+@import url("layout/responsive.css");
+@import url("components/modals.css");
+@import url("screens/live_view.css");
+@import url("components/search.css");

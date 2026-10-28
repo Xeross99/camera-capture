@@ -258,3 +258,23 @@ def test_raw_retention_setting_is_saved_and_purges(app, env_store, monkeypatch):
     wait_for(lambda: 30 in calls, 10, "kasowanie starych oryginałów po zmianie")
     app.action({"action": "set_app", "key": "raw_retention_days", "value": 13})
     assert app.state()["settings"]["rawRetentionDays"] == 30, "tylko 7/30/90/0"
+
+
+def test_static_serves_stylesheets_but_nothing_outside(app):
+    """Manifest stylów i każdy importowany plik są dostępne; ścieżka
+    wychodząca poza webui_static to 404, a nie plik z dysku."""
+    import re as _re
+    base = app.url.split("?")[0]
+    with urllib.request.urlopen(f"{base}static/assets/stylesheets/application.css?t={app.token}") as r:
+        manifest = r.read().decode()
+    imports = _re.findall(r'@import url\("([^"]+)"\)', manifest)
+    assert len(imports) >= 10
+    for imp in imports:
+        with urllib.request.urlopen(f"{base}static/assets/stylesheets/{imp}?t={app.token}") as r:
+            assert r.headers["Content-Type"].startswith("text/css")
+    with pytest.raises(urllib.error.HTTPError) as e:
+        urllib.request.urlopen(f"{base}static/assets/../../webui.py?t={app.token}")
+    assert e.value.code == 404
+    with pytest.raises(urllib.error.HTTPError) as e:
+        urllib.request.urlopen(f"{base}static/%2e%2e/%2e%2e/version.py?t={app.token}")
+    assert e.value.code == 404

@@ -19,16 +19,11 @@ STATIC_TYPES = {
     ".css": "text/css; charset=utf-8",
     ".js": "application/javascript; charset=utf-8",
     ".woff2": "font/woff2",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
 }
 
 
-# Obrazki interfejsu z assets/icons: adres -> plik. Zdjęcie autora (stopka
-# nawigacji Ustawień) i ikona aplikacji.
-ICONS = {
-    "/author": "author.jpg",
-    "/favicon.png": "camera_capture.png",
-    "/logo-cc-dark.png": "camera_capture_dark.png",
-}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -74,8 +69,6 @@ class Handler(BaseHTTPRequestHandler):
             self._serve_stream()
         elif url.path == "/img":
             self._serve_img(parse_qs(url.query))
-        elif url.path in ICONS:
-            self._serve_icon(ICONS[url.path])
         elif url.path == "/logo":
             self._serve_logo(parse_qs(url.query))
         elif url.path == "/api-favicon":
@@ -118,12 +111,14 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _serve_static(self, path: str):
-        """Statyki frontendu (style-*.css / app-*.js) z webui_static — tylko
-        rozszerzenia z STATIC_TYPES, sama nazwa pliku (bez podkatalogow)."""
-        name = Path(path).name
-        ctype = STATIC_TYPES.get(Path(name).suffix)
-        target = STATIC_DIR / name
-        if ctype is None or not target.is_file():
+        """Statyki frontendu z webui_static/assets (stylesheets, javascripts,
+        fonts, images) — tylko rozszerzenia z STATIC_TYPES i tylko wewnatrz
+        webui_static: sciezka z `..` wychodzaca poza katalog to 404."""
+        rel = path[len("/static/"):]
+        ctype = STATIC_TYPES.get(Path(rel).suffix)
+        base = STATIC_DIR.resolve()
+        target = (base / rel).resolve()
+        if ctype is None or not target.is_relative_to(base) or not target.is_file():
             self.send_error(404)
             return
         body = target.read_bytes()
@@ -176,23 +171,6 @@ class Handler(BaseHTTPRequestHandler):
             # kazdy przebudowany pasek zdjec (wejscie i wyjscie z podgladu)
             # pobieral miniatury od nowa i kafelki mrugaly pustym tlem.
             self.send_header("Cache-Control", "private, max-age=31536000, immutable")
-        self.end_headers()
-        self.wfile.write(data)
-
-    def _serve_icon(self, name: str):
-        """Obrazki z assets/icons dla UI (lista ICONS — nic spoza niej)."""
-        from .config import DEFAULT_ASSETS_DIR
-        path = DEFAULT_ASSETS_DIR / "icons" / name
-        if not path.is_file():
-            self.send_error(404)
-            return
-        data = path.read_bytes()
-        self.send_response(200)
-        self.send_header("Content-Type", "image/png" if name.endswith(".png") else "image/jpeg")
-        self.send_header("Content-Length", str(len(data)))
-        # no-cache = przegladarka pyta za kazdym razem (plik lokalny, tanio);
-        # z max-age okno aplikacji trzymalo stara ikone jeszcze dobe po aktualizacji
-        self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         self.wfile.write(data)
 

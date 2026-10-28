@@ -174,10 +174,10 @@ function ustawieniaScreen() {
       ${nav}
       <div style="flex: 1;"></div>
       <div class="brand-line">
-        <span class="brand-item"><img class="theme-light" src="/favicon.png?v=${u.current}" alt="" /><img class="theme-dark" src="/logo-cc-dark.png?v=${u.current}" alt="" />Camera Capture <span class="mono" style="color: var(--text-2);">${u.current}</span></span>
+        <span class="brand-item"><img class="theme-light" src="/static/assets/images/camera_capture.png?v=${u.current}" alt="" /><img class="theme-dark" src="/static/assets/images/camera_capture_dark.png?v=${u.current}" alt="" />Camera Capture <span class="mono" style="color: var(--text-2);">${u.current}</span></span>
       </div>
       <button type="button" class="author" onclick="post({action:'open_url', url: 'https://github.com/Xeross99'})" title="${t("Profil autora na GitHubie")}">
-        <img src="/author" alt="" />
+        <img src="/static/assets/images/author.jpg" alt="" />
         <span style="flex: 1; min-width: 0; text-align: left;">
           <span style="display: block; font-size: 13px; font-weight: 600; color: var(--text);">Michał Krzysteczko</span>
           <span style="display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted-2);">${GITHUB_MARK.replace("width: 24px; height: 24px", "width: 12px; height: 12px")}Xeross99</span>

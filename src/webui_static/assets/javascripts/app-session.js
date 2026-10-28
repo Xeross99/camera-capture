@@ -603,7 +603,7 @@ function reviewSize() {
 
 // Podglad zdjecia zajmuje CALE okno (position: fixed nad zakladkami i sidebarem),
 // a pasek zdjec sesji siedzi u jego dolu. Tlo idzie za motywem (jasne w jasnym,
-// ciemne w ciemnym) — tokeny --viewer* w style-base.css.
+// ciemne w ciemnym) — tokeny --viewer* w assets/stylesheets/base/theme.css.
 function reviewOverlay() {
   const shot = S.reviewMode ? reviewShot() : null;
   if (!shot) return "";
@@ -1148,7 +1148,7 @@ function flashNow() {
 
 // ---------- filmstrip ----------
 
-// Wymiary pasa i kafelków są w style-layout.css (.strip-box) i style-session.css (.shot) — na niskim
+// Wymiary pasa i kafelków są w assets/stylesheets/layout/responsive.css (.strip-box) i screens/session.css (.shot) — na niskim
 // ekranie kurczą się w media query.
 const stripBox = "";
 

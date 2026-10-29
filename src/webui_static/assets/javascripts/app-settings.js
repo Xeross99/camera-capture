@@ -1,6 +1,26 @@
 "use strict";
 // Tłumaczenia EN tekstów z tego pliku (klucz = polski tekst, patrz i18n.js).
 Object.assign(I18N_EN, {
+  // edytor logo
+  "Podaj nazwę logo.": "Enter a logo name.",
+  "Logo o tej nazwie już jest.": "A logo with this name already exists.",
+  "Wybierz plik z logo.": "Choose a logo file.",
+  "PNG albo SVG z przezroczystym tłem wygląda najlepiej.": "A PNG or SVG with a transparent background looks best.",
+  "Nie da się odczytać tego pliku — wybierz PNG, SVG, WEBP albo JPG.": "This file cannot be read — choose a PNG, SVG, WEBP or JPG.",
+  "Znaki nakładane na gotowe zdjęcia": "Marks placed on finished photos",
+  "krycie {o} %": "opacity {o}%",
+  "Usuń logo": "Remove logo",
+  "Na pewno?": "Sure?",
+  "Brak logo — zdjęcia zapisują się bez znaku.": "No logos — photos are saved without a mark.",
+  "Dodaj logo": "Add logo",
+  "Nazwa": "Name",
+  "Plik": "File",
+  "Zmień plik": "Change file",
+  "Wybierz plik": "Choose file",
+  "Rozmiar": "Size",
+  "Krycie": "Opacity",
+  "Zapisz logo": "Save logo",
+  "Nie udało się zapisać logo.": "Could not save the logo.",
   "Aktualizacje": "Updates",
   "Pliki": "Files",
   "Podgląd i obróbka": "Preview and processing",
@@ -88,6 +108,7 @@ Object.assign(I18N_EN, {
 const SETTINGS_SECTIONS = [
   { id: "aktualizacje", label: "Aktualizacje", icon: "download" },
   { id: "automat", label: "API", icon: "cloud" },
+  { id: "logo", label: "Logo", icon: "badge" },
   { id: "pliki", label: "Pliki", icon: "folder" },
   { id: "obrobka", label: "Podgląd i obróbka", icon: "sparkles" },
   { id: "jezyk", label: "Język", icon: "language" },
@@ -188,7 +209,7 @@ function ustawieniaScreen() {
     </nav>
 
     <div id="settings-scroll" onscroll="settingsScrolled()" style="flex: 1; min-width: 0; overflow-y: auto; padding: 28px 40px 40px;">
-      <div style="max-width: 820px; display: flex; flex-direction: column; gap: 20px;">
+      <div style="max-width: 820px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px;">
 
         <section id="sec-aktualizacje" class="panel" style="overflow: hidden;">
           ${cardHead(GITHUB_MARK, "background: #1d1d1f; color: #fff;", t("Aktualizacje"),
@@ -242,6 +263,11 @@ function ustawieniaScreen() {
             ${a_noToken(st)}
           </div>
           ${apiEndpoints()}
+        </section>
+
+        <section id="sec-logo" class="panel" style="overflow: hidden;">
+          ${cardHead(icon("badge", 22), "background: var(--accent-soft); color: var(--accent-fg);", t("Logo"), t("Znaki nakładane na gotowe zdjęcia"))}
+          ${logoSettingsHtml(st.post)}
         </section>
 
         <section id="sec-pliki" class="panel" style="overflow: hidden;">
@@ -423,4 +449,242 @@ function applyUpdate() {
   const u = S.state.update || {};
   if (!u.canApply || u.busy) return;
   post({ action: "apply_update" });
+}
+
+// ---------- edytor logo (Ustawienia → Logo) ----------
+// S.logoEdit = {key ("" = nowe), label, height, opacity, data (data URL nowego
+// pliku albo null), src (podgląd), error}. Stan formularza żyje w S, bo poll
+// potrafi przebudować ekran Ustawień — formularz rysuje się z niego od nowa.
+
+const pct = v => Math.round(v * 100);
+
+function logoSettingsHtml(post_) {
+  const logos = post_.logos || [];
+  const ed = S.logoEdit;
+  const rows = logos.map(l => ed && ed.key === l.key ? logoFormHtml(ed) : `
+    <div class="logo-row${S.logoFlash === l.key ? " flash" : ""}" data-logo-row="${l.key}">
+      <span class="logo-tile-mark"><img src="/logo?k=${l.key}&v=${l.v}" alt="" /></span>
+      <div class="logo-row-text"><b>${l.label}</b><span>${t("{p} % kadru", { p: pct(l.height) })} · ${t("krycie {o} %", { o: pct(l.opacity) })}</span></div>
+      <button type="button" class="btn" onclick="logoEditOpen('${l.key}')" ${ed ? "disabled" : ""}>${icon("pencil", 15)}${t("Edytuj")}</button>
+      <button type="button" class="btn${S.logoDeleting === l.key ? " btn-danger" : ""}" onclick="logoDelete('${l.key}')" ${ed ? "disabled" : ""} aria-label="${t("Usuń logo")}">${S.logoDeleting === l.key ? t("Na pewno?") : icon("trash", 15)}</button>
+    </div>`).join("");
+  const empty = logos.length ? "" : `<div class="row-desc" style="padding: 14px 20px; margin: 0;">${t("Brak logo — zdjęcia zapisują się bez znaku.")}</div>`;
+  const add = ed && ed.key === "" ? logoFormHtml(ed)
+    : `<div style="padding: 12px 20px; border-top: 1px solid var(--hair); background: var(--surface-2);">
+        <button type="button" class="btn" onclick="logoEditOpen('')" ${ed ? "disabled" : ""}>${icon("plus", 15)}${t("Dodaj logo")}</button>
+      </div>`;
+  return `<div style="border-top: 1px solid var(--hair);">${rows}${empty}</div>${add}`;
+}
+
+function logoFormHtml(ed) {
+  const mark = ed.src ? `<img id="logo-form-mark" src="${ed.src}" alt="" style="height: ${pct(ed.height)}%; opacity: ${ed.opacity};" />` : "";
+  // animacja wejścia tylko przy otwarciu — kolejne przebudowy (wybór pliku,
+  // błędy walidacji) rysują formularz bez niej
+  const enter = !ed.shown;
+  ed.shown = true;
+  return `
+    <div class="logo-form${enter ? " enter" : ""}">
+      <div class="logo-form-preview" aria-hidden="true"><span class="logo-form-product"></span>${mark}</div>
+      <div class="logo-form-fields">
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <label for="logo-form-label" class="row-title">${t("Nazwa")}</label>
+          <input id="logo-form-label" class="field${ed.errors && ed.errors.label ? " invalid" : ""}" value="${String(ed.label).replace(/"/g, "&quot;")}" oninput="logoFormLabel(this.value)" maxlength="40" aria-invalid="${!!(ed.errors && ed.errors.label)}" aria-describedby="logo-form-label-err" />
+          <span id="logo-form-label-err" class="field-err">${(ed.errors && ed.errors.label) || ""}</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <span class="row-title">${t("Plik")}</span>
+          <label class="btn logo-form-file">${icon("download", 15)}${ed.src ? t("Zmień plik") : t("Wybierz plik")}<input type="file" accept="image/png,image/webp,image/jpeg,image/svg+xml" onchange="logoFilePicked(this)" /></label>
+          ${ed.errors && ed.errors.file ? `<span class="field-err">${ed.errors.file}</span>` : `<span class="row-desc" style="margin: 0;">${t("PNG albo SVG z przezroczystym tłem wygląda najlepiej.")}</span>`}
+        </div>
+        <div class="logo-form-range">
+          <label for="logo-form-h" class="row-title">${t("Rozmiar")}</label>
+          <input id="logo-form-h" class="ghost-range" type="range" min="2" max="25" step="1" value="${pct(ed.height)}" oninput="logoFormRange('height', this.value)" />
+          <span id="logo-form-h-val" class="mono">${t("{p} % kadru", { p: pct(ed.height) })}</span>
+        </div>
+        <div class="logo-form-range">
+          <label for="logo-form-o" class="row-title">${t("Krycie")}</label>
+          <input id="logo-form-o" class="ghost-range" type="range" min="10" max="100" step="5" value="${pct(ed.opacity)}" oninput="logoFormRange('opacity', this.value)" />
+          <span id="logo-form-o-val" class="mono">${pct(ed.opacity)} %</span>
+        </div>
+        ${ed.error ? `<div class="row-desc" style="margin: 0; color: var(--err-fg);">${ed.error}</div>` : ""}
+        <div style="display: flex; gap: 10px;">
+          <button type="button" class="btn btn-primary" onclick="logoSave()" ${ed.saving ? "disabled" : ""}>${ed.saving ? `<span class="spinner" style="border-color: rgba(255,255,255,.35); border-top-color: #fff;"></span>` : ""}${ed.key ? t("Zapisz logo") : t("Dodaj logo")}</button>
+          <button type="button" class="btn" onclick="logoEditClose()">${t("Anuluj")}</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+// Przebudowa Ustawień na żądanie formularza logo. Zwykły render pomija
+// przebudowę, gdy kursor stoi w polu (żeby poll nie zjadał wpisywanego
+// tekstu) — tu zdejmujemy fokus na czas przebudowy i oddajemy go potem.
+function rerenderSettings() {
+  const a = document.activeElement;
+  const id = a && a.tagName === "INPUT" ? a.id : "";
+  const pos = id && typeof a.selectionStart === "number" ? a.selectionStart : null;
+  if (id) a.blur();
+  lastUstawienia = "";
+  renderScreens(true);
+  const el = id && $(id);
+  if (el) {
+    el.focus({ preventScroll: true });
+    if (pos !== null) try { el.setSelectionRange(pos, pos); } catch (e) { /* range/file */ }
+  }
+}
+
+function logoEditOpen(key) {
+  const l = (S.state.post.logos || []).find(x => x.key === key);
+  S.logoDeleting = null;
+  S.logoEdit = l
+    ? { key, label: l.label, height: l.height, opacity: l.opacity, data: null, src: `/logo?k=${key}&v=${l.v}`, error: "" }
+    : { key: "", label: "", height: 0.06, opacity: 1, data: null, src: "", error: "" };
+  rerenderSettings();
+}
+
+function logoEditClose() {
+  const form = document.querySelector(".logo-form");
+  const key = S.logoEdit && S.logoEdit.key;
+  const done = () => { S.logoEdit = null; rerenderSettings(); if (key) flashLogoRow(key, false); };
+  if (!form) return done();
+  form.classList.add("leave");
+  setTimeout(done, 170);
+}
+
+// Zapisany / nowy wiersz wjeżdża i na chwilę podświetla się akcentem.
+let logoFlashTimer = 0;
+function flashLogoRow(key, highlight = true) {
+  S.logoFlash = highlight ? key : null;
+  clearTimeout(logoFlashTimer);
+  logoFlashTimer = setTimeout(() => { S.logoFlash = null; }, 1200);
+  const row = () => document.querySelector(`[data-logo-row="${key}"]`);
+  requestAnimationFrame(() => {
+    const el = row();
+    if (el) el.animate([{ opacity: 0, transform: "translateY(-6px)" }, { opacity: 1, transform: "none" }],
+                       { duration: 320, easing: "cubic-bezier(0.32, 0.72, 0, 1)" });
+  });
+}
+
+function logoFormRange(what, v) {
+  const ed = S.logoEdit;
+  if (!ed) return;
+  ed[what] = v / 100;
+  const mark = $("logo-form-mark");
+  if (what === "height") {
+    if (mark) mark.style.height = `${v}%`;
+    $("logo-form-h-val").textContent = t("{p} % kadru", { p: v });
+  } else {
+    if (mark) mark.style.opacity = v / 100;
+    $("logo-form-o-val").textContent = `${v} %`;
+  }
+}
+
+// Plik zamieniany w przeglądarce na PNG (canvas): przechodzi wszystko, co
+// przeglądarka umie wyświetlić — także SVG, którego backend (PIL) nie czyta.
+function logoFilePicked(input) {
+  const f = input.files && input.files[0];
+  const ed = S.logoEdit;
+  if (!f || !ed) return;
+  const url = URL.createObjectURL(f);
+  const img = new Image();
+  img.onload = () => {
+    URL.revokeObjectURL(url);
+    let w = img.naturalWidth || 1000, h = img.naturalHeight || 300;
+    const k = Math.min(1, 2000 / Math.max(w, h)) || 1;   // SVG bez rozmiaru → 1000 px
+    w = Math.round(w * k); h = Math.round(h * k);
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    c.getContext("2d").drawImage(img, 0, 0, w, h);
+    ed.data = ed.src = c.toDataURL("image/png");
+    if (!ed.label) ed.label = f.name.replace(/\.[^.]+$/, "");
+    if (ed.errors) ed.errors = logoFormErrors(ed);
+    ed.error = "";
+    rerenderSettings();
+  };
+  img.onerror = () => {
+    URL.revokeObjectURL(url);
+    ed.errors = { ...(ed.errors || {}), file: t("Nie da się odczytać tego pliku — wybierz PNG, SVG, WEBP albo JPG.") };
+    rerenderSettings();
+  };
+  img.src = url;
+}
+
+// Walidacja na bieżąco: nazwa wymagana i unikalna (bez wielkości liter),
+// nowe logo musi mieć plik. Backend sprawdza to samo przy zapisie.
+function logoFormErrors(ed) {
+  const errors = {};
+  const name = ed.label.trim();
+  if (!name) errors.label = t("Podaj nazwę logo.");
+  else if ((S.state.post.logos || []).some(l => l.key !== ed.key && l.label.toLowerCase() === name.toLowerCase()))
+    errors.label = t("Logo o tej nazwie już jest.");
+  if (!ed.key && !ed.data) errors.file = t("Wybierz plik z logo.");
+  return errors;
+}
+
+function logoFormLabel(v) {
+  const ed = S.logoEdit;
+  if (!ed) return;
+  ed.label = v;
+  if (!ed.errors) return;               // błędy pokazujemy dopiero po pierwszej próbie zapisu
+  const msg = logoFormErrors(ed).label || "";
+  ed.errors.label = msg;
+  const input = $("logo-form-label"), err = $("logo-form-label-err");
+  if (input) { input.classList.toggle("invalid", !!msg); input.setAttribute("aria-invalid", !!msg); }
+  if (err) err.textContent = msg;
+}
+
+async function logoSave() {
+  const ed = S.logoEdit;
+  if (!ed || ed.saving) return;
+  ed.errors = logoFormErrors(ed);
+  ed.error = "";
+  if (Object.keys(ed.errors).length) {
+    rerenderSettings();
+    const bad = $("logo-form-label");
+    if (ed.errors.label && bad) bad.focus();
+    return;
+  }
+  ed.saving = true;
+  rerenderSettings();
+  const payload = { action: ed.key ? "logo_update" : "logo_add", key: ed.key, label: ed.label,
+                    height: ed.height, opacity: ed.opacity, data: ed.data || "" };
+  let res = null;
+  try { res = await (await post(payload)).json(); } catch (e) { res = { ok: false, error: String(e) }; }
+  if (S.logoEdit !== ed) return;
+  ed.saving = false;
+  if (res && res.ok) {
+    S.logoEdit = null;
+    S.state.post.logos = res.logos;   // nowa lista od razu, poll ją potwierdzi
+    flashLogoRow(ed.key || res.key);
+  } else {
+    ed.error = (res && res.error) || t("Nie udało się zapisać logo.");
+  }
+  rerenderSettings();
+}
+
+let logoDeleteTimer = 0;
+async function logoDelete(key) {
+  if (S.logoDeleting !== key) {
+    // pierwszy klik uzbraja przycisk („Na pewno?"), drugi kasuje — bez okna potwierdzenia
+    S.logoDeleting = key;
+    clearTimeout(logoDeleteTimer);
+    logoDeleteTimer = setTimeout(() => { S.logoDeleting = null; rerenderSettings(); }, 3000);
+    rerenderSettings();
+    return;
+  }
+  clearTimeout(logoDeleteTimer);
+  S.logoDeleting = null;
+  const req = post({ action: "logo_delete", key }).then(r => r.json()).catch(() => null);
+  // wiersz zwija się i odjeżdża, dopiero potem lista się przebudowuje
+  const row = document.querySelector(`[data-logo-row="${key}"]`);
+  if (row) {
+    const h = row.offsetHeight;
+    await row.animate([
+      { height: `${h}px`, opacity: 1, transform: "none" },
+      { height: `${h}px`, opacity: 0, transform: "translateX(24px)", offset: 0.45 },
+      { height: "0px", opacity: 0, transform: "translateX(24px)", paddingTop: "0px", paddingBottom: "0px" },
+    ], { duration: 360, easing: "cubic-bezier(0.32, 0.72, 0, 1)", fill: "forwards" }).finished.catch(() => {});
+  }
+  const res = await req;
+  if (res && res.logos) S.state.post.logos = res.logos;
+  rerenderSettings();
 }

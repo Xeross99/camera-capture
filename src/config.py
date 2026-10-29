@@ -1,3 +1,4 @@
+import json
 import math
 import os
 import sys
@@ -38,10 +39,40 @@ LOGOS = {
     "kids": {"label": "TRIXBRIX.eu KIDS", "file": DEFAULT_ASSETS_DIR / "logos" / "trixbrix_kids.webp",
              "height": 0.10, "opacity": 1.0},
 }
+for _key, _spec in LOGOS.items():
+    _spec["ref"] = f"builtin:{_spec['file'].name}"
+# Lista edytowalna z Ustawien (Ustawienia → Logo, src/logo_store.py): logos.json
+# i wgrane pliki w logos/ zyja obok .env, wiec przezywaja aktualizacje. Brak
+# pliku = logo wbudowane wyzej. LOGOS jest zmieniany W MIEJSCU — moduly, ktore
+# go zaimportowaly, widza zmiany bez przeladowania.
+LOGOS_FILE = Path(os.environ.get("LOGOS_FILE") or PROJECT_DIR / "logos.json")
+LOGOS_DIR = LOGOS_FILE.parent / "logos"
+
+
+def logo_file(ref: str) -> Path:
+    """Plik logo z wpisu w logos.json: „builtin:<nazwa>" = assets/logos z paczki."""
+    if ref.startswith("builtin:"):
+        return DEFAULT_ASSETS_DIR / "logos" / Path(ref[8:]).name
+    return LOGOS_DIR / Path(ref).name
+
+
+def _load_logos() -> None:
+    try:
+        items = json.loads(LOGOS_FILE.read_text())
+        loaded = {str(i["key"]): {"label": str(i["label"]), "file": logo_file(str(i["file"])),
+                                  "ref": str(i["file"]), "height": float(i["height"]),
+                                  "opacity": float(i["opacity"])} for i in items}
+    except (OSError, ValueError, KeyError, TypeError):
+        return
+    LOGOS.clear()
+    LOGOS.update(loaded)
+
+
+_load_logos()
 LOGO_CHOICE = os.environ.get("LOGO", "kids").strip().lower()
 if LOGO_CHOICE not in LOGOS:
-    LOGO_CHOICE = "kids"
-DEFAULT_LOGO = LOGOS[LOGO_CHOICE]["file"]
+    LOGO_CHOICE = next(iter(LOGOS), "")
+DEFAULT_LOGO = LOGOS[LOGO_CHOICE]["file"] if LOGO_CHOICE else None
 DEFAULT_OUTPUT_DIR = PROJECT_DIR / "photos"
 
 ASPECT_W, ASPECT_H = 1, 1

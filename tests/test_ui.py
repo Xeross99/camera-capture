@@ -111,9 +111,16 @@ def test_ev_pill_steps_and_meter_follows(app, ui, camera):
 
 def test_logo_tiles_and_corner_pill(app, ui):
     start_session(ui)
+    menu = ui.locator("#logo-dd-menu")
+    expect(menu).to_be_hidden()            # w sidebarze logo wybiera sie z rozwijanej listy
+    ui.locator("#logo-dd-btn").click()
+    expect(menu).to_be_visible()
     ui.get_by_role("radio", name="Bez logo").first.click()
     wait_for(lambda: app.add_logo is False, 10, "logo wylaczone")
+    expect(menu).to_be_hidden()            # wybor zwija liste
+    expect(ui.locator("#logo-dd-btn")).to_contain_text("Bez logo")
     expect(ui.locator("#logo-corner")).to_have_css("pointer-events", "none")
+    ui.locator("#logo-dd-btn").click()
     ui.locator('[data-logo="kids"]').click()
     wait_for(lambda: app.add_logo is True and app.state()["post"]["logoChoice"] == "kids", 10, "logo KIDS")
     ui.locator('[data-corner="top-left"]').click()
@@ -209,6 +216,36 @@ def test_click_on_live_view_focuses_there(app, ui, camera):
     fx, fy = camera.focus_calls[0]
     assert 0 <= fx <= 1 and 0 <= fy <= 1
     expect(ui.locator("#af-box")).to_be_visible()
+
+
+def test_settings_logo_editor_adds_logo(app, ui, tmp_path):
+    import io
+    from PIL import Image
+    png = tmp_path / "nowe.png"
+    Image.new("RGBA", (300, 100), (20, 120, 220, 255)).save(png)
+    ui.locator("#tab-ustawienia").click()
+    sec = ui.locator("#sec-logo")
+    expect(sec.locator(".logo-row")).to_have_count(2)       # dwa wbudowane
+    sec.get_by_role("button", name="Dodaj logo").click()
+    form = sec.locator(".logo-form")
+    form.get_by_role("button", name="Dodaj logo").click()    # pusto: walidacja, nic nie wysyla
+    expect(form).to_contain_text("Podaj nazwę logo.")
+    expect(form).to_contain_text("Wybierz plik z logo.")
+    form.locator("#logo-form-label").fill("trixbrix.EU")      # nazwa zajeta (bez wielkosci liter)
+    expect(form).to_contain_text("Logo o tej nazwie już jest.")
+    form.locator("#logo-form-label").fill("")
+    sec.locator('.logo-form-file input[type="file"]').set_input_files(str(png))
+    expect(sec.locator("#logo-form-label")).to_have_value("nowe")   # nazwa z pliku
+    sec.locator("#logo-form-label").fill("Niebieskie")
+    sec.locator(".logo-form").get_by_role("button", name="Dodaj logo").click()
+    expect(sec.locator(".logo-row")).to_have_count(3)
+    expect(sec).to_contain_text("Niebieskie")
+    assert any(l["label"] == "Niebieskie" for l in app.state()["post"]["logos"])
+    # usuwanie: pierwszy klik pyta, drugi kasuje
+    row = sec.locator(".logo-row", has_text="Niebieskie")
+    row.get_by_role("button", name="Usuń logo").click()
+    row.get_by_role("button", name="Usuń logo").click()
+    expect(sec.locator(".logo-row")).to_have_count(2)
 
 
 def test_settings_tab_has_no_robot(ui):

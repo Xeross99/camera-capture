@@ -1,5 +1,6 @@
 """Czesci bez aparatu i bez okna: obrobka zdjecia, nazwy, kosz, wersje."""
 
+import io
 import os
 import time
 from datetime import datetime, timedelta
@@ -354,3 +355,64 @@ def test_overlay_series_straightens_slightly_rotated_product():
     assert abs(_rotation_between(plain, ref_img)) >= 0.8, "bez korekty produkt jest obrocony"
     assert out.get("aligned", {}).get("rot"), "korekta obrotu zadzialala"
     assert abs(_rotation_between(fixed, ref_img)) <= 0.2, "po korekcie lezy jak na zdjeciu wzorcowym"
+
+
+# ---------- edytor logo (Ustawienia → Logo) ----------
+
+def _png(color=(200, 30, 30, 255), size=(120, 40)) -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGBA", size, color).save(buf, "PNG")
+    return buf.getvalue()
+
+
+def test_logo_store_adds_edits_and_removes_logos():
+    from src import logo_store
+    key = logo_store.add_logo("Moja Firma", _png(), 0.5, 0.05)
+    spec = config.LOGOS[key]
+    assert key == "moja-firma" and spec["file"].exists()
+    assert (spec["height"], spec["opacity"]) == (0.25, 0.1), "rozmiar i krycie przyciete do zakresu"
+    with pytest.raises(logo_store.LogoError):
+        logo_store.add_logo("moja firma", _png(), 0.06, 1)      # nazwa juz jest (wielkosc liter bez znaczenia)
+    assert logo_store.add_logo("Moja-Firma", _png(), 0.06, 1) == "moja-firma-2", "klucze sie nie dubluja"
+    old_file = spec["file"]
+    with pytest.raises(logo_store.LogoError):
+        logo_store.update_logo(key, "TRIXBRIX.eu KIDS", 0.08, 0.6)   # cudza nazwa
+    logo_store.update_logo(key, "Moja Firma", 0.08, 0.6)              # wlasna nazwa wolno zostawic
+    logo_store.update_logo(key, "Firma", 0.08, 0.6, _png((0, 0, 0, 255)))
+    assert not old_file.exists(), "podmieniony plik nie zostaje na dysku"
+    assert config.LOGOS[key]["label"] == "Firma" and config.LOGOS[key]["file"].exists()
+    builtin = config.LOGOS["kids"]["file"]
+    logo_store.delete_logo("kids")
+    assert "kids" not in config.LOGOS and builtin.exists(), "plik wbudowanego logo zostaje w paczce"
+    # lista przezywa restart: ponowne wczytanie z logos.json
+    saved = dict(config.LOGOS)
+    config.LOGOS.clear()
+    config._load_logos()
+    assert list(config.LOGOS) == list(saved)
+    assert config.LOGOS[key]["height"] == 0.08
+
+
+def test_logo_store_rejects_bad_input():
+    from src import logo_store
+    with pytest.raises(logo_store.LogoError):
+        logo_store.add_logo("x", b"to nie obraz", 0.06, 1)
+    with pytest.raises(logo_store.LogoError):
+        logo_store.add_logo("   ", _png(), 0.06, 1)
+    with pytest.raises(logo_store.LogoError):
+        logo_store.add_logo("bez pliku", None, 0.06, 1)
+    with pytest.raises(logo_store.LogoError):
+        logo_store.delete_logo("nie-ma")
+
+
+def test_builtin_logos_migrate_into_the_editor_once():
+    from src import logo_store
+    old = {k: v["file"] for k, v in config.LOGOS.items()}
+    moved = logo_store.migrate_builtin()
+    assert set(moved) == set(old.values()), "wybrane logo w WebUI przepinane na kopie"
+    for key, spec in config.LOGOS.items():
+        assert spec["file"].parent == config.LOGOS_DIR and spec["file"].exists()
+        assert spec["file"].read_bytes() == old[key].read_bytes()
+        assert not spec["ref"].startswith("builtin:")
+    assert config.LOGOS["kids"]["height"] == 0.10 and config.LOGOS["trixbrix"]["opacity"] == 0.5
+    assert config.LOGOS_FILE.exists()
+    assert logo_store.migrate_builtin() == {}, "drugi start niczego nie przenosi"

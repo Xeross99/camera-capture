@@ -12,6 +12,7 @@ import pytest
 from PIL import Image
 
 from conftest import log_texts, shoot_and_wait, wait_for
+from src import config
 from src.session_store import load_review, shot_entries
 
 
@@ -248,6 +249,25 @@ def test_photo_info_names_logo_and_follows_logo_edit(app):
     wait_for(lambda: app.shot_info("sesja testowa", f)["logo"] is False, 20, "bez logo")
     assert app.shot_info("sesja testowa", f)["logoInfo"] is None
     assert app.shot_info("sesja testowa", "../../etc/passwd") is None
+
+
+def test_logo_editor_adds_logo_used_on_next_photo(app):
+    import base64
+    buf = io.BytesIO()
+    Image.new("RGBA", (300, 100), (220, 20, 20, 255)).save(buf, "PNG")
+    data = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+    res = app.action({"action": "logo_add", "label": "Czerwone", "height": 0.1, "opacity": 1, "data": data})
+    assert res["ok"], res
+    key = res["key"]
+    assert any(l["key"] == key for l in app.state()["post"]["logos"])
+    open_session(app)
+    app.action({"action": "set_post", "key": "logo", "value": key})
+    f = shoot_and_wait(app)
+    assert app.shot_info("sesja testowa", f)["logoInfo"]["label"] == "Czerwone"
+    # usuniecie wybranego logo przelacza na pierwsze z listy
+    assert app.action({"action": "logo_delete", "key": key})["ok"]
+    assert app.state()["post"]["logoChoice"] == next(iter(config.LOGOS))
+    assert app.action({"action": "logo_add", "label": "zle", "data": "data:image/png;base64,AAAA"})["ok"] is False
 
 
 def test_edit_refuses_unknown_logo_and_position(app):

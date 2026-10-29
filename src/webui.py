@@ -15,6 +15,7 @@ Stan recenzji per sesja w photos/<sesja>/.review.json:
 {rejected: [...], uploaded: [...], meta: {plik: "logo · zoom · 3000×3000"}}.
 """
 
+import base64
 import contextlib
 import json
 import io
@@ -58,6 +59,7 @@ from .config import (
 )
 from .i18n import EN, n_form, set_lang, tr
 from .image_processing import LOGO_POSITIONS, overlay_logo, process, save_jpeg_atomic
+from . import logo_store
 from .naming import sanitize_name
 from .progress import PhotoProgress, stages_for
 from .session_store import (
@@ -87,6 +89,9 @@ from .version import APP_VERSION
 from .webui_http import Handler
 
 EN.update({
+    "Dodano logo {label}.": "Added logo {label}.",
+    "Zmieniono logo {label}.": "Changed logo {label}.",
+    "Usunięto logo {label}.": "Removed logo {label}.",
     ", obrót {r:+.1f}°": ", rotation {r:+.1f}°",
     "Dopasowano do nakładki ({ref}): przesunięcie {dx:+d}/{dy:+d} px, przybliżenie {z:+.1f} %":
         "Aligned to the overlay ({ref}): shift {dx:+d}/{dy:+d} px, zoom {z:+.1f} %",
@@ -472,7 +477,8 @@ class WebUI:
 
         self.name: str | None = sanitize_name(name) if name else None
         self.base_output = base_output
-        self.logo_path = logo
+        # logo dotad wbudowane → zwykle pozycje edytora logo (raz, przy pierwszym starcie)
+        self.logo_path = logo_store.migrate_builtin().get(logo, logo)
 
         # postprocessing (sekcja "Postprocessing" w sidebarze)
         self.add_logo = add_logo
@@ -1920,7 +1926,8 @@ class WebUI:
         with self.lock:
             opts = dict(
                 outdir=self.session_dir, filename=self._resolve_filename(),
-                clean_bg=self.clean_bg, add_logo=self.add_logo,
+                # bez zadnego logo na liscie (wszystkie usuniete w Ustawieniach) — bez logo
+                clean_bg=self.clean_bg, add_logo=self.add_logo and self.logo_path is not None,
                 logo_path=self.logo_path, logo_position=self.logo_position,
                 auto_center=self.auto_center, auto_zoom=self.auto_zoom,
                 upload=self.upload_enabled,
@@ -2032,6 +2039,67 @@ class WebUI:
         import webbrowser
         webbrowser.open(url)
 
+    # ---------- edytor logo (Ustawienia → Logo) ----------
+
+    @staticmethod
+    def _logos_state() -> list[dict]:
+        return [{"key": k, "label": v["label"], "height": v["height"],
+                 "opacity": v["opacity"], "v": logo_store.logo_version(v)} for k, v in LOGOS.items()]
+
+    @staticmethod
+    def _logo_upload(data: dict) -> bytes | None:
+        """Plik z frontu: data URL („data:image/png;base64,…") albo nic."""
+        raw = str(data.get("data") or "")
+        if not raw:
+            return None
+        try:
+            return base64.b64decode(raw.split(",", 1)[-1], validate=True)
+        except ValueError:
+            raise logo_store.LogoError(tr("to nie jest obraz (PNG, WEBP albo JPG)"))
+
+    def _act_logo_add(self, data: dict) -> dict:
+        try:
+            with self.lock:
+                key = logo_store.add_logo(data.get("label"), self._logo_upload(data),
+                                          data.get("height", 0.06), data.get("opacity", 1.0))
+        except (logo_store.LogoError, ValueError, TypeError) as e:
+            return {"ok": False, "error": str(e)}
+        self._log(tr("Dodano logo {label}.", label=LOGOS[key]["label"]), "ok")
+        return {"ok": True, "key": key, "logos": self._logos_state()}
+
+    def _act_logo_update(self, data: dict) -> dict:
+        key = str(data.get("key") or "")
+        try:
+            with self.lock:
+                old_file = LOGOS[key]["file"] if key in LOGOS else None
+                logo_store.update_logo(key, data.get("label"), data.get("height", 0.06),
+                                       data.get("opacity", 1.0), self._logo_upload(data))
+                if old_file is not None and self.logo_path == old_file:
+                    self.logo_path = LOGOS[key]["file"]   # nowy plik wybranego logo
+        except (logo_store.LogoError, ValueError, TypeError) as e:
+            return {"ok": False, "error": str(e)}
+        self._log(tr("Zmieniono logo {label}.", label=LOGOS[key]["label"]), "ok")
+        return {"ok": True, "logos": self._logos_state()}
+
+    def _act_logo_delete(self, data: dict) -> dict:
+        key = str(data.get("key") or "")
+        try:
+            with self.lock:
+                spec = LOGOS.get(key)
+                logo_store.delete_logo(key)
+                if spec is not None and self.logo_path == spec["file"]:
+                    # usuniete bylo wybrane: przechodzimy na pierwsze z listy albo bez logo
+                    nxt = next(iter(LOGOS), "")
+                    self.logo_path = LOGOS[nxt]["file"] if nxt else None
+                    if nxt:
+                        persist_env("LOGO", nxt)
+                    else:
+                        self.add_logo = False
+        except logo_store.LogoError as e:
+            return {"ok": False, "error": str(e)}
+        self._log(tr("Usunięto logo {label}.", label=spec["label"]), "ok")
+        return {"ok": True, "logos": self._logos_state()}
+
     _ACTIONS = {
         "open_url": _act_open_url,
         "edit_prepare": _act_edit_prepare,
@@ -2052,6 +2120,9 @@ class WebUI:
         "set_app": _act_set_app,
         "check_update": _act_check_update,
         "apply_update": _act_apply_update,
+        "logo_add": _act_logo_add,
+        "logo_update": _act_logo_update,
+        "logo_delete": _act_logo_delete,
     }
 
     def _review_mark(self, session: str, filename: str, verdict: str) -> None:
@@ -2273,8 +2344,7 @@ class WebUI:
                     # "" = wlasny plik z Ustawien, spoza listy
                     "logoChoice": next((k for k, v in LOGOS.items()
                                         if v["file"] == self.logo_path), ""),
-                    "logos": [{"key": k, "label": v["label"], "height": v["height"]}
-                              for k, v in LOGOS.items()],
+                    "logos": self._logos_state(),
                     "zoom": self.auto_zoom,
                     "center": self.auto_center,
                     "cleanBg": self.clean_bg,
@@ -2317,13 +2387,16 @@ class WebUI:
                 return None, last_id
             return self._frame, self._frame_id
 
-    def logo_bytes(self, key: str) -> bytes | None:
-        """Plik logo z LOGOS do podgladu w wyborze logo."""
+    def logo_bytes(self, key: str) -> tuple[bytes, str] | None:
+        """Plik logo z LOGOS do podgladu w wyborze logo i w edytorze logo."""
         spec = LOGOS.get(key)
         try:
-            return spec["file"].read_bytes() if spec else None
+            data = spec["file"].read_bytes() if spec else None
         except OSError:
             return None
+        if data is None:
+            return None
+        return data, "image/png" if spec["file"].suffix.lower() == ".png" else "image/webp"
 
     _FAVICON_RETRY_S = 300   # nieudane pobranie faviconu ponawiamy najwyzej co 5 min
 

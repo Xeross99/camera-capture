@@ -127,7 +127,9 @@ Object.assign(I18N_EN, {
   "Położenie": "Placement",
   "Zdjęcie obok wygląda dokładnie tak, jak zostanie zapisane.": "The photo next to this panel looks exactly as it will be saved.",
   "czyste zdjęcie": "clean photo",
-  "{p} % wysokości kadru": "{p}% of the frame height",
+  "Nowe logo dodasz w": "Add new logos in",
+  "Ustawieniach → Logo": "Settings → Logo",
+  "{p} % kadru": "{p}% of the frame",
   "usuń": "delete",
   "SPACJA": "SPACE",
   "podgląd": "preview",
@@ -1059,14 +1061,18 @@ const NO_LOGO_SVG = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none"
 
 // Wybór logo: karty jedna pod drugą (nazwa + opis po lewej, znak po prawej),
 // wybrana z niebieską obwódką. Te same karty w sidebarze i w edycji logo.
+// Środek karty: nazwa + opis po lewej, znak po prawej ("" = bez logo).
+function logoCardInner(logos, key) {
+  const l = logos.find(x => x.key === key);
+  if (!l) return `<span class="logo-tile-text"><b>${t("Bez logo")}</b><span>${t("czyste zdjęcie")}</span></span><span class="logo-tile-mark none">${NO_LOGO_SVG}</span>`;
+  return `<span class="logo-tile-text"><b>${l.label}</b><span>${t("{p} % kadru", { p: Math.round((l.height || 0) * 100) })}</span></span><span class="logo-tile-mark"><img src="/logo?k=${l.key}" alt="" /></span>`;
+}
+
 function logoTiles(logos, cur, onPick, attr = "data-logo") {
-  const card = (key, name, desc, mark, extra = "") => `<button type="button" role="radio" ${attr}="${key}" aria-checked="${key === cur}" class="logo-tile${extra}${key === cur ? " on" : ""}" onclick="${onPick}('${key}')">
-      <span class="logo-tile-text"><b>${name}</b><span>${desc}</span></span>${mark}</button>`;
+  const card = key => `<button type="button" role="radio" ${attr}="${key}" aria-checked="${key === cur}" class="logo-tile${key ? "" : " none"}${key === cur ? " on" : ""}" onclick="${onPick}('${key}')">${logoCardInner(logos, key)}</button>`;
   return `
     <div role="radiogroup" aria-label="Logo" class="logo-tiles">
-      ${card("", t("Bez logo"), t("czyste zdjęcie"), `<span class="logo-tile-mark none">${NO_LOGO_SVG}</span>`, " none")}
-      ${logos.map(l => card(l.key, l.label, t("{p} % wysokości kadru", { p: Math.round((l.height || 0) * 100) }),
-        `<span class="logo-tile-mark"><img src="/logo?k=${l.key}" alt="" /></span>`)).join("")}
+      ${["", ...logos.map(l => l.key)].map(card).join("")}
     </div>`;
 }
 
@@ -1100,13 +1106,51 @@ function markCorner(attr, segId, pos) {
 
 const cap = t => t ? t[0].toUpperCase() + t.slice(1) : t;
 
+// W sidebarze sesji logo wybiera się z rozwijanej listy: zamknięta pokazuje
+// tylko wybraną kartę, otwarta — wszystkie karty jak w edycji logo.
 function logoPicker(post_) {
+  const cur = post_.logo ? post_.logoChoice : "";
   return `
-    ${logoTiles(post_.logos, post_.logo ? post_.logoChoice : "", "pickLogo")}
+    <div class="logo-dd" id="logo-dd">
+      <button type="button" id="logo-dd-btn" class="logo-tile logo-dd-btn" aria-haspopup="true" aria-expanded="false" onclick="toggleLogoMenu()">
+        <span id="logo-dd-cur" class="logo-dd-cur">${logoCardInner(post_.logos, cur)}</span>
+        <span class="logo-dd-chev">${icon("chevDown", 16, 2)}</span>
+      </button>
+      <div class="logo-dd-menu" id="logo-dd-menu" hidden>${logoTiles(post_.logos, cur, "pickLogoMenu")}
+        <p class="logo-dd-hint">${t("Nowe logo dodasz w")} <button type="button" onclick="toggleLogoMenu(false); goSettingsLogo()">${t("Ustawieniach → Logo")}</button></p>
+      </div>
+    </div>
     <div id="logo-corner" style="${post_.logo ? "" : "opacity: .4; pointer-events: none;"}">
       ${cornerRow(post_.logoPositions, post_.logoPosition, "setLogoPos")}
     </div>`;
 }
+
+function goSettingsLogo() {
+  go("ustawienia");
+  setTimeout(() => settingsGo("logo"), 50);
+}
+
+function toggleLogoMenu(open) {
+  const menu = $("logo-dd-menu"), btn = $("logo-dd-btn");
+  if (!menu || !btn) return;
+  open = open === undefined ? menu.hidden : open;
+  menu.hidden = !open;
+  btn.setAttribute("aria-expanded", open);
+  $("logo-dd").classList.toggle("open", open);
+}
+
+function pickLogoMenu(key) {
+  pickLogo(key);
+  const curEl = $("logo-dd-cur");
+  if (curEl) curEl.innerHTML = logoCardInner(S.state.post.logos, key);
+  setTimeout(() => toggleLogoMenu(false), 160);   // klik widać na karcie, potem lista się zwija
+}
+
+// klik poza listą albo ESC zwija ją
+document.addEventListener("click", e => {
+  const dd = $("logo-dd");
+  if (dd && dd.classList.contains("open") && !dd.contains(e.target)) toggleLogoMenu(false);
+});
 
 // "" = bez logo (wylacza nakladanie), klucz = to logo (i wlacza nakladanie)
 function pickLogo(key) {

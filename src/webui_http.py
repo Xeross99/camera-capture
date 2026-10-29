@@ -187,8 +187,9 @@ class Handler(BaseHTTPRequestHandler):
         if data is None:
             self.send_error(404)
             return
+        data, ctype = data
         self.send_response(200)
-        self.send_header("Content-Type", "image/webp")
+        self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)

@@ -16,3 +16,7 @@ EDSDK.framework/
 .edsdk-headers/
 # czasy rozgrzewki silnika czyszczenia tla na tym komputerze
 .warmup.json
+
+# lista logo z Ustawien i wgrane pliki (obok .env)
+/logos.json
+/logos/

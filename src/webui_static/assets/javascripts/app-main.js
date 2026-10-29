@@ -353,7 +353,7 @@ function renderScreens(force) {
       if (lp) lp.scrollTop = lp.scrollHeight;
     }
   } else {
-    const key = JSON.stringify([st.settings, st.update]);
+    const key = JSON.stringify([st.settings, st.update, st.post && st.post.logos]);
     if (force || key !== lastUstawienia) {
       if (document.activeElement && document.activeElement.tagName === "INPUT") return;
       lastUstawienia = key;
@@ -635,7 +635,8 @@ document.addEventListener("keydown", e => {
       break;
     case " ": toggleReview(); break;
     case "Escape":
-      if (S.leaveConfirm) hideLeaveConfirm();
+      if ($("logo-dd") && $("logo-dd").classList.contains("open")) toggleLogoMenu(false);
+      else if (S.leaveConfirm) hideLeaveConfirm();
       else if (S.edit) closeEdit();
       else if (S.reviewMode) closeReview();
       else if (S.screen === "sesja" && S.state && S.state.session.name) showLeaveConfirm();

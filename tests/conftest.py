@@ -38,6 +38,9 @@ os.environ.update({
     # aplikacji na angielski) nie może ich zmieniać
     "UI_LANG": "pl",
     "PREVIEW_FPS": "10",
+    # lista logo z Ustawien: nieistniejacy plik = logo wbudowane, nic z dysku
+    # dewelopera (logos.json obok .env) nie wpada do testow
+    "LOGOS_FILE": str(Path(__file__).resolve().parent / ".no-logos.json"),
 })
 sys.path.insert(0, str(ROOT))
 
@@ -104,6 +107,19 @@ def wait_for(cond, timeout: float = 30.0, what: str = "warunek"):
             return value
         time.sleep(0.05)
     raise AssertionError(f"nie doczekalem sie: {what}")
+
+
+@pytest.fixture(autouse=True)
+def logo_store_tmp(tmp_path, monkeypatch):
+    """Edytor logo pisze do tmp, a lista LOGOS wraca po tescie do wbudowanej
+    (jest zmieniana w miejscu, wiec bez tego test dodajacy logo psulby kolejne)."""
+    from src import config
+    saved = {k: dict(v) for k, v in config.LOGOS.items()}
+    monkeypatch.setattr(config, "LOGOS_FILE", tmp_path / "logos.json")
+    monkeypatch.setattr(config, "LOGOS_DIR", tmp_path / "logos")
+    yield
+    config.LOGOS.clear()
+    config.LOGOS.update(saved)
 
 
 @pytest.fixture

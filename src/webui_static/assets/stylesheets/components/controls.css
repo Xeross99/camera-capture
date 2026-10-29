@@ -35,6 +35,9 @@
   background: var(--err-soft);
   color: var(--err-fg);
 }
+.btn-danger:hover {
+  border-color: var(--err-fg);
+}
 .btn-sm {
   height: 28px;
   padding: 0 10px;

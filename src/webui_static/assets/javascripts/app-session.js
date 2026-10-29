@@ -771,11 +771,12 @@ function infoEvMeter(ev) {
 }
 
 function infoPanelHtml(d) {
-  const raw = d.raw || {};
+  // dane aparatu z oryginału, a bez niego — z EXIF-u gotowego zdjęcia
+  const raw = d.raw || d.camera || {};
   const taken = infoParse(raw.taken), saved = infoParse(d.modified);
   const when = taken || saved;
   const weekday = when ? (LANG === "en" ? EN_WEEKDAYS : PL_WEEKDAYS)[when.getDay()] : "";
-  const sub = [weekday, d.raw ? raw.camera : t("bez oryginału z aparatu")].filter(Boolean).join(" · ");
+  const sub = [weekday, raw.camera || (d.raw ? "" : t("bez oryginału z aparatu"))].filter(Boolean).join(" · ");
   const lens = [raw.lens && raw.lens.split(" ")[0], raw.focal].filter(Boolean).join(" · ");
   const cells = [["shutter", t("czas")], ["aperture", t("przysłona")], ["iso", t("czułość")]]
     .filter(([k]) => raw[k] !== undefined)

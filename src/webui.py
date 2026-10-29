@@ -59,7 +59,7 @@ from .config import (
     persist_env,
 )
 from .i18n import EN, n_form, set_lang, tr
-from .image_processing import LOGO_POSITIONS, overlay_logo, process, save_jpeg_atomic
+from .image_processing import LOGO_POSITIONS, overlay_logo, process, product_exif, save_jpeg_atomic
 from . import logo_store
 from .naming import sanitize_name
 from .progress import PhotoProgress, stages_for
@@ -90,7 +90,6 @@ from .version import APP_VERSION
 from .webui_http import Handler
 
 EN.update({
-    "folder sesji jeszcze nie istnieje": "the session folder does not exist yet",
     "Edycja sesji: {n} - {what}.": "Session edit: {n} - {what}.",
     "poprzednia edycja sesji jeszcze trwa": "the previous session edit is still running",
     "żadne z zaznaczonych zdjęć nie da się edytować": "none of the selected photos can be edited",
@@ -1769,7 +1768,8 @@ class WebUI:
             image.load()
             if logo:
                 image = overlay_logo(image, LOGOS[logo]["file"], position)
-            save_jpeg_atomic(image, path)
+            # EXIF z wersji bez logo (ma go od tej wersji), a starsze — z oryginalu
+            save_jpeg_atomic(image, path, product_exif(base) or product_exif(find_raw(outdir, filename)))
             with self._review_lock:
                 review = load_review(outdir)
                 bits = [b for b in review["meta"].get(filename, "").split(" · ") if b and b != "logo"]
@@ -2100,9 +2100,10 @@ class WebUI:
         """Menu nazwy sesji → „Pokaż folder sesji"."""
         with self.lock:
             folder = self.session_dir
-        if folder is None or not folder.is_dir():
-            return {"ok": False, "error": tr("folder sesji jeszcze nie istnieje")}
+        if folder is None:
+            return {"ok": False, "error": tr("brak otwartej sesji")}
         try:
+            folder.mkdir(parents=True, exist_ok=True)   # sesja bez zdjęć: pusty folder, ale się otwiera
             _open_folder(folder)
         except OSError as e:
             return {"ok": False, "error": str(e)}

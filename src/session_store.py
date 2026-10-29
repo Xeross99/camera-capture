@@ -262,6 +262,11 @@ def shot_metadata(session_dir: Path, filename: str, review: dict) -> dict | None
     }
     if raw:
         out["raw"] = {"bytes": raw.stat().st_size, **_camera_exif(raw)}
+    else:
+        # bez oryginalu: dane aparatu z gotowego zdjecia (przepisywane od 2.10)
+        cam = {k: v for k, v in _camera_exif(path).items() if k != "size"}
+        if cam:
+            out["camera"] = cam
     return out
 
 

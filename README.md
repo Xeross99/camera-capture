@@ -105,7 +105,8 @@ and from the API).
 The panel on the right (<kbd>I</kbd> hides and shows it) has the photo's details: when it was taken and with
 which camera, shutter speed, aperture, ISO and exposure compensation, lens, the size of the finished photo and
 of the original, the author and copyright set in the camera, and what processing did (logo and its corner,
-zoom, overlay alignment, upload to the API). The camera data comes from the original kept in `/raw`.
+zoom, overlay alignment, upload to the API). The camera data is copied into the finished photo too (without
+GPS or serial numbers), so it is there even when the original from `/raw` is gone.
 
 <img src="assets/readme/review.jpg" width="100%" alt="A photo opened full window with the photo info panel">
 
@@ -134,7 +135,7 @@ with progress on each tile. Photos without an original or a logo-free version ar
 ### Logos
 
 The logos to choose from are managed in **Settings → Logo**: add a new one (PNG, SVG, WEBP or JPG; a
-transparent background looks best), rename it, replace its file, or change its size (2–25 % of the frame
+transparent background looks best), rename it, replace its file, or change its size (2-25 % of the frame
 height) and opacity. The preview next to the form shows the logo on a mock-up of the finished photo, at
 the same scale. Each logo needs a name of its own. The list and the files are kept next to `.env`, so they
 survive updates.

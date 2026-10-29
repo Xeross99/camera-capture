@@ -50,12 +50,44 @@ def crop_to_aspect(image: Image.Image, aspect_w: int, aspect_h: int) -> Image.Im
     return image.crop((left, top, left + new_w, top + new_h))
 
 
-def save_jpeg_atomic(image: Image.Image, path: Path) -> Path:
+# EXIF przepisywany z oryginalu do gotowego zdjecia: tylko dane o zdjeciu
+# (aparat, obiektyw, ekspozycja, data, autor i copyright z menu aparatu).
+# Bez GPS, numerow seryjnych, MakerNote, miniatury i Orientation — zdjecie
+# idzie do sklepu, a orientacji swiadomie nie honorujemy.
+_EXIF_KEEP_IFD0 = (0x010F, 0x0110, 0x0132, 0x013B, 0x8298)
+_EXIF_KEEP_SUB = (0x829A, 0x829D, 0x8822, 0x8827, 0x8830, 0x8832, 0x9003, 0x9004, 0x9010,
+                  0x9011, 0x9012, 0x9204, 0x9207, 0x9209, 0x920A, 0xA402, 0xA403, 0xA406,
+                  0xA432, 0xA433, 0xA434)
+
+
+def product_exif(source: Path | None) -> Image.Exif | None:
+    """EXIF do gotowego zdjecia z pliku z aparatu (albo z wersji bez logo,
+    ktora go juz ma). None, gdy zrodlo nie ma danych aparatu."""
+    if source is None:
+        return None
+    try:
+        with Image.open(source) as im:
+            src = im.getexif()
+            sub = src.get_ifd(0x8769)
+    except OSError:
+        return None
+    out = Image.Exif()
+    for tag in _EXIF_KEEP_IFD0:
+        if tag in src:
+            out[tag] = src[tag]
+    keep = {tag: sub[tag] for tag in _EXIF_KEEP_SUB if tag in sub}
+    if keep:
+        out.get_ifd(0x8769).update(keep)
+    return out if (len(out) or keep) else None
+
+
+def save_jpeg_atomic(image: Image.Image, path: Path, exif: Image.Exif | None = None) -> Path:
     """Zapis przez .part + rename — czytajacy (miniatury, podglad) nigdy nie
     widzi pliku w polowie zapisu."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".part")
-    image.convert("RGB").save(tmp, "JPEG", quality=JPEG_QUALITY)
+    extra = {"exif": exif} if exif is not None else {}
+    image.convert("RGB").save(tmp, "JPEG", quality=JPEG_QUALITY, **extra)
     os.replace(tmp, path)
     return path
 
@@ -128,6 +160,7 @@ def process(
         shutil.copy2(input_path, raw_path)
 
     image = Image.open(input_path)
+    exif = product_exif(input_path)
 
     target = (OUTPUT_SIZE, OUTPUT_SIZE) if ASPECT_W == ASPECT_H else None
 
@@ -150,7 +183,7 @@ def process(
         # Wersja BEZ logo obok (`base_out`) — z niej edycja w podgladzie
         # zdejmuje, dodaje albo przestawia logo bez ponownej obrobki tla.
         if base_out is not None:
-            save_jpeg_atomic(image, base_out)
+            save_jpeg_atomic(image, base_out, exif)
         image = overlay_logo(image, logo_path, logo_position)
 
     # Zapis atomowy (tmp + rename): filmstrip w GUI widzi plik w katalogu od
@@ -160,6 +193,6 @@ def process(
     stage("save")
     out_path = output_dir / f"{stem}.jpg"
     tmp_path = output_dir / f"{stem}.jpg.part"
-    image.save(tmp_path, "JPEG", quality=JPEG_QUALITY)
+    image.save(tmp_path, "JPEG", quality=JPEG_QUALITY, **({"exif": exif} if exif is not None else {}))
     os.replace(tmp_path, out_path)
     return out_path

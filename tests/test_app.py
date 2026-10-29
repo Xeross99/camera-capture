@@ -296,9 +296,9 @@ def test_session_menu_reveals_session_folder(app, monkeypatch):
     monkeypatch.setattr(webui, "_open_folder", opened.append)
     assert app.action({"action": "reveal_session"})["ok"] is False      # bez sesji
     sdir = open_session(app)
-    shoot_and_wait(app)
-    assert app.action({"action": "reveal_session"})["ok"]
-    assert opened == [sdir]
+    assert not sdir.exists() or not any(sdir.iterdir())
+    assert app.action({"action": "reveal_session"})["ok"], "sesja bez zdjec: pusty folder zalozony i otwarty"
+    assert sdir.is_dir() and opened == [sdir]
 
 
 def test_edit_refuses_unknown_logo_and_position(app):

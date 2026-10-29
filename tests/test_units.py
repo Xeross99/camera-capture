@@ -416,3 +416,35 @@ def test_builtin_logos_migrate_into_the_editor_once():
     assert config.LOGOS["kids"]["height"] == 0.10 and config.LOGOS["trixbrix"]["opacity"] == 0.5
     assert config.LOGOS_FILE.exists()
     assert logo_store.migrate_builtin() == {}, "drugi start niczego nie przenosi"
+
+
+def test_finished_photo_keeps_camera_exif_without_private_tags(tmp_path):
+    from src.image_processing import process
+    exif = Image.Exif()
+    exif[0x010F], exif[0x0110], exif[0x0112] = "Canon", "Canon EOS M50m2", 6
+    exif[0x013B], exif[0x8298] = "Jan Example", "Example Studio"
+    sub = exif.get_ifd(0x8769)
+    sub.update({0x829A: 0.5, 0x829D: 22.0, 0x8827: 800, 0xA434: "EF-M15-45mm",
+                0xA431: "213052009657", 0xA435: "00000135cc", 0x9003: "2026:09:10 14:06:39"})
+    exif.get_ifd(0x8825)[1] = "N"          # GPS
+    src = tmp_path / "in.jpg"
+    Image.new("RGB", (600, 400), "white").save(src, exif=exif)
+    out = process(src, config.LOGOS["kids"]["file"], tmp_path / "out", clean_bg=False, add_logo=True,
+                  out_name="p.jpg", base_out=tmp_path / "out" / ".nologo" / "p.jpg")
+    for f in (out, tmp_path / "out" / ".nologo" / "p.jpg"):
+        with Image.open(f) as im:
+            ex = im.getexif()
+            got = ex.get_ifd(0x8769)
+        assert ex[0x0110] == "Canon EOS M50m2" and ex[0x8298] == "Example Studio" and ex[0x013B] == "Jan Example"
+        assert got[0xA434] == "EF-M15-45mm" and int(got[0x8827]) == 800
+        assert 0x0112 not in ex, "orientacji swiadomie nie przenosimy"
+        assert 0xA431 not in got and 0xA435 not in got, "bez numerow seryjnych"
+        assert not ex.get_ifd(0x8825), "bez GPS"
+    # bez oryginalu panel informacji czyta dane aparatu z gotowego zdjecia
+    sdir = tmp_path / "out"
+    info = shot_metadata(sdir, "p.jpg", load_review(sdir))
+    if info["raw"] is None:
+        assert info["camera"]["camera"] == "Canon EOS M50m2" and info["camera"]["iso"] == 800
+    (sdir / "p_raw.jpg").unlink(missing_ok=True)
+    info = shot_metadata(sdir, "p.jpg", load_review(sdir))
+    assert info["raw"] is None and info["camera"]["shutter"] == "1/2 s"

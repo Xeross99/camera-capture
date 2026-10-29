@@ -83,6 +83,13 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "max-age=3600")
             self.end_headers()
             self.wfile.write(data)
+        elif url.path == "/api/shot_info":
+            q = parse_qs(url.query)
+            info = self.ui.shot_info(q.get("s", [""])[0], q.get("f", [""])[0])
+            if info is None:
+                self.send_error(404)
+                return
+            self._json(info)
         elif url.path == "/edit_preview":
             q = parse_qs(url.query)
             data = self.ui.edit_preview_bytes(

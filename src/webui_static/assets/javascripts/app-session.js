@@ -1,5 +1,29 @@
 "use strict";
 Object.assign(I18N_EN, {
+  // panel „Informacje" w podglądzie zdjęcia
+  "Informacje": "Info",
+  "Informacje o zdjęciu": "Photo info",
+  "Obiektyw": "Lens",
+  "czas": "shutter",
+  "przysłona": "aperture",
+  "czułość": "sensitivity",
+  "bez oryginału z aparatu": "no camera original",
+  "Gotowe": "Finished",
+  "Nakładka": "Overlay",
+  "Autor": "Author",
+  "przesunięto o {px} px": "shifted by {px} px",
+  "przybliżono o {z}%": "zoomed by {z}%",
+  "Oryginał": "Original",
+  "Zapisane": "Saved",
+  "Obróbka": "Processing",
+  "Przybliżenie": "Zoom",
+  "obrót {r}°": "rotation {r}°",
+  "bez zmian": "no change",
+  "tak": "yes",
+  "nie": "no",
+  "wysłane": "uploaded",
+  "nie wysłane": "not uploaded",
+  "Nie udało się odczytać metadanych.": "Could not read the metadata.",
   // ekran sesji i live view
   "Podgląd z aparatu": "Camera preview",
   "Podgląd na żywo": "Live view",
@@ -86,10 +110,8 @@ Object.assign(I18N_EN, {
   "Robię to raz dla tego zdjęcia, z bieżącymi ustawieniami obróbki.": "This is done once for this photo, with the current processing settings.",
   "To zdjęcie nie ma ani wersji bez logo, ani oryginału z aparatu, więc nie da się zmienić logo.": "This photo has neither a logo-free version nor a camera original, so its logo cannot be changed.",
   "Logo da się zmieniać na zdjęciach robionych od tej wersji aplikacji i na tych, których oryginał leży w /raw.": "The logo can be changed on photos taken with this version of the app or later, and on those whose original is in /raw.",
-  "Podgląd obok pokazuje zdjęcie dokładnie tak, jak zostanie zapisane.": "The preview shows the photo exactly as it will be saved.",
   "Anuluj": "Cancel",
   "Zapisz zdjęcie": "Save photo",
-  "Zmiana trafi też do API.": "The change will also be sent to the API.",
   "Bez logo": "No logo",
   "Pozycja": "Position",
   "Róg kadru": "Frame corner",
@@ -100,6 +122,12 @@ Object.assign(I18N_EN, {
   // pasek zdjęć i log
   "zmiana zdjęcia": "change photo",
   "edytuj": "edit",
+  "informacje": "info",
+  "Schowaj informacje": "Hide info",
+  "Położenie": "Placement",
+  "Zdjęcie obok wygląda dokładnie tak, jak zostanie zapisane.": "The photo next to this panel looks exactly as it will be saved.",
+  "czyste zdjęcie": "clean photo",
+  "{p} % wysokości kadru": "{p}% of the frame height",
   "usuń": "delete",
   "SPACJA": "SPACE",
   "podgląd": "preview",
@@ -207,7 +235,7 @@ function sesjaScreen() {
                 <button type="button" class="ev-step" aria-label="${t("Jaśniej")}" onclick="stepEv(1)">+</button>
               </div>
             </div>
-            <div class="ev-meter" aria-hidden="true"><span class="ev-meter-zero" id="ev-meter-zero"></span><span class="ev-meter-fill" id="ev-meter-fill"></span></div>
+            ${evMeterHtml(evActive ? cam.ev : null)}
           </div>
           <div id="ev-off" class="cam-off" style="display: ${evActive ? "none" : "flex"};">${camOffHtml(st)}</div>
         </section>
@@ -505,6 +533,14 @@ function evMeter(ev) {
   return { zero: z, left: Math.min(z, v), width: Math.abs(v - z) };
 }
 
+// Pasek renderowany od razu z pozycjami z bieżącego stanu — bez nich po
+// rebuildzie (np. wyjście z podglądu zdjęcia) kreska zera stała przez chwilę
+// przy lewej krawędzi i skakała na miejsce dopiero przy pierwszej łatce.
+function evMeterHtml(ev) {
+  const m = evMeter(ev) || { zero: 50, left: 50, width: 0 };
+  return `<div class="ev-meter" aria-hidden="true"><span class="ev-meter-zero" id="ev-meter-zero" style="left: ${m.zero}%;"></span><span class="ev-meter-fill" id="ev-meter-fill" style="left: ${m.left}%; width: ${m.width}%;"></span></div>`;
+}
+
 // Łatka kontrolki EV wołana z updateVolatile() przy każdym pollu (kontrolka
 // jest ŚWIADOMIE łatana po id, nie keyowana — rebuild zabiłby <img> streamu,
 // a kompensacja zmienia się też z pokrętła na aparacie). Limit czekania musi
@@ -598,6 +634,7 @@ function updateReviewHeader(shot) {
   const s = $("review-status");
   if (s) s.innerHTML = reviewStatusHtml(shot);
   reviewSize();
+  renderInfoPanel();
   const prev = $("review-prev"), next = $("review-next");
   if (prev) prev.disabled = shot.i <= 0;
   if (next) next.disabled = shot.i >= n - 1;
@@ -611,6 +648,7 @@ const FULL_AFTER_MS = 450;
 let fullTimer = 0;
 function reviewLoaded(img) {
   reviewSize();
+  renderInfoPanel();
   clearTimeout(fullTimer);
   if (!img.src.includes("&view=1") || S.edit) return;
   const shot = reviewShot();
@@ -658,6 +696,7 @@ function reviewOverlay() {
         <span id="review-status">${reviewStatusHtml(shot)}</span>
         <div style="flex: 1;"></div>
         <button type="button" class="vbtn" onclick="pinGhost()" title="${t("Poprzednie zdjęcie na podglądzie")}">${icon("camera", 16, 1.8)}${t("Na podgląd")}<span class="kbd">O</span></button>
+        <button type="button" id="info-btn" class="vbtn${S.info ? " on" : ""}" onclick="toggleInfo()">${icon("info", 16, 1.8)}${t("Informacje")}<span class="kbd">I</span></button>
         <button type="button" id="edit-btn" class="vbtn" onclick="toggleEdit()">${icon("pencil", 16, 1.8)}${t("Edytuj")}<span class="kbd">E</span></button>
         <button type="button" class="vbtn vbtn-danger" onclick="deleteReviewed()">${icon("trash", 16, 1.8)}${t("Usuń")}<span class="kbd">BACKSPACE</span></button>
       </div>
@@ -667,12 +706,160 @@ function reviewOverlay() {
         <button type="button" id="review-prev" class="vnav" aria-label="${t("Poprzednie zdjęcie")}" onclick="navShot(-1)" style="left: 20px;" ${shot.i <= 0 ? "disabled" : ""}>${icon("chevL", 20, 2)}</button>
         <button type="button" id="review-next" class="vnav" aria-label="${t("Następne zdjęcie")}" onclick="navShot(1)" style="right: 20px;" ${shot.i >= n - 1 ? "disabled" : ""}>${icon("chevR", 20, 2)}</button>
       </div>
+      <aside id="info-panel" class="info-panel ui" aria-label="${t("Informacje o zdjęciu")}" ${S.info ? "" : "hidden"}></aside>
       <aside id="edit-panel" class="edit-panel ui" aria-label="${t("Edycja zdjęcia")}" hidden></aside>
       </div>
     </div>
     ${stripPanel("review-strip")}
     ${logBar("review-log")}
   </div>`;
+}
+
+// ---------- metadane zdjecia (panel „Informacje" w podgladzie) ----------
+// EXIF przychodzi z oryginalu z aparatu (gotowe zdjecie go nie ma), pobierany
+// raz na wersje pliku. Z otwarta edycja logo oba panele stoja obok siebie.
+
+const infoCache = {};
+
+function infoBytes(b) {
+  const mb = b / 1048576;
+  const txt = mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
+  return LANG === "en" ? txt : txt.replace(".", ",");
+}
+
+// „2026-10-23 13:37:05" → Date (czas lokalny aparatu/komputera)
+function infoParse(s) {
+  const m = /^(\d{4})-(\d\d)-(\d\d) (\d\d):(\d\d)/.exec(s || "");
+  return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : null;
+}
+
+
+function infoDay(d) {
+  const year = d.getFullYear() === new Date().getFullYear() ? "" : ` ${d.getFullYear()}`;
+  return `${d.getDate()} ${monthName(d.getMonth())}${year}, ${hhmm(d)}`;
+}
+
+const infoRow = (label, value) => value === undefined || value === null || value === "" ? "" : `
+  <div class="drawer-row"><dt>${label}</dt><dd>${value}</dd></div>`;
+
+// Nagłówek panelu w podglądzie (styl drawera): tytuł, szary podtytuł, okrągłe ×.
+const drawerHead = (title, sub, closeLabel, onClose) => `
+  <header class="drawer-head">
+    <div><h2>${title}</h2>${sub ? `<p>${sub}</p>` : ""}</div>
+    <button type="button" class="drawer-close" aria-label="${closeLabel}" onclick="${onClose}">${icon("close", 20, 1.6)}</button>
+  </header>`;
+
+// Rożek kadru z zaznaczonym miejscem logo (zamiast słów „prawy dolny róg") —
+// ten sam znaczek, co w pigułce wyboru rogu.
+const cornerGlyph = pos =>
+  `<span class="corner-glyph" title="${cap(t(LOGO_POS_PL[pos] || pos))}"><span style="${CORNER_GLYPH[pos] || ""}"></span></span>`;
+
+// Odchyłka kompensacji od zera na skali −3…+3 (jak pasek przy kontrolce EV).
+function infoEvMeter(ev) {
+  const n = evNumber(ev);
+  if (n === null || isNaN(n)) return "";
+  const pct = Math.min(Math.abs(n), 3) / 3 * 50;
+  const fill = n >= 0 ? `left: 50%; width: ${pct}%;` : `right: 50%; width: ${pct}%;`;
+  return `
+    <section class="info-ev">
+      <div class="info-ev-head"><h3>${t("Kompensacja ekspozycji")}</h3><b>${ev} EV</b></div>
+      <div class="info-ev-bar"><span class="zero"></span><span class="fill" style="${fill}"></span></div>
+      <div class="info-ev-scale"><span>−3</span><span>0</span><span>+3</span></div>
+    </section>`;
+}
+
+function infoPanelHtml(d) {
+  const raw = d.raw || {};
+  const taken = infoParse(raw.taken), saved = infoParse(d.modified);
+  const when = taken || saved;
+  const weekday = when ? (LANG === "en" ? EN_WEEKDAYS : PL_WEEKDAYS)[when.getDay()] : "";
+  const sub = [weekday, d.raw ? raw.camera : t("bez oryginału z aparatu")].filter(Boolean).join(" · ");
+  const lens = [raw.lens && raw.lens.split(" ")[0], raw.focal].filter(Boolean).join(" · ");
+  const cells = [["shutter", t("czas")], ["aperture", t("przysłona")], ["iso", t("czułość")]]
+    .filter(([k]) => raw[k] !== undefined)
+    .map(([k, label]) => `<div><b>${k === "iso" ? `ISO ${raw.iso}` : raw[k]}</b><span>${label}</span></div>`).join("");
+  const sameDay = taken && saved && taken.toDateString() === saved.toDateString();
+  const al = d.aligned;
+  const alText = al ? [
+    (al.dx || al.dy) ? t("przesunięto o {px} px", { px: Math.round(Math.hypot(al.dx || 0, al.dy || 0)) }) : "",
+    al.scale && Math.abs(al.scale - 1) > 0.0005 ? t("przybliżono o {z}%", { z: ((al.scale - 1) * 100).toFixed(1) }) : "",
+    al.rot ? t("obrót {r}°", { r: al.rot }) : "",
+  ].filter(Boolean).join(", ") || t("bez zmian") : "";
+  const logo = d.logo === null ? null
+    : !d.logo ? t("bez logo")
+    : d.logoInfo ? `${d.logoInfo.label}${cornerGlyph(d.logoInfo.pos)}`
+    : t("tak");
+  const api = d.uploaded
+    ? `<span class="info-api ok"><span></span>${t("wysłane")}</span>`
+    : `<span class="info-api"><span></span>${t("nie wysłane")}</span>`;
+  return `
+    ${drawerHead(when ? infoDay(when) : d.file, sub, t("Schowaj informacje"), "toggleInfo()")}
+    ${cells ? `<div class="info-expo">${cells}</div>` : ""}
+    ${raw.ev ? infoEvMeter(raw.ev) : ""}
+    <section class="drawer-sec">
+      <h3>${t("Informacje")}</h3>
+      <dl class="drawer-list">
+        ${infoRow(t("Obiektyw"), lens)}
+        ${infoRow(t("Gotowe"), `${d.size[0]} × ${d.size[1]} · ${infoBytes(d.bytes)}`)}
+        ${d.raw ? infoRow(t("Oryginał"), `${(raw.size || ["?", "?"]).join(" × ")} · ${infoBytes(raw.bytes)}`) : ""}
+        ${infoRow(t("Zapisane"), saved && (sameDay ? hhmm(saved) : infoDay(saved)))}
+        ${infoRow(t("Autor"), raw.artist)}
+        ${infoRow("Copyright", raw.copyright)}
+      </dl>
+    </section>
+    <section class="drawer-sec">
+      <h3>${t("Obróbka")}</h3>
+      <dl class="drawer-list">
+        ${infoRow("Logo", logo)}
+        ${infoRow(t("Przybliżenie"), d.zoom === null ? null : (d.zoom ? t("tak") : t("nie")))}
+        ${infoRow(t("Nakładka"), alText)}
+        ${infoRow("API", api)}
+      </dl>
+    </section>`;
+}
+
+function renderInfoPanel() {
+  const panel = $("info-panel"), shot = reviewShot();
+  if (!panel || !shot || !S.info) return;
+  const key = `${shot.file}@${shot.v}`;
+  if (panel.dataset.key === key) return;
+  panel.dataset.key = key;
+  const show = d => {
+    if (panel.dataset.key !== key) return;   // w miedzyczasie inne zdjecie
+    panel.innerHTML = d ? infoPanelHtml(d) : `<div class="row-desc">${t("Nie udało się odczytać metadanych.")}</div>`;
+  };
+  if (infoCache[key]) { show(infoCache[key]); return; }
+  if (!panel.innerHTML) panel.innerHTML = `<div class="row-desc"><span class="spinner"></span></div>`;
+  const q = new URLSearchParams({ s: S.state.session.name, f: shot.file });
+  fetch(`/api/shot_info?${q}`)
+    .then(r => (r.ok ? r.json() : null))
+    .then(d => { if (d) infoCache[key] = d; show(d); })
+    .catch(() => show(null));
+}
+
+// Panel, który zostaje na ekranie, gdy drugi się pojawia albo znika, ma
+// PRZEJECHAĆ na nowe miejsce (FLIP: pozycja przed zmianą → po zmianie →
+// odwrócone przesunięcie wygaszane tą samą sprężyną co wjazd panelu).
+function panelsFlip(change) {
+  const live = () => ["info-panel", "edit-panel"].map($).filter(el => el && !el.hidden);
+  const before = new Map(live().map(el => [el, el.getBoundingClientRect().left]));
+  change();
+  const spring = getComputedStyle(document.documentElement).getPropertyValue("--spring").trim() || "ease-out";
+  live().forEach(el => {
+    if (!before.has(el)) return;          // nowy panel ma swoją animację wjazdu
+    const dx = before.get(el) - el.getBoundingClientRect().left;
+    if (Math.abs(dx) < 1) return;
+    el.animate([{ transform: `translateX(${dx}px)` }, { transform: "none" }], { duration: 600, easing: spring });
+  });
+}
+
+function toggleInfo() {
+  S.info = !S.info;
+  const panel = $("info-panel"), btn = $("info-btn");
+  if (btn) btn.classList.toggle("on", S.info);
+  if (!panel) return;
+  panelsFlip(() => { panel.hidden = !S.info; });
+  if (S.info) { panel.dataset.key = ""; renderInfoPanel(); }
 }
 
 // ---------- edycja logo na gotowym zdjeciu ----------
@@ -687,12 +874,7 @@ function editPanelHtml() {
   const post_ = S.state.post;
   const status = !shot ? "" : shot.edit === "ready" ? "ready"
     : (shot.edit === "raw" ? "preparing" : "none");
-  const head = `
-    <div style="display: flex; align-items: center; gap: 10px;">
-      <h2 class="panel-title" style="flex: 1;">${t("Edycja zdjęcia")}</h2>
-      <button type="button" class="icon-btn" aria-label="${t("Zamknij edycję")}" onclick="closeEdit()" style="width: 28px; height: 28px; font-size: 16px;">×</button>
-    </div>
-    <div class="row-desc mono" style="margin-top: -6px;">${S.edit.file}</div>`;
+  const head = drawerHead(t("Edycja zdjęcia"), S.edit.file, t("Zamknij edycję"), "closeEdit()");
   if (status === "preparing") {
     return `${head}
       <div style="display: flex; align-items: center; gap: 10px; padding: 12px; border-radius: 10px; background: var(--accent-soft); color: var(--accent-fg); font-size: 13px;">
@@ -706,20 +888,22 @@ function editPanelHtml() {
       <div class="row-desc">${t("Logo da się zmieniać na zdjęciach robionych od tej wersji aplikacji i na tych, których oryginał leży w /raw.")}</div>`;
   }
   return `${head}
-    <div style="display: flex; flex-direction: column; gap: 8px;">
-      <div class="eyebrow">Logo</div>
+    <section class="drawer-sec">
+      <h3>Logo</h3>
       ${logoTiles(post_.logos, S.edit.logo, "editPickLogo", "data-elogo")}
-    </div>
-    <div id="edit-corner" style="${S.edit.logo ? "" : "opacity: .4; pointer-events: none;"}">
-      ${cornerRow(post_.logoPositions, S.edit.pos, "editPickPos", "data-ecorner", "edit-corner-seg")}
-    </div>
-    <div class="row-desc">${t("Podgląd obok pokazuje zdjęcie dokładnie tak, jak zostanie zapisane.")}</div>
+    </section>
+    <section class="drawer-sec">
+      <h3>${t("Położenie")}</h3>
+      <div id="edit-corner" class="drawer-list drawer-pad" style="${S.edit.logo ? "" : "opacity: .4; pointer-events: none;"}">
+        ${cornerRow(post_.logoPositions, S.edit.pos, "editPickPos", "data-ecorner", "edit-corner-seg")}
+      </div>
+      <p class="drawer-note">${t("Zdjęcie obok wygląda dokładnie tak, jak zostanie zapisane.")}</p>
+    </section>
     <div style="flex: 1;"></div>
-    <div style="display: flex; gap: 8px;">
-      <button type="button" class="btn" onclick="closeEdit()" style="flex: 1;">${t("Anuluj")}</button>
-      <button type="button" class="btn btn-primary" onclick="saveEdit()" style="flex: 2;">${t("Zapisz zdjęcie")}</button>
-    </div>
-    <div class="row-desc" style="text-align: center;">${t("Zmiana trafi też do API.")}</div>`;
+    <div class="drawer-actions">
+      <button type="button" class="btn btn-primary" onclick="saveEdit()">${t("Zapisz zdjęcie")}</button>
+      <button type="button" class="btn" onclick="closeEdit()">${t("Anuluj")}</button>
+    </div>`;
 }
 
 function renderEditPanel() {
@@ -750,14 +934,14 @@ function openEdit() {
   const post_ = S.state.post;
   S.edit = { file: shot.file, logo: post_.logoChoice || (post_.logos[0] || {}).key || "", pos: post_.logoPosition };
   if (shot.edit === "raw" && S.state.editPreparing !== shot.file) post({ action: "edit_prepare", file: shot.file });
-  renderEditPanel();
+  panelsFlip(renderEditPanel);
 }
 
 function closeEdit() {
   if (!S.edit) return;
   S.edit = null;
   const panel = $("edit-panel");
-  if (panel) { panel.hidden = true; panel.innerHTML = ""; }
+  if (panel) panelsFlip(() => { panel.hidden = true; panel.innerHTML = ""; });
   const btn = $("edit-btn");
   if (btn) btn.classList.remove("on");
   const img = $("review-img"), shot = reviewShot();
@@ -775,6 +959,7 @@ function editPickLogo(key) {
   document.querySelectorAll("[data-elogo]").forEach(b => {
     const on = b.dataset.elogo === key;
     b.classList.toggle("on", on);
+    b.classList.toggle("picked", on);   // podskok znaku tylko po kliknięciu, nie przy renderze
     b.setAttribute("aria-checked", on);
   });
   const c = $("edit-corner");
@@ -823,7 +1008,7 @@ function editReconcile(st) {
 // logu i naglowka, co klulo w oczy.
 function stripPanel(id) {
   const hints = id === "review-strip"
-    ? `<span>${kHint("← →")}${t("zmiana zdjęcia")}</span><span>${kHint("E")}${t("edytuj")}</span><span>${kHint("BACKSPACE")}${t("usuń")}</span>`
+    ? `<span>${kHint("← →")}${t("zmiana zdjęcia")}</span><span>${kHint("I")}${t("informacje")}</span><span>${kHint("E")}${t("edytuj")}</span><span>${kHint("BACKSPACE")}${t("usuń")}</span>`
     : `<span>${kHint(t("SPACJA"))}${t("podgląd")}</span><span>${kHint("← →")}${t("wybór")}</span><span>${kHint("BACKSPACE")}${t("usuń")}</span>`;
   return `
     <section aria-label="${t("Zdjęcia w sesji")}" class="strip-panel">
@@ -872,12 +1057,16 @@ function logBar(prefix) {
 // MIEJSCU, bez rebuildu ekranu (ten zrywa stream live view).
 const NO_LOGO_SVG = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M6.5 17.5l11-11"/></svg>`;
 
+// Wybór logo: karty jedna pod drugą (nazwa + opis po lewej, znak po prawej),
+// wybrana z niebieską obwódką. Te same karty w sidebarze i w edycji logo.
 function logoTiles(logos, cur, onPick, attr = "data-logo") {
-  const tile = (key, inner, labelText, extra = "") => `<button type="button" role="radio" ${attr}="${key}" aria-checked="${key === cur}" aria-label="${labelText}" title="${labelText}" class="logo-tile${extra}${key === cur ? " on" : ""}" onclick="${onPick}('${key}')">${inner}</button>`;
+  const card = (key, name, desc, mark, extra = "") => `<button type="button" role="radio" ${attr}="${key}" aria-checked="${key === cur}" class="logo-tile${extra}${key === cur ? " on" : ""}" onclick="${onPick}('${key}')">
+      <span class="logo-tile-text"><b>${name}</b><span>${desc}</span></span>${mark}</button>`;
   return `
-    <div role="radiogroup" aria-label="Logo" style="display: grid; grid-template-columns: 56px repeat(${logos.length}, minmax(0, 1fr)); gap: 8px;">
-      ${tile("", NO_LOGO_SVG, t("Bez logo"), " none")}
-      ${logos.map(l => tile(l.key, `<img src="/logo?k=${l.key}" alt="" />`, l.label)).join("")}
+    <div role="radiogroup" aria-label="Logo" class="logo-tiles">
+      ${card("", t("Bez logo"), t("czyste zdjęcie"), `<span class="logo-tile-mark none">${NO_LOGO_SVG}</span>`, " none")}
+      ${logos.map(l => card(l.key, l.label, t("{p} % wysokości kadru", { p: Math.round((l.height || 0) * 100) }),
+        `<span class="logo-tile-mark"><img src="/logo?k=${l.key}" alt="" /></span>`)).join("")}
     </div>`;
 }
 
@@ -926,6 +1115,7 @@ function pickLogo(key) {
   document.querySelectorAll("[data-logo]").forEach(b => {
     const on = b.dataset.logo === key;
     b.classList.toggle("on", on);
+    b.classList.toggle("picked", on);   // podskok znaku tylko po kliknięciu, nie przy renderze
     b.setAttribute("aria-checked", on);
   });
   const corner = $("logo-corner");

@@ -66,6 +66,7 @@ from .session_store import (
     FRAMES_DIR,
     save_frame,
     load_frame,
+    shot_metadata,
     cover_path,
     edit_base,
     finals,
@@ -435,6 +436,14 @@ def _edsdk_missing() -> bool:
     from .camera_edsdk import find_edsdk_dll
     return find_edsdk_dll() is None
 
+
+
+def _logo_label(logo_path) -> str:
+    """Nazwa logo do panelu „Informacje" (plik spoza LOGOS = nazwa pliku)."""
+    for spec in LOGOS.values():
+        if Path(spec["file"]) == Path(logo_path):
+            return spec["label"]
+    return Path(logo_path).stem
 
 class WebUI:
     def __init__(
@@ -1016,6 +1025,7 @@ class WebUI:
                     review[key].remove(f)
             review["meta"].pop(f, None)
             review["frame"].pop(f, None)
+            review["logo"].pop(f, None)
             pid = review["automat"].pop(f, None)
             if pid:
                 automat_ids[f] = int(pid)
@@ -1253,6 +1263,9 @@ class WebUI:
         with self._review_lock:
             review = load_review(outdir)
             review["meta"][out.name] = " · ".join(bits)
+            if job["add_logo"]:
+                review["logo"][out.name] = {"label": _logo_label(job["logo_path"]),
+                                            "pos": job["logo_position"]}
             if frame:
                 save_frame(outdir, out.name, review, frame)
             n = len([f for f in finals(outdir) if f not in review["rejected"]])
@@ -1738,6 +1751,10 @@ class WebUI:
                 review = load_review(outdir)
                 bits = [b for b in review["meta"].get(filename, "").split(" · ") if b and b != "logo"]
                 review["meta"][filename] = " · ".join((["logo"] if logo else []) + bits)
+                if logo:
+                    review["logo"][filename] = {"label": LOGOS[logo]["label"], "pos": position}
+                else:
+                    review["logo"].pop(filename, None)
                 if filename in review["uploaded"]:
                     review["uploaded"].remove(filename)
                 pid = review["automat"].get(filename)
@@ -1755,6 +1772,16 @@ class WebUI:
         finally:
             with self.lock:
                 self.edit_saving = None
+
+    def shot_info(self, session: str, filename: str) -> dict | None:
+        """Metadane zdjecia do panelu w podgladzie (EXIF z oryginalu z aparatu)."""
+        found = self._session_file(session, filename)
+        if found is None:
+            return None
+        outdir, _ = found
+        with self._review_lock:
+            review = load_review(outdir)
+        return shot_metadata(outdir, filename, review)
 
     def edit_preview_bytes(self, session: str, filename: str, logo: str, position: str) -> bytes | None:
         """Podglad edycji przed zapisem: wersja bez logo zmniejszona do 1400 px
@@ -2246,7 +2273,8 @@ class WebUI:
                     # "" = wlasny plik z Ustawien, spoza listy
                     "logoChoice": next((k for k, v in LOGOS.items()
                                         if v["file"] == self.logo_path), ""),
-                    "logos": [{"key": k, "label": v["label"]} for k, v in LOGOS.items()],
+                    "logos": [{"key": k, "label": v["label"], "height": v["height"]}
+                              for k, v in LOGOS.items()],
                     "zoom": self.auto_zoom,
                     "center": self.auto_center,
                     "cleanBg": self.clean_bg,

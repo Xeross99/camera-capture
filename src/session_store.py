@@ -42,6 +42,7 @@ def load_review(session_dir: Path) -> dict:
     data.setdefault("meta", {})
     data.setdefault("automat", {})  # plik -> id zdjecia w Automacie (do DELETE)
     data.setdefault("frame", {})    # plik -> kadr z obrobki (dopasowanie do nakladki)
+    data.setdefault("logo", {})     # plik -> {label, pos} — panel „Informacje" w podgladzie
     return data
 
 
@@ -162,6 +163,106 @@ def shot_entries(session_dir: Path | None, review: dict) -> list[dict]:
         }
         for f in (finals(session_dir) if session_dir else [])
     ]
+
+
+# ---------- metadane zdjecia (panel w podgladzie) ----------
+
+_EXIF_IFD = 0x8769
+
+
+def _shutter(t: float) -> str:
+    if t >= 1:
+        return f"{t:g} s"
+    return f"1/{round(1 / t)} s"
+
+
+def _ev_text(ev: float) -> str:
+    """Kompensacja w notacji aparatu: 0.333 → +1/3, 1.667 → +1 2/3."""
+    thirds = round(ev * 3)
+    if not thirds:
+        return "±0"
+    sign = "+" if thirds > 0 else "−"
+    whole, rest = divmod(abs(thirds), 3)
+    frac = f"{rest}/3" if rest else ""
+    return sign + " ".join(p for p in (str(whole) if whole else "", frac) if p)
+
+
+def _camera_exif(path: Path) -> dict:
+    """EXIF z oryginalu z aparatu (sam naglowek, obraz nie jest dekodowany).
+    Gotowe zdjecie EXIF-u nie ma — obrobka zapisuje czysty JPEG."""
+    try:
+        with Image.open(path) as im:
+            ex = im.getexif()
+            size = list(im.size)
+    except OSError:
+        return {}
+    sub = ex.get_ifd(_EXIF_IFD)
+
+    def num(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError, ZeroDivisionError):
+            return None
+
+    out: dict = {"size": size}
+    model = str(ex.get(0x0110) or "").strip()
+    make = str(ex.get(0x010F) or "").strip()
+    if model:
+        out["camera"] = model if not make or model.startswith(make) else f"{make} {model}"
+    # autor i prawa autorskie wpisane w menu aparatu (dopisuje je do kazdego zdjecia)
+    for tag, key in ((0x013B, "artist"), (0x8298, "copyright")):
+        if (text := str(ex.get(tag) or "").strip(" \x00")):
+            out[key] = text
+    if sub.get(0xA434):
+        out["lens"] = str(sub[0xA434]).strip()
+    taken = str(sub.get(0x9003) or ex.get(0x0132) or "").strip()
+    if taken:
+        # „2026:09:10 14:06:39" → „2026-09-10 14:06:39"
+        out["taken"] = taken[:10].replace(":", "-") + taken[10:]
+    if (t := num(sub.get(0x829A))):
+        out["shutter"] = _shutter(t)
+    if (f := num(sub.get(0x829D))):
+        out["aperture"] = f"f/{f:g}"
+    iso = sub.get(0x8827)
+    if isinstance(iso, tuple):
+        iso = iso[0] if iso else None
+    if iso:
+        out["iso"] = int(iso)
+    if (ev := num(sub.get(0x9204))) is not None:
+        out["ev"] = _ev_text(ev)
+    if (fl := num(sub.get(0x920A))):
+        out["focal"] = f"{fl:g} mm"
+    return out
+
+
+def shot_metadata(session_dir: Path, filename: str, review: dict) -> dict | None:
+    """Metadane do panelu w podgladzie: plik, obrobka i EXIF z oryginalu."""
+    path = session_dir / Path(filename).name
+    try:
+        with Image.open(path) as im:
+            size = list(im.size)
+        stat = path.stat()
+    except OSError:
+        return None
+    bits = [b for b in review.get("meta", {}).get(filename, "").split(" · ") if b]
+    raw = find_raw(session_dir, filename)
+    out = {
+        "file": filename,
+        "size": size,
+        "bytes": stat.st_size,
+        "modified": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+        # meta znamy tylko dla zdjec obrobionych na tym komputerze
+        "logo": ("logo" in bits) if bits else None,
+        # nazwa i rog logo zapisywane od 2.7 — starsze zdjecia maja samo „logo"
+        "logoInfo": review.get("logo", {}).get(filename),
+        "zoom": ("zoom" in bits) if bits else None,
+        "aligned": (review.get("frame", {}).get(filename) or {}).get("aligned"),
+        "uploaded": filename in review.get("uploaded", []),
+        "raw": None,
+    }
+    if raw:
+        out["raw"] = {"bytes": raw.stat().st_size, **_camera_exif(raw)}
+    return out
 
 
 def remote_filename(photo: dict) -> str:

@@ -234,6 +234,22 @@ def test_edit_logo_moves_and_removes_logo(app):
     assert np.abs(now - nologo).max() <= 6, "bez logo = wersja z .nologo"
 
 
+def test_photo_info_names_logo_and_follows_logo_edit(app):
+    open_session(app)
+    f = shoot_and_wait(app)
+    info = app.shot_info("sesja testowa", f)
+    assert info["logo"] is True and info["logoInfo"]["pos"] == "bottom-right"
+    assert info["raw"]["size"], "oryginal z aparatu lezy w raw/"
+    app.action({"action": "edit_save", "file": f, "logo": "kids", "position": "top-left"})
+    wait_for(lambda: (app.shot_info("sesja testowa", f)["logoInfo"] or {}).get("pos") == "top-left",
+             20, "nowy rog logo w metadanych")
+    assert app.shot_info("sesja testowa", f)["logoInfo"]["label"] == "TRIXBRIX.eu KIDS"
+    app.action({"action": "edit_save", "file": f, "logo": "", "position": "bottom-right"})
+    wait_for(lambda: app.shot_info("sesja testowa", f)["logo"] is False, 20, "bez logo")
+    assert app.shot_info("sesja testowa", f)["logoInfo"] is None
+    assert app.shot_info("sesja testowa", "../../etc/passwd") is None
+
+
 def test_edit_refuses_unknown_logo_and_position(app):
     open_session(app)
     assert app.action({"action": "edit_save", "file": "x.jpg", "logo": "inne"})["error"] == "nieznane logo"

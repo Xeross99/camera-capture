@@ -13,8 +13,9 @@ from conftest import FIXTURES
 from src import config
 from src.image_processing import LOGO_POSITIONS, overlay_logo, process
 from src.naming import sanitize_name
-from src.session_store import (TRASH_STAMP, edit_base, finals, find_raw, load_review,
-                               purge_originals, purge_trash, remote_filename, save_review, shot_entries)
+from src.session_store import (TRASH_STAMP, _ev_text, edit_base, finals, find_raw, load_review,
+                               purge_originals, purge_trash, remote_filename, save_review, shot_entries,
+                               shot_metadata)
 from src.version import parse_version
 from src.webui import _ev_number
 
@@ -161,7 +162,7 @@ def test_review_roundtrip_and_finals(tmp_path):
         Image.new("RGB", (10, 10)).save(tmp_path / name)
     assert finals(tmp_path) == ["photo_1.jpg", "photo_2.jpg"], "raw nie jest zdjeciem sesji"
     review = load_review(tmp_path)
-    assert review == {"rejected": [], "uploaded": [], "meta": {}, "automat": {}, "frame": {}}
+    assert review == {"rejected": [], "uploaded": [], "meta": {}, "automat": {}, "frame": {}, "logo": {}}
     review["rejected"].append("photo_2.jpg")
     save_review(tmp_path, review)
     entries = {e["file"]: e for e in shot_entries(tmp_path, load_review(tmp_path))}
@@ -169,6 +170,43 @@ def test_review_roundtrip_and_finals(tmp_path):
     assert entries["photo_1.jpg"]["status"] == "ok"
     assert entries["photo_1.jpg"]["size"] == [10, 10]
     assert find_raw(tmp_path, "photo_1.jpg") == tmp_path / "photo_1_raw.jpg"
+
+
+def test_shot_metadata_reads_camera_exif_from_original(tmp_path):
+    exif = Image.Exif()
+    exif[0x010F], exif[0x0110] = "Canon", "Canon EOS M50m2"
+    exif[0x8298] = "Example Studio, all rights reserved"
+    exif[0x013B] = "Jan Example"
+    sub = exif.get_ifd(0x8769)
+    sub.update({0x829A: 0.5, 0x829D: 22.0, 0x8827: 800, 0x9204: 2 / 3, 0x920A: 15.0,
+                0xA434: "EF-M15-45mm f/3.5-6.3 IS STM", 0x9003: "2026:09:10 14:06:39"})
+    (tmp_path / "raw").mkdir()
+    Image.new("RGB", (60, 40)).save(tmp_path / "raw" / "p_raw.jpg", exif=exif)
+    Image.new("RGB", (30, 30)).save(tmp_path / "p.jpg")
+    Image.new("RGB", (30, 30)).save(tmp_path / "q.jpg")
+    review = load_review(tmp_path)
+    review["meta"]["p.jpg"] = "logo · zoom · 3000×3000"
+    review["logo"]["p.jpg"] = {"label": "TRIXBRIX.eu KIDS", "pos": "top-left"}
+    info = shot_metadata(tmp_path, "p.jpg", review)
+    assert info["size"] == [30, 30] and info["logo"] and info["zoom"]
+    assert info["logoInfo"] == {"label": "TRIXBRIX.eu KIDS", "pos": "top-left"}
+    raw = info["raw"]
+    assert raw["camera"] == "Canon EOS M50m2", "producent nie dublowany przed modelem"
+    assert raw["lens"] == "EF-M15-45mm f/3.5-6.3 IS STM"
+    assert (raw["shutter"], raw["aperture"], raw["iso"], raw["ev"], raw["focal"]) == \
+        ("1/2 s", "f/22", 800, "+2/3", "15 mm")
+    assert raw["taken"] == "2026-09-10 14:06:39" and raw["size"] == [60, 40]
+    assert raw["copyright"] == "Example Studio, all rights reserved"
+    assert raw["artist"] == "Jan Example"
+    # bez oryginalu (zdjecie z Automatu): sam plik, logo nieznane
+    bare = shot_metadata(tmp_path, "q.jpg", review)
+    assert bare["raw"] is None and bare["logo"] is None
+    assert shot_metadata(tmp_path, "brak.jpg", review) is None
+
+
+def test_ev_text_uses_camera_notation():
+    assert [_ev_text(v) for v in (0, 1 / 3, 1, 5 / 3, -2 / 3, -2)] == \
+        ["±0", "+1/3", "+1", "+1 2/3", "−2/3", "−2"]
 
 
 def test_edit_base_prefers_nologo_copy(tmp_path):

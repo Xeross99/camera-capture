@@ -57,6 +57,28 @@ def test_space_opens_photo_and_escape_returns(app, ui):
     expect(ui.locator("#review-wrap")).to_have_count(0)
 
 
+def test_preview_shows_photo_info_and_i_toggles_it(app, ui):
+    start_session(ui)
+    ui.keyboard.press("Enter")
+    wait_for(lambda: app.state()["session"]["count"] == 1 and not app.state()["busy"], 120, "zdjecie")
+    ui.wait_for_timeout(700)
+    ui.keyboard.press(" ")
+    panel = ui.locator("#info-panel")
+    expect(panel).to_be_visible()
+    expect(panel).to_contain_text("3000 × 3000")
+    expect(panel).to_contain_text("Logo")
+    ui.keyboard.press("i")
+    expect(panel).to_be_hidden()
+    ui.keyboard.press("i")
+    expect(panel).to_be_visible()
+    ui.keyboard.press("e")                # edycja logo staje obok, informacje zostaja
+    expect(ui.locator("#edit-panel")).to_be_visible()
+    expect(panel).to_be_visible()
+    ui.keyboard.press("Escape")
+    expect(ui.locator("#edit-panel")).to_be_hidden()
+    expect(panel).to_be_visible()
+
+
 def test_o_in_preview_puts_photo_over_live_view(app, ui):
     start_session(ui)
     ui.keyboard.press("Enter")

@@ -645,6 +645,7 @@ document.addEventListener("keydown", e => {
       break;
     case "p": case "P": toggle("preview", !S.state.previewOn); break;
     case "e": case "E": if (S.reviewMode) toggleEdit(); break;
+    case "i": case "I": if (S.reviewMode) toggleInfo(); break;
     case "o": case "O":
       if (S.reviewMode) { if (!S.edit) pinGhost(); }
       else if (S.state && S.state.session.name) setGhost(!S.ghost.on);

@@ -79,7 +79,7 @@ The side panel, top to bottom:
 - **Photo overlay:** an earlier photo over the live view with an opacity slider, and **Align framing**
   (see below).
 - **Processing after the shot:** white background, zoom and centring.
-- **Logo:** no logo or one of two variants, and the corner of the frame it goes in.
+- **Logo:** a dropdown with your logos (or no logo), and the corner of the frame it goes in.
 
 <br clear="right">
 
@@ -100,24 +100,55 @@ the next shot will be corrected and stays grey ("too far") when it will not.
 ### Photo viewer and editing
 
 <kbd>Space</kbd> opens a photo full window, the arrow keys move between photos, <kbd>Backspace</kbd> deletes (to the trash on disk
-and from the API). "Edit" (<kbd>E</kbd>) removes, adds or moves the logo on a finished photo. The preview next
-to it shows exactly what will be saved, and the change also replaces the same photo in the API.
+and from the API).
 
-<img src="assets/readme/review.jpg" width="100%" alt="A photo opened full window">
+The panel on the right (<kbd>I</kbd> hides and shows it) has the photo's details: when it was taken and with
+which camera, shutter speed, aperture, ISO and exposure compensation, lens, the size of the finished photo and
+of the original, the author and copyright set in the camera, and what processing did (logo and its corner,
+zoom, overlay alignment, upload to the API). The camera data comes from the original kept in `/raw`.
 
-<img src="assets/readme/edit.jpg" width="100%" alt="Editing the logo on a finished photo">
+<img src="assets/readme/review.jpg" width="100%" alt="A photo opened full window with the photo info panel">
+
+"Edit" (<kbd>E</kbd>) removes, adds or moves the logo on a finished photo; it opens next to the info panel.
+The preview shows exactly what will be saved, and the change also replaces the same photo in the API.
+
+<img src="assets/readme/edit.jpg" width="100%" alt="Editing the logo on a finished photo, next to the photo info">
 
 Editing works on photos that have a version without the logo: every photo taken with this app saves one.
 Older ones are rebuilt from the camera original (`/raw`) if it was kept.
 
+### Session menu and editing many photos
+
+The session name in the top bar opens a menu: change the logo on the session's photos, show the session folder
+on disk (Finder or Explorer), or go back to the session list.
+
+<img src="assets/readme/menu.jpg" width="540" alt="Session name menu: change the logo on photos, show the session folder, back to the session list">
+
+"Change the logo on photos…" opens all the session's photos at once. Select them like in Finder or Explorer:
+click, <kbd>⌘</kbd>/<kbd>Ctrl</kbd>+click to add, <kbd>Shift</kbd>+click for a range, drag a rectangle,
+<kbd>⌘</kbd>/<kbd>Ctrl</kbd>+<kbd>A</kbd> for all. Pick the logo and corner, and every selected photo gets it,
+with progress on each tile. Photos without an original or a logo-free version are greyed out.
+
+<img src="assets/readme/session-edit.jpg" width="100%" alt="Session edit: grid of the session's photos with selection and the logo panel">
+
+### Logos
+
+The logos to choose from are managed in **Settings → Logo**: add a new one (PNG, SVG, WEBP or JPG; a
+transparent background looks best), rename it, replace its file, or change its size (2–25 % of the frame
+height) and opacity. The preview next to the form shows the logo on a mock-up of the finished photo, at
+the same scale. Each logo needs a name of its own. The list and the files are kept next to `.env`, so they
+survive updates.
+
+<img src="assets/readme/logos.jpg" width="100%" alt="Settings, Logo: list of logos and the edit form with a preview">
+
 ### Settings
 
-Updates from GitHub Releases, the API connection (with the list of endpoints), files (including after how
+Updates from GitHub Releases, the API connection (with the list of endpoints), logos (see above), files (including after how
 many days camera originals are deleted), live view and processing, language (Polish or English) and keyboard
 shortcuts. The light or dark
 theme switches with the icon in the top right corner.
 
-<img src="assets/readme/settings.jpg" width="100%" alt="Settings: updates, API with endpoints, files">
+<img src="assets/readme/settings.jpg" width="100%" alt="Settings: updates, API with endpoints, logos">
 
 <img src="assets/readme/session-dark.jpg" width="100%" alt="Session in the dark theme, camera disconnected">
 
@@ -131,6 +162,7 @@ theme switches with the icon in the top right corner.
 | <kbd>Space</kbd> | opens the photo viewer full window |
 | <kbd>←</kbd> <kbd>→</kbd> | moves between photos |
 | <kbd>E</kbd> | edits the logo on the photo being viewed |
+| <kbd>I</kbd> | hides and shows the photo info panel in the viewer |
 | <kbd>O</kbd> | turns the photo overlay on and off (in the viewer: lays the photo being viewed over the live view) |
 | <kbd>Backspace</kbd> | deletes the photo: it goes to the trash on disk and disappears from the API |
 | <kbd>Esc</kbd> | closes the viewer or leaves the session |

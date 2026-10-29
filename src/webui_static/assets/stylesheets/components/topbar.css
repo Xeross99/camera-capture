@@ -158,3 +158,92 @@
   height: 16px;
   display: block;
 }
+/* nazwa sesji w ścieżce = menu akcji sesji */
+.sess-menu {
+  position: relative;
+  min-width: 0;
+}
+.sess-menu-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 420px;
+  height: 30px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+.sess-menu-btn:hover,
+.sess-menu.open .sess-menu-btn {
+  background: var(--seg);
+}
+.sess-menu-btn svg {
+  color: var(--muted-2);
+  transition: transform 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.sess-menu.open .sess-menu-btn svg {
+  transform: rotate(180deg);
+}
+.sess-menu-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sess-menu-list {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
+  z-index: 50;
+  width: 270px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
+  transform-origin: top left;
+  animation: logoMenuIn 0.2s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.sess-menu-list[hidden] {
+  display: none;
+}
+.sess-menu-list button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-2);
+  text-align: left;
+  cursor: pointer;
+}
+.sess-menu-list button:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent-fg);
+}
+.sess-menu-list button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.sess-menu-list button > span:first-of-type {
+  flex: 1;
+}
+.sess-menu-meta {
+  font-size: 11px;
+  color: var(--muted-2);
+}
+.sess-menu-sep {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--hair);
+}

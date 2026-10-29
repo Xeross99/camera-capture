@@ -108,7 +108,7 @@ function shell() {
     ${st.session.name ? `
     <nav class="crumbs" aria-label="${t("Ścieżka")}">
       <a onclick="showLeaveConfirm()">${t("Sesje")}</a><span aria-hidden="true">/</span>
-      <span aria-current="page" style="font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${st.session.name}</span>
+      ${sessionMenuHtml(st)}
     </nav>` : ""}
     <div style="flex: 1;"></div>
     <div class="chip"><span class="dot ${conn ? "ok" : "err"}"></span><span id="conn-label">${conn ? t("Aparat połączony") : t("Aparat rozłączony")}</span>${conn ? `<span id="conn-fps" class="fps">${st.fps} fps</span>` : ""}</div>
@@ -167,6 +167,7 @@ function renderShell(force) {
 // punktowo po id — pelny rebuild ekranu niszczylby <img> streamu
 // i podgladu (miganie co kazda zmiane stanu).
 function updateVolatile(st) {
+  seditReconcile();
   // fps liczony na zywo przez watek aparatu, odswiezany co poll
   const fps = $("conn-fps");
   if (fps) fps.textContent = `${st.fps} fps`;
@@ -606,12 +607,19 @@ document.addEventListener("keydown", e => {
     }
     return;
   }
+  // edycja sesji zasłania wszystko: ESC zamyka, ⌘A/Ctrl+A zaznacza wszystkie,
+  // reszta skrótów nie strzela zza niej
+  if (S.sedit) {
+    if (e.key === "Escape") { e.preventDefault(); closeSessionEdit(); }
+    else if ((e.metaKey || e.ctrlKey) && (e.key === "a" || e.key === "A")) { e.preventDefault(); seditSelectAll(); }
+    return;
+  }
   if (e.metaKey || e.ctrlKey) return;
 
   // preventDefault na wszystkim co obslugujemy — bez tego WKWebView puszcza
   // klawisz w gore responder chain i macOS robi systemowy beep
   if (["Enter", " ", "Escape", "Backspace", "ArrowLeft", "ArrowRight",
-       "p", "P", "a", "A", "x", "X", "e", "E", "o", "O"].includes(e.key)) {
+       "p", "P", "a", "A", "x", "X", "e", "E", "o", "O", "i", "I"].includes(e.key)) {
     e.preventDefault();
   }
   // przy otwartym potwierdzeniu wyjscia reaguja TYLKO ESC (anuluj)
@@ -635,7 +643,8 @@ document.addEventListener("keydown", e => {
       break;
     case " ": toggleReview(); break;
     case "Escape":
-      if ($("logo-dd") && $("logo-dd").classList.contains("open")) toggleLogoMenu(false);
+      if (S.sessMenu) toggleSessionMenu(false);
+      else if ($("logo-dd") && $("logo-dd").classList.contains("open")) toggleLogoMenu(false);
       else if (S.leaveConfirm) hideLeaveConfirm();
       else if (S.edit) closeEdit();
       else if (S.reviewMode) closeReview();

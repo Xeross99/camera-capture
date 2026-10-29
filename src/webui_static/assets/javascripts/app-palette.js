@@ -34,8 +34,19 @@ function paletteItems(q) {
   const all = ((S.state && S.state.automat && S.state.automat.sessions) || []).slice()
     .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
   const f = foldText(q.trim());
+  // Najpierw trafność, potem data (sort stabilny, lista już jest od najnowszych):
+  // nazwa równa wpisanej > nazwa zaczyna się od niej > słowo w nazwie się od
+  // niej zaczyna > gdzieś w nazwie > tylko w nazwie produktu. Do tego im
+  // większą część nazwy pokrywa wpis, tym wyżej („duplo" przed „proste duplo").
+  const score = s => {
+    const name = foldText(s.name);
+    if (name === f) return 100;
+    let base = name.startsWith(f) ? 80 : new RegExp(`(^|[^a-z0-9])${f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`).test(name) ? 60
+      : name.includes(f) ? 40 : foldText(s.product && s.product.name).includes(f) ? 10 : 0;
+    return base ? base + Math.round(f.length / Math.max(name.length, 1) * 10) : 0;
+  };
   const found = f
-    ? all.filter(s => foldText(s.name).includes(f) || foldText(s.product && s.product.name).includes(f))
+    ? all.map(s => [score(s), s]).filter(([sc]) => sc > 0).sort((a, b) => b[0] - a[0]).map(([, s]) => s)
     : all.slice(0, 8);
   const items = found.slice(0, PALETTE_MAX).map(s => ({ kind: "session", s }));
   // wpisana nazwa bez dokładnego odpowiednika = można od razu założyć sesję

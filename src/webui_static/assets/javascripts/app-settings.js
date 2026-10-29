@@ -6,12 +6,12 @@ Object.assign(I18N_EN, {
   "Logo o tej nazwie już jest.": "A logo with this name already exists.",
   "Wybierz plik z logo.": "Choose a logo file.",
   "PNG albo SVG z przezroczystym tłem wygląda najlepiej.": "A PNG or SVG with a transparent background looks best.",
-  "Nie da się odczytać tego pliku — wybierz PNG, SVG, WEBP albo JPG.": "This file cannot be read — choose a PNG, SVG, WEBP or JPG.",
+  "Nie da się odczytać tego pliku - wybierz PNG, SVG, WEBP albo JPG.": "This file cannot be read - choose a PNG, SVG, WEBP or JPG.",
   "Znaki nakładane na gotowe zdjęcia": "Marks placed on finished photos",
   "krycie {o} %": "opacity {o}%",
   "Usuń logo": "Remove logo",
   "Na pewno?": "Sure?",
-  "Brak logo — zdjęcia zapisują się bez znaku.": "No logos — photos are saved without a mark.",
+  "Brak logo - zdjęcia zapisują się bez znaku.": "No logos - photos are saved without a mark.",
   "Dodaj logo": "Add logo",
   "Nazwa": "Name",
   "Plik": "File",
@@ -173,7 +173,7 @@ const field = (id, labelText, value, action, extra = "") => `
 function ustawieniaScreen() {
   const st = S.state, cfg = st.settings, u = st.update || { current: "?", status: "" };
   const uv = updateView(st), av = automatView(st);
-  // opisy (i „SPACJA") po polsku — t() przy renderze niżej
+  // opisy (i „SPACJA") po polsku - t() przy renderze niżej
   const keys = [["ENTER", "zrób zdjęcie"], ["P", "podgląd z aparatu"], ["SPACJA", "podgląd zdjęć"], ["← →", "poprzednie / następne"],
                 ["E", "edytuj zdjęcie"], ["BACKSPACE", "usuń zdjęcie"], ["ESC", "zamknij podgląd"], [modKey("K"), "wyszukiwarka sesji (wszędzie)"], [modKey("F"), "szukaj sesji"], [modKey("N"), "nowa sesja"]];
   const navMeta = { aktualizacje: uv, automat: av };
@@ -224,7 +224,7 @@ function ustawieniaScreen() {
             <div style="padding: 14px 20px; border-right: 1px solid var(--hair);">
               <div class="row-desc" style="margin: 0;">${t("Najnowsze wydanie")}</div>
               <div style="margin-top: 4px; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;">
-                <span class="mono" style="font-size: 18px; font-weight: 500; color: var(--text);">${u.latest ? "v" + u.latest : "—"}</span>
+                <span class="mono" style="font-size: 18px; font-weight: 500; color: var(--text);">${u.latest ? "v" + u.latest : "-"}</span>
                 <span style="font-size: 12px; color: var(--muted-2);">${plDate(u.latestDate)}</span>
               </div>
             </div>
@@ -468,7 +468,7 @@ function logoSettingsHtml(post_) {
       <button type="button" class="btn" onclick="logoEditOpen('${l.key}')" ${ed ? "disabled" : ""}>${icon("pencil", 15)}${t("Edytuj")}</button>
       <button type="button" class="btn${S.logoDeleting === l.key ? " btn-danger" : ""}" onclick="logoDelete('${l.key}')" ${ed ? "disabled" : ""} aria-label="${t("Usuń logo")}">${S.logoDeleting === l.key ? t("Na pewno?") : icon("trash", 15)}</button>
     </div>`).join("");
-  const empty = logos.length ? "" : `<div class="row-desc" style="padding: 14px 20px; margin: 0;">${t("Brak logo — zdjęcia zapisują się bez znaku.")}</div>`;
+  const empty = logos.length ? "" : `<div class="row-desc" style="padding: 14px 20px; margin: 0;">${t("Brak logo - zdjęcia zapisują się bez znaku.")}</div>`;
   const add = ed && ed.key === "" ? logoFormHtml(ed)
     : `<div style="padding: 12px 20px; border-top: 1px solid var(--hair); background: var(--surface-2);">
         <button type="button" class="btn" onclick="logoEditOpen('')" ${ed ? "disabled" : ""}>${icon("plus", 15)}${t("Dodaj logo")}</button>
@@ -517,7 +517,7 @@ function logoFormHtml(ed) {
 
 // Przebudowa Ustawień na żądanie formularza logo. Zwykły render pomija
 // przebudowę, gdy kursor stoi w polu (żeby poll nie zjadał wpisywanego
-// tekstu) — tu zdejmujemy fokus na czas przebudowy i oddajemy go potem.
+// tekstu) - tu zdejmujemy fokus na czas przebudowy i oddajemy go potem.
 function rerenderSettings() {
   const a = document.activeElement;
   const id = a && a.tagName === "INPUT" ? a.id : "";
@@ -579,7 +579,7 @@ function logoFormRange(what, v) {
 }
 
 // Plik zamieniany w przeglądarce na PNG (canvas): przechodzi wszystko, co
-// przeglądarka umie wyświetlić — także SVG, którego backend (PIL) nie czyta.
+// przeglądarka umie wyświetlić - także SVG, którego backend (PIL) nie czyta.
 function logoFilePicked(input) {
   const f = input.files && input.files[0];
   const ed = S.logoEdit;
@@ -602,7 +602,7 @@ function logoFilePicked(input) {
   };
   img.onerror = () => {
     URL.revokeObjectURL(url);
-    ed.errors = { ...(ed.errors || {}), file: t("Nie da się odczytać tego pliku — wybierz PNG, SVG, WEBP albo JPG.") };
+    ed.errors = { ...(ed.errors || {}), file: t("Nie da się odczytać tego pliku - wybierz PNG, SVG, WEBP albo JPG.") };
     rerenderSettings();
   };
   img.src = url;
@@ -664,7 +664,7 @@ async function logoSave() {
 let logoDeleteTimer = 0;
 async function logoDelete(key) {
   if (S.logoDeleting !== key) {
-    // pierwszy klik uzbraja przycisk („Na pewno?"), drugi kasuje — bez okna potwierdzenia
+    // pierwszy klik uzbraja przycisk („Na pewno?"), drugi kasuje - bez okna potwierdzenia
     S.logoDeleting = key;
     clearTimeout(logoDeleteTimer);
     logoDeleteTimer = setTimeout(() => { S.logoDeleting = null; rerenderSettings(); }, 3000);

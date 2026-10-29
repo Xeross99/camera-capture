@@ -1,0 +1,282 @@
+/* Edycja sesji: okno na całą aplikację — siatka zdjęć z zaznaczaniem
+   po lewej, panel logo (styl drawera) po prawej */
+.sedit {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  background: var(--viewer);
+  color: var(--viewer-fg);
+  opacity: 0;
+  transition: opacity 0.24s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.sedit.open {
+  opacity: 1;
+}
+/* wejście: siatka z lekkiego pomniejszenia, panel wjeżdża z prawej na
+   sprężynie; wyjście (bez .open) odwrotnie — jak zamykanie podglądu zdjęcia */
+.sedit .sedit-main {
+  transform: scale(0.96);
+  transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.sedit.open .sedit-main {
+  transform: none;
+}
+.sedit .sedit-panel {
+  transform: translateX(48px);
+  transition: transform 0.24s cubic-bezier(0.32, 0.72, 0, 1);
+  animation: none;
+}
+.sedit.open .sedit-panel {
+  transform: none;
+  transition: transform 0.6s var(--spring);
+}
+.sedit-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.sedit-grid {
+  position: relative;
+  user-select: none;
+  -webkit-user-select: none;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  align-content: start;
+  gap: 12px;
+}
+.sedit-tile {
+  position: relative;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid var(--viewer-line);
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+  cursor: pointer;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  transition: outline-color 0.2s cubic-bezier(0.32, 0.72, 0, 1), outline-offset 0.2s cubic-bezier(0.32, 0.72, 0, 1), transform 0.12s ease-out;
+}
+.sedit-tile:active {
+  transform: scale(0.98);
+}
+.sedit-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: opacity 0.2s;
+}
+.sedit-tile.on {
+  outline-color: var(--accent);
+  outline-offset: -2px;
+}
+.sedit-tile.off {
+  cursor: not-allowed;
+}
+.sedit-tile.off img {
+  opacity: 0.35;
+}
+/* kółko zaznaczenia w rogu kafelka */
+.sedit-check {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid rgba(0, 0, 0, 0.25);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85);
+  color: transparent;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s, transform 0.25s var(--spring);
+}
+.sedit-tile.on .sedit-check {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  transform: scale(1.08);
+}
+.sedit-tile.off .sedit-check {
+  display: none;
+}
+.sedit-panel {
+  flex: 0 0 360px;
+}
+.sedit-marquee {
+  position: absolute;
+  z-index: 3;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: rgba(37, 99, 235, 0.12);
+  pointer-events: none;
+}
+/* szary kafelek: plakietka, czemu nie da się go zaznaczyć */
+.sedit-badge {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.sedit-progress.done /* postęp edycji sesji: tytuł, gruby pasek, etapy pod spodem (Tailwind UI) */
+.sedit-progress[hidden] {
+  display: none;
+}
+.sedit-progress-title {
+  margin: 0 0 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.sedit-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+.sedit-bar span {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.6s cubic-bezier(0.32, 0.72, 0, 1), background-color 0.3s;
+}
+.sedit-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.sedit-steps > div {
+  transition: color 0.3s;
+}
+.sedit-steps > div:nth-child(2) {
+  text-align: center;
+}
+.sedit-steps > div:last-child {
+  text-align: right;
+}
+.sedit-steps > .on {
+  color: var(--accent-fg);
+}
+.sedit-progress.done .sedit-bar span {
+  background: var(--ok);
+}
+.sedit-progress.done .sedit-steps > .on,
+.sedit-progress.done .sedit-progress-title {
+  color: var(--ok-fg);
+}
+/* ładowanie na kafelkach: w obróbce = rozmyte z przesuwającym się błyskiem
+   i podpisem, w kolejce = przygaszone z plakietką, gotowe = nowa miniatura
+   wjeżdża z rozmycia, a znaczek w rogu na chwilę zielenieje */
+.sedit-tile img {
+  transition: opacity 0.3s, filter 0.3s, transform 0.3s;
+}
+.sedit-tile.busy img {
+  filter: blur(1.5px) saturate(0.6);
+}
+.sedit-tile.queued img {
+  opacity: 0.45;
+}
+.sedit-tile.active img {
+  opacity: 0.6;
+  transform: scale(1.02);
+}
+.sedit-load {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 12px;
+  overflow: hidden;
+}
+.sedit-load::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.75) 50%, transparent 70%);
+  transform: translateX(-100%);
+  animation: seditShimmer 1.2s ease-in-out infinite;
+}
+.sedit-tile.active .sedit-load {
+  display: flex;
+}
+.sedit-load-label {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.72);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 500;
+}
+.sedit-load-label .spinner {
+  width: 10px;
+  height: 10px;
+  border-width: 1.5px;
+  border-color: rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+}
+@keyframes seditShimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+.sedit-queued {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  display: none;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(17, 24, 39, 0.55);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 500;
+}
+.sedit-tile.queued .sedit-queued {
+  display: block;
+}
+.sedit-tile.fresh img {
+  animation: seditFresh 0.6s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.sedit-tile.fresh .sedit-check {
+  border-color: var(--ok);
+  background: var(--ok);
+  color: #fff;
+  animation: seditCheckPop 0.5s var(--spring);
+}
+@keyframes seditFresh {
+  from {
+    opacity: 0.4;
+    filter: blur(4px);
+    transform: scale(1.04);
+  }
+}
+@keyframes seditCheckPop {
+  40% {
+    transform: scale(1.3);
+  }
+}

@@ -22,10 +22,10 @@ from .config import (
 from .i18n import EN, tr
 
 EN.update({
-    "Uwaga: logo nie znalezione w {path} — pomijam overlay.":
-        "Warning: logo not found at {path} — skipping the overlay.",
-    "Uwaga: nieznana pozycja logo '{position}' — używam bottom-right.":
-        "Warning: unknown logo position '{position}' — using bottom-right.",
+    "Uwaga: logo nie znalezione w {path} - pomijam overlay.":
+        "Warning: logo not found at {path} - skipping the overlay.",
+    "Uwaga: nieznana pozycja logo '{position}' - używam bottom-right.":
+        "Warning: unknown logo position '{position}' - using bottom-right.",
 })
 
 LOGO_POSITIONS = ("bottom-right", "bottom-left", "top-right", "top-left")
@@ -73,10 +73,10 @@ def overlay_logo(
     canvas: Image.Image, logo_path: Path, position: str = LOGO_POSITION
 ) -> Image.Image:
     if not logo_path.exists():
-        print(tr("Uwaga: logo nie znalezione w {path} — pomijam overlay.", path=logo_path))
+        print(tr("Uwaga: logo nie znalezione w {path} - pomijam overlay.", path=logo_path))
         return canvas
     if position not in LOGO_POSITIONS:
-        print(tr("Uwaga: nieznana pozycja logo '{position}' — używam bottom-right.", position=position))
+        print(tr("Uwaga: nieznana pozycja logo '{position}' - używam bottom-right.", position=position))
         position = "bottom-right"
 
     logo = Image.open(logo_path).convert("RGBA")

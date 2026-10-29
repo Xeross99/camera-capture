@@ -108,7 +108,7 @@ function dayRail(groups) {
     month = m;
     return `${headHtml}
     <div class="day-row${S.dayFocus === g.key ? " on" : ""}" onclick="focusDay('${g.key}')">
-      <span class="cal" aria-hidden="true"><span class="cal-m">${isNaN(g.date) ? "" : (LANG === "en" ? EN_MONTHS_SHORT : PL_MONTHS_SHORT)[g.date.getMonth()]}</span><span class="cal-d">${isNaN(g.date) ? "—" : g.date.getDate()}</span></span>
+      <span class="cal" aria-hidden="true"><span class="cal-m">${isNaN(g.date) ? "" : (LANG === "en" ? EN_MONTHS_SHORT : PL_MONTHS_SHORT)[g.date.getMonth()]}</span><span class="cal-d">${isNaN(g.date) ? "-" : g.date.getDate()}</span></span>
       <span class="day-wd">${isNaN(g.date) ? t("bez daty") : (LANG === "en" ? EN_WEEKDAYS : PL_WEEKDAYS)[g.date.getDay()]}</span>
       <span class="count">${nWord(g.items.length, ["sesja", "sesje", "sesji"], ["session", "sessions"])}</span>
     </div>`;

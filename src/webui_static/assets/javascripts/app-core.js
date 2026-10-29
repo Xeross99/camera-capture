@@ -186,7 +186,7 @@ function evNumber(v) {
 
 function evLabel(v) {
   const s = String(v == null ? "" : v).trim();
-  if (!s) return "—";
+  if (!s) return "-";
   if (s === "0" || s === "0.0" || s === "±0") return "±0";
   return /^[-+−]/.test(s) ? s : "+" + s;
 }

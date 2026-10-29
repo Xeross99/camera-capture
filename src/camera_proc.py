@@ -50,8 +50,8 @@ from .i18n import EN, tr
 EN.update({
     "proces EDSDK nie działa": "the EDSDK process is not running",
     "proces EDSDK nie przyjął komendy ({e})": "the EDSDK process did not accept the command ({e})",
-    "aparat nie odpowiada ({op}, {s:.0f} s bez reakcji) — restartuję sterownik Canon i łączę od nowa":
-        "the camera is not responding ({op}, no reaction for {s:.0f} s) — restarting the Canon "
+    "aparat nie odpowiada ({op}, {s:.0f} s bez reakcji) - restartuję sterownik Canon i łączę od nowa":
+        "the camera is not responding ({op}, no reaction for {s:.0f} s) - restarting the Canon "
         "driver and reconnecting",
     "brak szczegółów": "no details",
     "proces EDSDK zakończył się ({tail})": "the EDSDK process exited ({tail})",
@@ -255,7 +255,7 @@ class EdsdkProxy:
                 self._kill()
                 waited = _time.monotonic() - started
                 raise CameraProcError(tr(
-                    "aparat nie odpowiada ({op}, {s:.0f} s bez reakcji) — "
+                    "aparat nie odpowiada ({op}, {s:.0f} s bez reakcji) - "
                     "restartuję sterownik Canon i łączę od nowa", op=op, s=waited))
             if frame is None:
                 continue

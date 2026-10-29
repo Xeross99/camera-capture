@@ -3,6 +3,7 @@ kasowanie do kosza, recenzja, ostrosc, kompensacja, edycja logo, ustawienia,
 dostep do serwera tylko z tokenem."""
 
 import io
+from pathlib import Path
 import json
 import urllib.error
 import urllib.request
@@ -268,6 +269,36 @@ def test_logo_editor_adds_logo_used_on_next_photo(app):
     assert app.action({"action": "logo_delete", "key": key})["ok"]
     assert app.state()["post"]["logoChoice"] == next(iter(config.LOGOS))
     assert app.action({"action": "logo_add", "label": "zle", "data": "data:image/png;base64,AAAA"})["ok"] is False
+
+
+def test_session_edit_changes_logo_on_many_photos(app):
+    sdir = open_session(app)
+    files = [shoot_and_wait(app) for _ in range(3)]
+    # zdjecie bez wersji bez logo i bez oryginalu nie da sie edytowac — pomijane
+    (sdir / ".nologo" / files[2]).unlink()
+    for raw in (sdir / "raw").glob(f"{Path(files[2]).stem}_raw.jpg"):
+        raw.unlink()
+    res = app.action({"action": "edit_batch", "files": files, "logo": "kids", "position": "top-left"})
+    assert res["ok"] and res["queued"] == 2 and res["skipped"] == 1, res
+    assert app.action({"action": "edit_batch", "files": files, "logo": "kids"})["ok"] is False, \
+        "druga edycja sesji nie startuje, zanim pierwsza sie skonczy"
+    wait_for(lambda: app.state()["batchEdit"] is None, 30, "koniec edycji sesji")
+    for f in files[:2]:
+        assert app.shot_info("sesja testowa", f)["logoInfo"] == {"label": "TRIXBRIX.eu KIDS", "pos": "top-left"}
+    assert app.shot_info("sesja testowa", files[2])["logoInfo"]["pos"] == "bottom-right", "pominiete bez zmian"
+    assert any("Edycja sesji: 2 zdjęcia" in t for t in log_texts(app))
+    assert app.action({"action": "edit_batch", "files": [files[2]], "logo": "kids"})["ok"] is False
+
+
+def test_session_menu_reveals_session_folder(app, monkeypatch):
+    from src import webui
+    opened = []
+    monkeypatch.setattr(webui, "_open_folder", opened.append)
+    assert app.action({"action": "reveal_session"})["ok"] is False      # bez sesji
+    sdir = open_session(app)
+    shoot_and_wait(app)
+    assert app.action({"action": "reveal_session"})["ok"]
+    assert opened == [sdir]
 
 
 def test_edit_refuses_unknown_logo_and_position(app):

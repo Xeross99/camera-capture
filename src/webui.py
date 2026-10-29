@@ -23,6 +23,7 @@ import os
 import sys
 import queue
 import secrets
+import subprocess
 import shutil
 import tempfile
 import threading
@@ -89,6 +90,10 @@ from .version import APP_VERSION
 from .webui_http import Handler
 
 EN.update({
+    "folder sesji jeszcze nie istnieje": "the session folder does not exist yet",
+    "Edycja sesji: {n} - {what}.": "Session edit: {n} - {what}.",
+    "poprzednia edycja sesji jeszcze trwa": "the previous session edit is still running",
+    "żadne z zaznaczonych zdjęć nie da się edytować": "none of the selected photos can be edited",
     "Dodano logo {label}.": "Added logo {label}.",
     "Zmieniono logo {label}.": "Changed logo {label}.",
     "Usunięto logo {label}.": "Removed logo {label}.",
@@ -96,7 +101,7 @@ EN.update({
     "Dopasowano do nakładki ({ref}): przesunięcie {dx:+d}/{dy:+d} px, przybliżenie {z:+.1f} %":
         "Aligned to the overlay ({ref}): shift {dx:+d}/{dy:+d} px, zoom {z:+.1f} %",
     "→ kosz (usuwany po {days} dniach)": "→ trash (deleted after {days} days)",
-    "— usunięte": "— deleted",
+    "- usunięte": "- deleted",
     # fazy watku aparatu (watchdog, odmowa migawki) i nazwy watkow
     "łączenie z aparatem": "connecting to the camera",
     "gotowy": "ready",
@@ -109,14 +114,14 @@ EN.update({
     "synchronizacji": "sync",
     "Backend aparatu: {info}": "Camera backend: {info}",
     "Ponawiam łączenie z aparatem co 5 s…": "Retrying the camera connection every 5 s…",
-    "✗ Wątek aparatu przerwany ({err}) — łączę ponownie…":
-        "✗ Camera thread interrupted ({err}) — reconnecting…",
-    "Aparat rozłącza się zaraz po połączeniu — ponawiam coraz rzadziej (do {max} s), po cichu. "
+    "✗ Wątek aparatu przerwany ({err}) - łączę ponownie…":
+        "✗ Camera thread interrupted ({err}) - reconnecting…",
+    "Aparat rozłącza się zaraz po połączeniu - ponawiam coraz rzadziej (do {max} s), po cichu. "
     "Sprawdź tryb aparatu (M/Av/Tv/P), kabel i czy nie trzyma go inna aplikacja.":
-        "The camera disconnects right after connecting — retrying less and less often "
+        "The camera disconnects right after connecting - retrying less and less often "
         "(up to {max} s), quietly. Check the camera mode (M/Av/Tv/P), the cable and whether "
         "another app is holding it.",
-    "Aparat połączony — live view aktywny.": "Camera connected — live view active.",
+    "Aparat połączony - live view aktywny.": "Camera connected - live view active.",
     "✗ Podgląd przerwany: {e}": "✗ Live view interrupted: {e}",
     "Kompensacja ekspozycji: teraz {current!r}, {n} kroków ({first}{last}).":
         "Exposure compensation: now {current!r}, {n} steps ({first}{last}).",
@@ -125,13 +130,13 @@ EN.update({
     "✗ Ostrość w punkcie: {e}.{hint}": "✗ Focus at point: {e}.{hint}",
     "✗ Kompensacja ekspozycji: {e}": "✗ Exposure compensation: {e}",
     " Odpowiedź sterownika: {reply}.": " Driver reply: {reply}.",
-    "✗ Aparat nie przyjął kompensacji {value} — zostało {now}. Sprawdź tryb: kompensacja działa "
+    "✗ Aparat nie przyjął kompensacji {value} - zostało {now}. Sprawdź tryb: kompensacja działa "
     "w P/Av/Tv, a w M z ręcznym ISO aparat ją ignoruje.{detail}":
-        "✗ The camera did not accept compensation {value} — it stayed at {now}. Check the mode: "
+        "✗ The camera did not accept compensation {value} - it stayed at {now}. Check the mode: "
         "compensation works in P/Av/Tv; in M with manual ISO the camera ignores it.{detail}",
     "Wyzwalam migawkę…": "Releasing the shutter…",
-    "✗ Błąd aparatu: {e} — łączę ponownie i ponawiam zdjęcie…":
-        "✗ Camera error: {e} — reconnecting and retrying the photo…",
+    "✗ Błąd aparatu: {e} - łączę ponownie i ponawiam zdjęcie…":
+        "✗ Camera error: {e} - reconnecting and retrying the photo…",
     "Łączę ponownie…": "Reconnecting…",
     "Ponawiam zdjęcie…": "Retrying the photo…",
     "Zdjęcie wyszło za drugim podejściem.": "The photo succeeded on the second attempt.",
@@ -139,8 +144,8 @@ EN.update({
         "✗ The photo failed again after reconnecting: {e}",
     "Czyszczę tło / centruję…": "Cleaning background / centering…",
     "✗ Nie udało się otworzyć sesji w API: {e}": "✗ Could not open the session in the API: {e}",
-    "Sesja {name} nie istnieje już w API — lokalny folder {note}.":
-        "Session {name} no longer exists in the API — local folder {note}.",
+    "Sesja {name} nie istnieje już w API - lokalny folder {note}.":
+        "Session {name} no longer exists in the API - local folder {note}.",
     "Sesja {name} nie istnieje już w API.": "Session {name} no longer exists in the API.",
     "Zdjęcia nieobecne w API: {n} {note}.": "Photos missing from the API: {n} {note}.",
     "✗ Synchronizacja sesji {name}: {e}": "✗ Session sync {name}: {e}",
@@ -166,9 +171,9 @@ EN.update({
     "Kosz: skasowano {n} wpis(ów) starszych niż {days} dni.":
         "Trash: deleted {n} entries older than {days} days.",
     "✗ Kasowanie starych oryginałów: {e}": "✗ Deleting old originals: {e}",
-    "Skasowano {n} {word} oryginalnych z aparatu starszych niż {days} dni — logo na tych "
+    "Skasowano {n} {word} oryginalnych z aparatu starszych niż {days} dni - logo na tych "
     "zdjęciach już się nie zmieni.":
-        "Deleted {n} original camera {word} older than {days} days — the logo on these "
+        "Deleted {n} original camera {word} older than {days} days - the logo on these "
         "photos can no longer be changed.",
     "✗ Poprzednia aktualizacja nie doszła do skutku: {err}": "✗ The previous update did not complete: {err}",
     "Sprawdzam…": "Checking…",
@@ -177,36 +182,36 @@ EN.update({
     "Masz najnowszą wersję ({v})": "You have the latest version ({v})",
     "Aktualizacje: masz najnowszą wersję ({v}).": "Updates: you have the latest version ({v}).",
     "Dostępna aktualizacja {v} (masz {cur}).": "Update {v} available (you have {cur}).",
-    "Uruchomienie ze źródeł — zaktualizuj przez `git pull`.": "Running from source — update with `git pull`.",
+    "Uruchomienie ze źródeł - zaktualizuj przez `git pull`.": "Running from source - update with `git pull`.",
     "Pobierz paczkę dla macOS z GitHub Releases i podmień Camera Capture.app.":
         "Download the macOS package from GitHub Releases and replace Camera Capture.app.",
     "✗ Brak paczki aktualizacji do pobrania.": "✗ No update package to download.",
     "✗ Samo-aktualizacja działa tylko dla .exe (Windows).": "✗ Self-update works only for the .exe (Windows).",
-    "✗ Trwa zdjęcie/obróbka — spróbuj aktualizacji za chwilę.":
-        "✗ A photo is being taken/processed — try the update in a moment.",
+    "✗ Trwa zdjęcie/obróbka - spróbuj aktualizacji za chwilę.":
+        "✗ A photo is being taken/processed - try the update in a moment.",
     "Pobieram aktualizację…": "Downloading the update…",
     "↓ Pobieram aktualizację {v}…": "↓ Downloading update {v}…",
     "✗ Pobranie aktualizacji nie wyszło: {e}": "✗ Downloading the update failed: {e}",
     "Restartuję aplikację…": "Restarting the app…",
-    "Aktualizacja pobrana — zamykam i uruchamiam ponownie.": "Update downloaded — closing and restarting.",
+    "Aktualizacja pobrana - zamykam i uruchamiam ponownie.": "Update downloaded - closing and restarting.",
     "✗ Nie udało się uruchomić aktualizatora: {e}": "✗ Could not start the updater: {e}",
-    "Aplikacja działa dalej — zaktualizuj ręcznie z GitHub Releases.":
-        "The app keeps running — update manually from GitHub Releases.",
+    "Aplikacja działa dalej - zaktualizuj ręcznie z GitHub Releases.":
+        "The app keeps running - update manually from GitHub Releases.",
     "Aktualizator wystartował (log: {log}).": "The updater started (log: {log}).",
     "Test API: {result}": "API test: {result}",
     "Test API nie wyszedł: {e}": "API test failed: {e}",
-    "Przygotowuję silnik czyszczenia tła na GPU — przy pierwszym uruchomieniu kompilacja "
+    "Przygotowuję silnik czyszczenia tła na GPU - przy pierwszym uruchomieniu kompilacja "
     "shaderów może potrwać do ~2 min; zdjęcia zrobione w tym czasie poczekają w kolejce.":
-        "Preparing the background-cleaning engine on the GPU — on first run, shader compilation "
+        "Preparing the background-cleaning engine on the GPU - on first run, shader compilation "
         "can take up to ~2 min; photos taken meanwhile will wait in the queue.",
     "Silnik czyszczenia tła gotowy ({s:.0f} s).": "Background-cleaning engine ready ({s:.0f} s).",
-    "✗ Silnik czyszczenia tła nie ładuje się ({e}) — obróbka zdjęć nie zadziała. Jeśli komunikat "
-    "mówi o zasadach kontroli aplikacji: Windows blokuje niepodpisaną bibliotekę z paczki — wyłącz "
+    "✗ Silnik czyszczenia tła nie ładuje się ({e}) - obróbka zdjęć nie zadziała. Jeśli komunikat "
+    "mówi o zasadach kontroli aplikacji: Windows blokuje niepodpisaną bibliotekę z paczki - wyłącz "
     "Inteligentną kontrolę aplikacji (Zabezpieczenia Windows → Kontrola aplikacji i przeglądarki) "
     "albo poproś administratora o wyjątek dla katalogu aplikacji.":
-        "✗ The background-cleaning engine does not load ({e}) — photo processing will not work. "
+        "✗ The background-cleaning engine does not load ({e}) - photo processing will not work. "
         "If the message mentions application control policies: Windows is blocking an unsigned "
-        "library from the package — turn off Smart App Control (Windows Security → App & browser "
+        "library from the package - turn off Smart App Control (Windows Security → App & browser "
         "control) or ask an administrator for an exception for the app folder.",
     "✗ {filename}: brak oryginału z aparatu, nie da się zmienić logo.":
         "✗ {filename}: no camera original, the logo cannot be changed.",
@@ -227,12 +232,12 @@ EN.update({
     "Migawka: aparat nie jest połączony.": "Shutter: camera is not connected.",
     "Migawka: najpierw ustaw nazwę sesji.": "Shutter: set a session name first.",
     "najpierw ustaw nazwę sesji": "set a session name first",
-    "Trwa aktualizacja — migawka zablokowana do restartu.": "Update in progress — shutter locked until restart.",
+    "Trwa aktualizacja - migawka zablokowana do restartu.": "Update in progress - shutter locked until restart.",
     "trwa aktualizacja": "update in progress",
     ", stoi na tym {s:.0f} s": ", stuck on it for {s:.0f} s",
-    "Migawka: aparat nie odebrał jeszcze poprzedniej komendy ({n} w kolejce) — wątek aparatu: "
+    "Migawka: aparat nie odebrał jeszcze poprzedniej komendy ({n} w kolejce) - wątek aparatu: "
     "{phase}{held}.":
-        "Shutter: the camera has not picked up the previous command yet ({n} queued) — camera "
+        "Shutter: the camera has not picked up the previous command yet ({n} queued) - camera "
         "thread: {phase}{held}.",
     "aktualizacja już trwa": "update already in progress",
     "nieznane logo": "unknown logo",
@@ -243,25 +248,25 @@ EN.update({
     "Zdjęcie {filename} zaakceptowane.": "Photo {filename} accepted.",
     "Adres API zapisany w .env": "API address saved to .env",
     "Token API zapisany w .env": "API token saved to .env",
-    "Obróbka tła: GPU (DirectML) — kompiluję shadery od razu, to potrafi trwać ~2 min.":
-        "Background processing: GPU (DirectML) — compiling shaders now, this can take ~2 min.",
-    "Obróbka tła: GPU włączone, ale onnxruntime nie ma providera GPU — liczę dalej na CPU.":
-        "Background processing: GPU enabled, but onnxruntime has no GPU provider — still "
+    "Obróbka tła: GPU (DirectML) - kompiluję shadery od razu, to potrafi trwać ~2 min.":
+        "Background processing: GPU (DirectML) - compiling shaders now, this can take ~2 min.",
+    "Obróbka tła: GPU włączone, ale onnxruntime nie ma providera GPU - liczę dalej na CPU.":
+        "Background processing: GPU enabled, but onnxruntime has no GPU provider - still "
         "computing on the CPU.",
-    "Obróbka tła: CPU — działa od następnego zdjęcia.":
-        "Background processing: CPU — takes effect from the next photo.",
+    "Obróbka tła: CPU - działa od następnego zdjęcia.":
+        "Background processing: CPU - takes effect from the next photo.",
     "ogranicznik czasu zaraz sam zrestartuje sterownik Canon. Jeśli to wraca co chwilę, winne "
-    "jest USB tego komputera — BIOS/sterowniki chipsetu, kabel, port.":
+    "jest USB tego komputera - BIOS/sterowniki chipsetu, kabel, port.":
         "the timeout will restart the Canon driver by itself in a moment. If this keeps coming "
-        "back, this computer's USB is to blame — BIOS/chipset drivers, cable, port.",
-    "Wywołania Canon SDK nie da się przerwać z aplikacji — odepnij i podepnij kabel USB "
+        "back, this computer's USB is to blame - BIOS/chipset drivers, cable, port.",
+    "Wywołania Canon SDK nie da się przerwać z aplikacji - odepnij i podepnij kabel USB "
     "aparatu, wtedy połączenie wstanie od nowa.":
-        "Canon SDK calls cannot be interrupted from the app — unplug and replug the camera's "
+        "Canon SDK calls cannot be interrupted from the app - unplug and replug the camera's "
         "USB cable, and the connection will come back up.",
-    "✗ Wątek aparatu utknął: „{phase}” trwa {age:.0f} s — {hint}":
-        "✗ Camera thread stuck: “{phase}” for {age:.0f} s — {hint}",
-    "✗ Wątek {what} zakończył się błędem ({err}) — zrestartuj aplikację.":
-        "✗ The {what} thread failed ({err}) — restart the app.",
+    "✗ Wątek aparatu utknął: „{phase}” trwa {age:.0f} s - {hint}":
+        "✗ Camera thread stuck: “{phase}” for {age:.0f} s - {hint}",
+    "✗ Wątek {what} zakończył się błędem ({err}) - zrestartuj aplikację.":
+        "✗ The {what} thread failed ({err}) - restart the app.",
 })
 
 THUMB_SIZE = 360
@@ -279,7 +284,7 @@ def _now() -> str:
 
 def _trash_note() -> str:
     return (tr("→ kosz (usuwany po {days} dniach)", days=TRASH_RETENTION_DAYS)
-            if TRASH_RETENTION_DAYS > 0 else tr("— usunięte"))
+            if TRASH_RETENTION_DAYS > 0 else tr("- usunięte"))
 
 
 def _photos_word(n: int) -> str:
@@ -443,6 +448,16 @@ def _edsdk_missing() -> bool:
 
 
 
+def _open_folder(path: Path) -> None:
+    """Folder w systemowym menedżerze plików (Finder / Eksplorator)."""
+    if sys.platform == "win32":
+        os.startfile(str(path))     # noqa: S606 — lokalna ścieżka sesji, nie wejście z sieci
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", str(path)])
+    else:
+        subprocess.Popen(["xdg-open", str(path)])
+
+
 def _logo_label(logo_path) -> str:
     """Nazwa logo do panelu „Informacje" (plik spoza LOGOS = nazwa pliku)."""
     for spec in LOGOS.values():
@@ -542,6 +557,7 @@ class WebUI:
         self.syncing: list[str] = []  # nazwy zdjec pobieranych wlasnie z Automatu (skeletony w filmstripie)
         self.edit_preparing: str | None = None  # zdjecie, ktoremu edycja robi wersje bez logo z oryginalu
         self.edit_saving: str | None = None     # zdjecie zapisywane z edycji (nowe logo)
+        self.batch_edit: dict | None = None     # edycja sesji: {total, done, pending}
         self.automat_sessions: list[dict] = []
         self._favicon_cache: dict[str, tuple] = {}   # adres API -> ((bajty, typ) | None, kiedy)
         self._favicon_lock = threading.Lock()
@@ -675,7 +691,7 @@ class WebUI:
                 # petli i zabijal watek. Objaw byl mylacy: `connected` zostawalo
                 # na True, MJPEG wisial na ostatniej klatce, a komendy pietrzyly
                 # sie w `_cam_q` („aparat nie odebral poprzedniej komendy").
-                self._log(tr("✗ Wątek aparatu przerwany ({err}) — łączę ponownie…",
+                self._log(tr("✗ Wątek aparatu przerwany ({err}) - łączę ponownie…",
                              err=f"{type(e).__name__}: {e}"), "err")
             self.session.close()
             self._drop_preview()
@@ -690,7 +706,7 @@ class WebUI:
                 if not flapping:
                     flapping = True
                     self._log(tr(
-                        "Aparat rozłącza się zaraz po połączeniu — ponawiam "
+                        "Aparat rozłącza się zaraz po połączeniu - ponawiam "
                         "coraz rzadziej (do {max} s), po cichu. "
                         "Sprawdź tryb aparatu (M/Av/Tv/P), kabel i czy nie trzyma "
                         "go inna aplikacja.", max=int(self.RECONNECT_MAX)), "warn")
@@ -729,7 +745,7 @@ class WebUI:
             self.connected = True
         announced = not quiet
         if announced:
-            self._log(tr("Aparat połączony — live view aktywny."), "ok")
+            self._log(tr("Aparat połączony - live view aktywny."), "ok")
         started = time.monotonic()
         frames = 0
         fps_frames = 0
@@ -770,7 +786,7 @@ class WebUI:
                 last_frame_t = time.monotonic()
                 if not announced and last_frame_t - started >= self._HEALTHY_AFTER:
                     announced = True
-                    self._log(tr("Aparat połączony — live view aktywny."), "ok")
+                    self._log(tr("Aparat połączony - live view aktywny."), "ok")
                 with self._frame_cond:
                     self._frame = data
                     self._frame_id += 1
@@ -860,7 +876,7 @@ class WebUI:
             return
         detail = tr(" Odpowiedź sterownika: {reply}.", reply=reply) if reply else ""
         self._log(tr(
-            "✗ Aparat nie przyjął kompensacji {value} — zostało {now}. "
+            "✗ Aparat nie przyjął kompensacji {value} - zostało {now}. "
             "Sprawdź tryb: kompensacja działa w P/Av/Tv, a w M z ręcznym ISO "
             "aparat ją ignoruje.{detail}", value=value, now=now, detail=detail), "err")
 
@@ -926,7 +942,7 @@ class WebUI:
             # camera_edsdk/_FATAL_LINK_CODES). Kadr sie nie zmienil — produkt
             # lezy na stole — wiec zamiast wyrzucac ujecie: polaczenie od nowa
             # (przy izolacji = swiezy proces SDK) i JEDNA ponowna proba.
-            self._log(tr("✗ Błąd aparatu: {e} — łączę ponownie i ponawiam "
+            self._log(tr("✗ Błąd aparatu: {e} - łączę ponownie i ponawiam "
                          "zdjęcie…", e=e), "err")
             try:
                 self.session.close()
@@ -1050,7 +1066,7 @@ class WebUI:
                 outdir.rmdir()
             else:
                 shutil.rmtree(outdir, ignore_errors=True)
-            self._log(tr("Sesja {name} nie istnieje już w API — "
+            self._log(tr("Sesja {name} nie istnieje już w API - "
                          "lokalny folder {note}.", name=name, note=_trash_note()), "warn")
         else:
             self._log(tr("Sesja {name} nie istnieje już w API.", name=name), "warn")
@@ -1463,7 +1479,7 @@ class WebUI:
         if n:
             self._shots_cache = None
             self._log(tr("Skasowano {n} {word} oryginalnych z aparatu starszych "
-                         "niż {days} dni — logo na tych zdjęciach już się nie zmieni.",
+                         "niż {days} dni - logo na tych zdjęciach już się nie zmieni.",
                          n=n, word=_photos_word(n), days=days))
 
     def _job_cleanup_update(self) -> None:
@@ -1513,7 +1529,7 @@ class WebUI:
             self._log(tr("Pobierz paczkę dla macOS z GitHub Releases i podmień Camera Capture.app."),
                       "warn")
         elif not updater.can_self_update():
-            self._log(tr("Uruchomienie ze źródeł — zaktualizuj przez `git pull`."), "warn")
+            self._log(tr("Uruchomienie ze źródeł - zaktualizuj przez `git pull`."), "warn")
 
     def _job_apply_update(self) -> None:
         """Pobiera paczke, po czym zamyka aplikacje — reszte (podmiana plikow
@@ -1530,7 +1546,7 @@ class WebUI:
             self._log(tr("✗ Samo-aktualizacja działa tylko dla .exe (Windows)."), "err")
             return
         if busy:
-            self._log(tr("✗ Trwa zdjęcie/obróbka — spróbuj aktualizacji za chwilę."), "err")
+            self._log(tr("✗ Trwa zdjęcie/obróbka - spróbuj aktualizacji za chwilę."), "err")
             return
         with self.lock:
             self.update_busy = True
@@ -1552,7 +1568,7 @@ class WebUI:
             return
         with self.lock:
             self.update_status = tr("Restartuję aplikację…")
-        self._log(tr("Aktualizacja pobrana — zamykam i uruchamiam ponownie."), "ok")
+        self._log(tr("Aktualizacja pobrana - zamykam i uruchamiam ponownie."), "ok")
         # osobny watek: _restart_into() czeka na zamkniecie workera w stop()
         threading.Thread(target=self._restart_into, args=(staging,),
                          daemon=True).start()
@@ -1572,7 +1588,7 @@ class WebUI:
             log = updater.apply_update_and_restart(staging)
         except Exception as e:
             self._log(tr("✗ Nie udało się uruchomić aktualizatora: {e}", e=e), "err")
-            self._log(tr("Aplikacja działa dalej — zaktualizuj ręcznie z GitHub Releases."),
+            self._log(tr("Aplikacja działa dalej - zaktualizuj ręcznie z GitHub Releases."),
                       "warn")
             with self.lock:
                 self.update_busy = False
@@ -1605,7 +1621,7 @@ class WebUI:
         idzie na GPU (`_queue_warmup`) — na CPU nie ma czego kompilować."""
         from .background import warmup_clean_bg  # import lazy jak w process()
 
-        self._log(tr("Przygotowuję silnik czyszczenia tła na GPU — przy pierwszym "
+        self._log(tr("Przygotowuję silnik czyszczenia tła na GPU - przy pierwszym "
                      "uruchomieniu kompilacja shaderów może potrwać do ~2 min; "
                      "zdjęcia zrobione w tym czasie poczekają w kolejce."))
         t0 = time.perf_counter()
@@ -1635,10 +1651,10 @@ class WebUI:
             from . import background
             active = background.gpu_active()
         except Exception as e:  # noqa: BLE001 — DLL load failed, brak paczki itp.
-            self._log(tr("✗ Silnik czyszczenia tła nie ładuje się ({e}) — obróbka "
+            self._log(tr("✗ Silnik czyszczenia tła nie ładuje się ({e}) - obróbka "
                          "zdjęć nie zadziała. Jeśli komunikat mówi o zasadach "
                          "kontroli aplikacji: Windows blokuje niepodpisaną "
-                         "bibliotekę z paczki — wyłącz Inteligentną kontrolę "
+                         "bibliotekę z paczki - wyłącz Inteligentną kontrolę "
                          "aplikacji (Zabezpieczenia Windows → Kontrola aplikacji "
                          "i przeglądarki) albo poproś administratora o wyjątek "
                          "dla katalogu aplikacji.", e=e), "err")
@@ -1726,7 +1742,8 @@ class WebUI:
             with self.lock:
                 self.ghost_framing.discard(filename)
 
-    def _job_edit_logo(self, session: str, filename: str, logo: str, position: str) -> None:
+    def _job_edit_logo(self, session: str, filename: str, logo: str, position: str,
+                       batch: bool = False) -> None:
         """Nowe logo (albo zadne) na zdjeciu: wersja bez logo + overlay,
         podmiana pliku w miejscu i ponowny upload do TEGO SAMEGO rekordu
         w Automacie (PUT po id), zeby nie przybylo zdjecie-duplikat."""
@@ -1767,7 +1784,8 @@ class WebUI:
                 save_review(outdir, review)
             what = (tr("logo {label}, {position}", label=LOGOS[logo]['label'], position=position)
                     if logo else tr("bez logo"))
-            self._log(tr("Zmieniono {filename}: {what}.", filename=filename, what=what), "ok")
+            if not batch:   # edycja sesji loguje jedno podsumowanie na końcu
+                self._log(tr("Zmieniono {filename}: {what}.", filename=filename, what=what), "ok")
             if pid and self.uploader is not None and self.name == outdir.name:
                 self._jobs.put(("upload_photo", {
                     "outdir": outdir, "out": path,
@@ -1778,6 +1796,24 @@ class WebUI:
         finally:
             with self.lock:
                 self.edit_saving = None
+            if batch:
+                self._batch_edit_done(filename, logo, position)
+
+    def _batch_edit_done(self, filename: str, logo: str, position: str) -> None:
+        with self.lock:
+            b = self.batch_edit
+            if not b or filename not in b["pending"]:
+                return
+            b["pending"].remove(filename)
+            b["done"] += 1
+            finished = not b["pending"]
+            if finished:
+                self.batch_edit = None
+        if finished:
+            what = (tr("logo {label}, {position}", label=LOGOS[logo]['label'], position=position)
+                    if logo and logo in LOGOS else tr("bez logo"))
+            n = f'{b["total"]} {n_form(b["total"], ("zdjęcie", "zdjęcia", "zdjęć"), ("photo", "photos"))}'
+            self._log(tr("Edycja sesji: {n} - {what}.", n=n, what=what), "ok")
 
     def shot_info(self, session: str, filename: str) -> dict | None:
         """Metadane zdjecia do panelu w podgladzie (EXIF z oryginalu z aparatu)."""
@@ -1912,7 +1948,7 @@ class WebUI:
         if self.update_busy:
             # aplikacja zaraz sie zrestartuje — zdjecie zrobione teraz
             # zgineloby razem z workerem (job by sie nie doczekal obrobki)
-            self._log(tr("Trwa aktualizacja — migawka zablokowana do restartu."), "warn")
+            self._log(tr("Trwa aktualizacja - migawka zablokowana do restartu."), "warn")
             return {"ok": False, "error": tr("trwa aktualizacja")}
         # Watek camera odbiera komendy pojedynczo. Zalegajaca kolejka znaczy, ze
         # utknal (typowo: EDSDK czeka na plik z aparatu) — bez tego wpisu ENTER
@@ -1921,7 +1957,7 @@ class WebUI:
             phase, since = self._cam_phase
             held = tr(", stoi na tym {s:.0f} s", s=time.monotonic() - since) if since else ""
             self._log(tr("Migawka: aparat nie odebrał jeszcze poprzedniej komendy "
-                         "({n} w kolejce) — wątek aparatu: {phase}{held}.",
+                         "({n} w kolejce) - wątek aparatu: {phase}{held}.",
                          n=self._cam_q.qsize(), phase=tr(phase), held=held), "warn")
         with self.lock:
             opts = dict(
@@ -2028,6 +2064,50 @@ class WebUI:
             session = self.name
         self._jobs.put(("edit_logo", session, f, logo, pos))
 
+    def _act_edit_batch(self, data: dict) -> dict:
+        """Edycja sesji: to samo logo (albo bez logo) i róg na wielu zdjęciach.
+        Zdjęcia z samym oryginałem dostają najpierw wersję bez logo (edit_base,
+        ten sam worker, więc kolejność jest zachowana); bez oryginału — pomijane."""
+        logo = str(data.get("logo") or "")
+        pos = str(data.get("position") or "bottom-right")
+        if logo and logo not in LOGOS:
+            return {"ok": False, "error": tr("nieznane logo")}
+        if pos not in LOGO_POSITIONS:
+            return {"ok": False, "error": tr("nieznana pozycja")}
+        with self.lock:
+            if not self.name:
+                return {"ok": False, "error": tr("brak otwartej sesji")}
+            if self.batch_edit:
+                return {"ok": False, "error": tr("poprzednia edycja sesji jeszcze trwa")}
+            session, outdir = self.name, self.session_dir
+        with self._review_lock:
+            review = load_review(outdir)
+        wanted = {Path(str(f)).name for f in data.get("files") or []}
+        entries = {e["file"]: e for e in shot_entries(outdir, review)}
+        files = [f for f in wanted if f in entries and entries[f]["edit"]]
+        skipped = len(wanted) - len(files)
+        if not files:
+            return {"ok": False, "error": tr("żadne z zaznaczonych zdjęć nie da się edytować")}
+        with self.lock:
+            self.batch_edit = {"total": len(files), "done": 0, "pending": set(files)}
+        for f in sorted(files):
+            if entries[f]["edit"] == "raw":
+                self._jobs.put(("edit_base", session, f))
+            self._jobs.put(("edit_logo", session, f, logo, pos, True))
+        return {"ok": True, "queued": len(files), "skipped": skipped}
+
+    def _act_reveal_session(self, data: dict) -> dict:
+        """Menu nazwy sesji → „Pokaż folder sesji"."""
+        with self.lock:
+            folder = self.session_dir
+        if folder is None or not folder.is_dir():
+            return {"ok": False, "error": tr("folder sesji jeszcze nie istnieje")}
+        try:
+            _open_folder(folder)
+        except OSError as e:
+            return {"ok": False, "error": str(e)}
+        return {"ok": True}
+
     def _act_open_url(self, data: dict) -> dict | None:
         """Strona repozytorium/wydania albo profil autora w systemowej
         przegladarce (pywebview otworzylby ja w oknie aplikacji). Tylko adresy
@@ -2105,6 +2185,8 @@ class WebUI:
         "edit_prepare": _act_edit_prepare,
         "ghost_frame": _act_ghost_frame,
         "edit_save": _act_edit_save,
+        "edit_batch": _act_edit_batch,
+        "reveal_session": _act_reveal_session,
         "set_session": _act_set_session,
         "clear_session": _act_clear_session,
         "refresh_sessions": _act_refresh_sessions,
@@ -2193,13 +2275,13 @@ class WebUI:
                     # kompilacja MA sie odbyc teraz, z overlayem na podgladzie —
                     # a nie dopiero przy pierwszym zdjeciu, udajac zawieszona obrobke
                     if self._queue_warmup():
-                        self._log(tr("Obróbka tła: GPU (DirectML) — kompiluję shadery "
+                        self._log(tr("Obróbka tła: GPU (DirectML) - kompiluję shadery "
                                      "od razu, to potrafi trwać ~2 min."), "ok")
                     else:
                         self._log(tr("Obróbka tła: GPU włączone, ale onnxruntime nie ma "
-                                     "providera GPU — liczę dalej na CPU."), "warn")
+                                     "providera GPU - liczę dalej na CPU."), "warn")
                 else:
-                    self._log(tr("Obróbka tła: CPU — działa od następnego zdjęcia."), "ok")
+                    self._log(tr("Obróbka tła: CPU - działa od następnego zdjęcia."), "ok")
 
     # ---------- stan dla frontu ----------
 
@@ -2289,12 +2371,12 @@ class WebUI:
             if CAMERA_EDSDK_ISOLATION and sys.platform == "win32":
                 hint = tr("ogranicznik czasu zaraz sam zrestartuje sterownik "
                           "Canon. Jeśli to wraca co chwilę, winne jest USB tego "
-                          "komputera — BIOS/sterowniki chipsetu, kabel, port.")
+                          "komputera - BIOS/sterowniki chipsetu, kabel, port.")
             else:
-                hint = tr("Wywołania Canon SDK nie da się przerwać z aplikacji — "
+                hint = tr("Wywołania Canon SDK nie da się przerwać z aplikacji - "
                           "odepnij i podepnij kabel USB aparatu, wtedy połączenie "
                           "wstanie od nowa.")
-            self._log(tr("✗ Wątek aparatu utknął: „{phase}” trwa {age:.0f} s — {hint}",
+            self._log(tr("✗ Wątek aparatu utknął: „{phase}” trwa {age:.0f} s - {hint}",
                          phase=tr(phase), age=age, hint=hint), "err")
 
     def state(self, log_since: int = 0) -> dict:
@@ -2320,6 +2402,10 @@ class WebUI:
                 "downloading": list(self.syncing),
                 "editPreparing": self.edit_preparing,
                 "editSaving": self.edit_saving,
+                # edycja sesji (wiele zdjęć naraz): postęp i pliki jeszcze w kolejce
+                "batchEdit": ({"total": self.batch_edit["total"], "done": self.batch_edit["done"],
+                               "pending": sorted(self.batch_edit["pending"])}
+                              if self.batch_edit else None),
                 "session": {
                     "name": self.name or "",
                     # numer sesji w API — nazwa nie wystarcza: serwer zakłada nową
@@ -2332,7 +2418,7 @@ class WebUI:
                 },
                 "shots": shots,
                 "camera": {
-                    "bg": f"{bg[0]}–{bg[1]}" if bg else "—",
+                    "bg": f"{bg[0]}-{bg[1]}" if bg else "-",
                     "bgStatus": _bg_status(bg),
                     "ev": self.ev,
                     "productBox": self.live_box,
@@ -2480,7 +2566,7 @@ class WebUI:
             try:
                 loop()
             except BaseException as e:      # noqa: BLE001 — logujemy WSZYSTKO
-                self._log(tr("✗ Wątek {what} zakończył się błędem ({err}) — zrestartuj aplikację.",
+                self._log(tr("✗ Wątek {what} zakończył się błędem ({err}) - zrestartuj aplikację.",
                              what=tr(what), err=f"{type(e).__name__}: {e}"), "err")
                 raise
         return run

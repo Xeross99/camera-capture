@@ -52,13 +52,13 @@ EN.update({
     "paczka aktualizacji nie zawiera pliku .exe": "the update package contains no .exe file",
     "paczka aktualizacji nie zawiera katalogu _internal": "the update package contains no _internal folder",
     "samo-aktualizacja dziala tylko dla .exe na Windowsie": "self-update works only for the .exe on Windows",
-    "aktualizator nie wystartowal (kod {rc}) — log: {log}": "the updater did not start (code {rc}) — log: {log}",
+    "aktualizator nie wystartowal (kod {rc}) - log: {log}": "the updater did not start (code {rc}) - log: {log}",
     "po kopiowaniu brak {exe}": "{exe} missing after copying",
     "Aktualizacja Camera Capture nie powiodła się.\n\n{e}\n\nSzczegóły: {log}\n\nUruchamiam "
-    "poprzednią wersję — aktualizację można pobrać ręcznie z GitHub Releases.":
+    "poprzednią wersję - aktualizację można pobrać ręcznie z GitHub Releases.":
         "The Camera Capture update failed.\n\n{e}\n\nDetails: {log}\n\nStarting the previous "
-        "version — you can download the update manually from GitHub Releases.",
-    "Camera Capture — aktualizacja": "Camera Capture — update",
+        "version - you can download the update manually from GitHub Releases.",
+    "Camera Capture - aktualizacja": "Camera Capture - update",
 })
 
 try:
@@ -333,7 +333,7 @@ def apply_update_and_restart(staging) -> Path:
             return log
         say(f"aktualizator zakonczyl sie natychmiast (proba {attempt}, kod {rc})")
         time.sleep(2.0)
-    raise RuntimeError(tr("aktualizator nie wystartowal (kod {rc}) — log: {log}", rc=rc, log=log))
+    raise RuntimeError(tr("aktualizator nie wystartowal (kod {rc}) - log: {log}", rc=rc, log=log))
 
 
 # ---------------------------------------------------------------- tryb aktualizatora
@@ -375,7 +375,7 @@ def run_apply_update(argv: list[str]) -> int:
         _message_box(tr(
             "Aktualizacja Camera Capture nie powiodła się.\n\n"
             "{e}\n\nSzczegóły: {log}\n\n"
-            "Uruchamiam poprzednią wersję — aktualizację można pobrać ręcznie "
+            "Uruchamiam poprzednią wersję - aktualizację można pobrać ręcznie "
             "z GitHub Releases.", e=e, log=log))
         fallback = next((p for p in target.glob("*.exe")), None)
         if fallback is not None:
@@ -407,7 +407,7 @@ def _wait_for_old_app(pid: int, target: Path, say) -> None:
             except OSError:
                 break
         else:
-            say(f"UWAGA: {exe.name} wciaz zablokowany po 30 s — probuje mimo to")
+            say(f"UWAGA: {exe.name} wciaz zablokowany po 30 s - probuje mimo to")
 
 
 def _install(staging: Path, target: Path, say) -> int:
@@ -479,7 +479,7 @@ def _message_box(text: str) -> None:
         return
     try:
         ctypes.windll.user32.MessageBoxW(
-            None, text, tr("Camera Capture — aktualizacja"), 0x10)
+            None, text, tr("Camera Capture - aktualizacja"), 0x10)
     except Exception:
         pass
 

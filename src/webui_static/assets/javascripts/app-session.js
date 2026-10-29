@@ -90,9 +90,9 @@ Object.assign(I18N_EN, {
   // jasność tła
   "Tło jasne i równe": "Background bright and even",
   "Tło za ciemne · rozjaśnij w aparacie": "Background too dark · brighten on the camera",
-  "Tło —": "Background —",
-  "Jasność tła — czekam na klatkę z aparatu.": "Background brightness — waiting for a camera frame.",
-  "Zmierzona jasność tła: {bg} ze skali 0–255 (im bliżej 255, tym bielszy stół; poniżej 230 robi się szaro).": "Measured background brightness: {bg} on a 0–255 scale (the closer to 255, the whiter the table; below 230 it turns grey).",
+  "Tło -": "Background -",
+  "Jasność tła - czekam na klatkę z aparatu.": "Background brightness - waiting for a camera frame.",
+  "Zmierzona jasność tła: {bg} ze skali 0-255 (im bliżej 255, tym bielszy stół; poniżej 230 robi się szaro).": "Measured background brightness: {bg} on a 0-255 scale (the closer to 255, the whiter the table; below 230 it turns grey).",
   // podgląd zdjęcia
   "odrzucone": "rejected",
   "w API": "in API",
@@ -449,7 +449,7 @@ const optRow = (key, on, title, desc) => `
 const BG_LABEL = {
   ok: "Tło jasne i równe",
   dark: "Tło za ciemne · rozjaśnij w aparacie",
-  unknown: "Tło —",
+  unknown: "Tło -",
 };
 const BG_DOT = { ok: "ok", dark: "warn", unknown: "" };
 
@@ -519,7 +519,7 @@ function evShown(ev) {
 
 function evValueHtml(ev) {
   const shown = evShown(ev);
-  if (!shown) return "—";
+  if (!shown) return "-";
   if (shown.mode === "pending") return `<span class="pending">${evLabel(shown.label)}</span><span class="ev-load"></span>`;
   return evLabel(shown.label);
 }
@@ -594,8 +594,8 @@ const bgStatus = st => (st.connected && BG_LABEL[st.camera.bgStatus]) ? st.camer
 const histLabel = st => t(BG_LABEL[bgStatus(st)]);
 const histDot = st => BG_DOT[bgStatus(st)];
 const histTitle = st => bgStatus(st) === "unknown"
-  ? t("Jasność tła — czekam na klatkę z aparatu.")
-  : t("Zmierzona jasność tła: {bg} ze skali 0–255 (im bliżej 255, tym bielszy stół; poniżej 230 robi się szaro).", { bg: st.camera.bg });
+  ? t("Jasność tła - czekam na klatkę z aparatu.")
+  : t("Zmierzona jasność tła: {bg} ze skali 0-255 (im bliżej 255, tym bielszy stół; poniżej 230 robi się szaro).", { bg: st.camera.bg });
 
 // ---------- podglad zdjec (overlay) ----------
 
@@ -1037,7 +1037,7 @@ function stripLegend() {
     ${st.processing ? `<span class="legend"><span class="dot" style="background: var(--accent);"></span>${t("obróbka 1")}</span>` : ""}`;
 }
 
-// `prefix` rozroznia dwa egzemplarze (ekran sesji i podglad) — oba sa w DOM
+// `prefix` rozroznia dwa egzemplarze (ekran sesji i podglad) - oba sa w DOM
 // naraz, a odswiezanie w `app-main.js` szuka ich po id. Panel logu otwiera
 // sie NAD linia statusu.
 function logBar(prefix) {
@@ -1053,7 +1053,7 @@ function logBar(prefix) {
 
 // Wybor logo (projekt w Claude Design, wariant B): „bez logo" jako pierwszy,
 // waski kafelek (zamiast osobnego przelacznika), potem kafelki z prawdziwym
-// plikiem logo (na bieli, jak na zdjeciu — czarne TRIXBRIX.eu znikneloby na
+// plikiem logo (na bieli, jak na zdjeciu - czarne TRIXBRIX.eu znikneloby na
 // ciemnym motywie), pod spodem rog kadru w pigulce z ikonkami kadru; biale
 // tlo wybranego rogu przejezdza plynnie (placeSegPill). Zmiana latana W
 // MIEJSCU, bez rebuildu ekranu (ten zrywa stream live view).
@@ -1107,7 +1107,7 @@ function markCorner(attr, segId, pos) {
 const cap = t => t ? t[0].toUpperCase() + t.slice(1) : t;
 
 // W sidebarze sesji logo wybiera się z rozwijanej listy: zamknięta pokazuje
-// tylko wybraną kartę, otwarta — wszystkie karty jak w edycji logo.
+// tylko wybraną kartę, otwarta - wszystkie karty jak w edycji logo.
 function logoPicker(post_) {
   const cur = post_.logo ? post_.logoChoice : "";
   return `
@@ -1187,7 +1187,7 @@ function setLogoPos(pos) {
   post({ action: "set_post", key: "logo_position", value: pos });
 }
 
-// Rozwiniecie logu W MIEJSCU — pelny rebuild w podgladzie powtorzylby
+// Rozwiniecie logu W MIEJSCU - pelny rebuild w podgladzie powtorzylby
 // animacje wejscia zdjecia.
 function toggleLog() {
   S.logOpen = !S.logOpen;
@@ -1200,12 +1200,12 @@ function toggleLog() {
 }
 
 // Pasek zdjec wisi w dwoch miejscach (ekran sesji i podglad), oba trzeba odswiezyc
-// po zmianie zaznaczenia. Aktywny kafelek jest przy okazji doprowadzany do widoku —
+// po zmianie zaznaczenia. Aktywny kafelek jest przy okazji doprowadzany do widoku -
 // przy kilkunastu zdjeciach zaznaczenie potrafi wyjechac poza pasek.
 // Sygnatura zawartości paska BEZ zaznaczenia: zmiana samego zaznaczenia
 // (strzałki, klik) tylko przestawia klasę `.on` na istniejących kafelkach.
 // Pełna przebudowa tworzyła kafelki od nowa, a ten pod kursorem od razu
-// odpalał animację hover — przy każdej zmianie zdjęcia coś podskakiwało.
+// odpalał animację hover - przy każdej zmianie zdjęcia coś podskakiwało.
 const stripContentSig = () => JSON.stringify([stripSig(S.state), S.editSaved && S.editSaved.file, S.justEdited]);
 
 const sessCountText = st => `${plPhotos(st.session.count)}${st.session.rejected ? ` · ${t("odrzucone {n}", { n: st.session.rejected })}` : ""}`;
@@ -1257,7 +1257,7 @@ function navShot(dir) {
 }
 
 // ---------- potwierdzenie wyjscia z sesji (ESC na ekranie Sesji) ----------
-// Modal zyje BEZPOSREDNIO w <body>, poza keyowanym renderem ekranu — rebuildy
+// Modal zyje BEZPOSREDNIO w <body>, poza keyowanym renderem ekranu - rebuildy
 // sesji (dolatujace zdjecia, poll) nie maja go czym zniszczyc ani odtworzyc.
 
 function showLeaveConfirm() {
@@ -1265,7 +1265,7 @@ function showLeaveConfirm() {
   S.leaveConfirm = true;
   const el = document.createElement("div");
   el.id = "leave-confirm";
-  // modal zyje w <body>, POZA #app — klasa .ui daje mu font aplikacji.
+  // modal zyje w <body>, POZA #app - klasa .ui daje mu font aplikacji.
   // Układ i animacja jak w modalu Tailwind UI (panel z opacity 0 i scale .95),
   // tylko szybciej: wejście 160 ms, zamknięcie 120 ms.
   el.className = "ui modal-root";
@@ -1326,14 +1326,14 @@ function showShot(next, dir) {
   dir = dir < 0 ? -1 : 1;
   const img = $("review-img");
   if (S.reviewMode && img) {
-    // Overlay zostaje w DOM (zawsze nieprzezroczysty — zadnych przebitek live
+    // Overlay zostaje w DOM (zawsze nieprzezroczysty - zadnych przebitek live
     // view), podmieniamy tylko src: stare zdjecie wisi az nowe sie zdekoduje.
     const shot = reviewShot();
     clearTimeout(fullTimer);
     img.onload = () => reviewLoaded(img);
     img.src = shotUrl(shot, "view");
     updateReviewHeader(shot);
-    // Skok musi byc WIDOCZNY, inaczej krzywa easingu nie ma czego pokazac —
+    // Skok musi byc WIDOCZNY, inaczej krzywa easingu nie ma czego pokazac -
     // przy poprzednich 6 px kazdy easing wygladal identycznie.
     img.style.transition = "none";
     img.style.transform = `translateX(${dir * 32}px)`;
@@ -1349,7 +1349,7 @@ function showShot(next, dir) {
     refreshStrips();
     lastSesja = sesjaKey(S.state);
   } else {
-    // poza podglądem strzałki tylko przestawiają zaznaczenie w pasku —
+    // poza podglądem strzałki tylko przestawiają zaznaczenie w pasku -
     // przebudowa ekranu zrywała stream live view i odpalała animacje
     refreshStrips();
     lastSesja = sesjaKey(S.state);
@@ -1367,7 +1367,7 @@ function deleteReviewed() {
   const img = $("review-img");
 
   if (!list.length) {
-    // ostatnie zdjecie — powrot do live (tu przejscie w przezroczystosc
+    // ostatnie zdjecie - powrot do live (tu przejscie w przezroczystosc
     // jest zamierzone, odslania podglad z aparatu)
     S.selShot = -1;
     S.reviewMode = false;
@@ -1386,7 +1386,7 @@ function deleteReviewed() {
     renderScreens(true);
     return;
   }
-  // Overlay zostaje kryjacy — animuje sie TYLKO obrazek na ciemnym tle,
+  // Overlay zostaje kryjacy - animuje sie TYLKO obrazek na ciemnym tle,
   // wiec live view nie przebija. Nastepne zdjecie podmieniamy w miejscu
   // (zadnego pelnego rebuildu z powtorka animacji wejscia).
   const nextShot = reviewShot();
@@ -1411,7 +1411,7 @@ function deleteReviewed() {
   }, 170);
 }
 
-// Zamkniecie wygasza TYLKO gorna czesc (zdjecie) — pasek zdjec i log stoja
+// Zamkniecie wygasza TYLKO gorna czesc (zdjecie) - pasek zdjec i log stoja
 // w miejscu, bo pod spodem na ekranie sesji sa dokladnie w tym samym miejscu.
 // Wczesniej caly podglad malal do .96 razem z paskiem i miniatury podskakiwaly.
 function closeReview() {
@@ -1441,11 +1441,11 @@ function flashNow() {
 
 // ---------- filmstrip ----------
 
-// Wymiary pasa i kafelków są w assets/stylesheets/layout/responsive.css (.strip-box) i screens/session.css (.shot) — na niskim
+// Wymiary pasa i kafelków są w assets/stylesheets/layout/responsive.css (.strip-box) i screens/session.css (.shot) - na niskim
 // ekranie kurczą się w media query.
 const stripBox = "";
 
-// Adres zdjecia sesji z wersja pliku (`v`) — serwer pozwala go trzymac
+// Adres zdjecia sesji z wersja pliku (`v`) - serwer pozwala go trzymac
 // w cache na stale, wiec przebudowa paska nie pobiera miniatur od nowa.
 // `kind`: true / "thumb" = miniatura paska, "view" = podgląd na całe okno
 // (1800 px), brak = oryginał.
@@ -1463,14 +1463,14 @@ function filmstrip() {
     let fx = "";
     if (es && es.file === s.file) {
       if (s.v !== es.v) {
-        // nowa wersja dojechała — jednorazowa animacja, potem flaga znika
+        // nowa wersja dojechała - jednorazowa animacja, potem flaga znika
         S.editSaved = null;
         S.justEdited = s.file;
         setTimeout(() => { if (S.justEdited === s.file) S.justEdited = null; }, 900);
       } else if (st.editSaving === s.file || performance.now() - es.since < 4000) {
         fx = " saving";
       } else {
-        S.editSaved = null;   // zapis padł (powód w logu) — kafelek wraca do normy
+        S.editSaved = null;   // zapis padł (powód w logu) - kafelek wraca do normy
       }
     }
     if (S.justEdited === s.file) fx = " edited";
@@ -1488,7 +1488,7 @@ function filmstrip() {
   if (st.processing && !prog.some(p => p.file === st.processing)) {
     items.push(`<div class="shot-wait" title="${st.processing}">${t("Obróbka…")}<span class="indet"></span></div>`);
   }
-  // pobieranie zdjec sesji z Automatu — kafelek-skeleton az plik wyladuje na dysku
+  // pobieranie zdjec sesji z Automatu - kafelek-skeleton az plik wyladuje na dysku
   (st.downloading || []).forEach(() => {
     items.push(`<div class="skeleton shot-skel">${t("Pobieranie…")}</div>`);
   });
@@ -1498,17 +1498,17 @@ function filmstrip() {
 // ---------- nakładka poprzedniego zdjęcia na live view ----------
 // Półprzezroczyste zdjęcie nad obrazem z aparatu, żeby kolejny produkt stanął
 // dokładnie w tym samym miejscu. Źródłem jest ORYGINAŁ z aparatu (/img?ghost=1)
-// — gotowe zdjęcie jest przycięte i przybliżone do produktu, więc nie trafia
+// - gotowe zdjęcie jest przycięte i przybliżone do produktu, więc nie trafia
 // w kadr podglądu. Domyślnie ostatnie zdjęcie (idzie za każdym strzałem),
 // O w podglądzie zdjęcia przypina wybrane. Całość łatana po id (ghostReconcile
-// z updateVolatile) — rebuild ekranu zerwałby stream MJPEG.
+// z updateVolatile) - rebuild ekranu zerwałby stream MJPEG.
 
 const ghostUrl = (st, shot) =>
   `/img?s=${encodeURIComponent(st.session.name)}&f=${encodeURIComponent(shot.file)}&v=${shot.v || 0}&ghost=1`;
 
 // Nakładka jest ZABLOKOWANA na jednym zdjęciu: włączona bierze ostatnie
-// (z oryginałem z aparatu, a gdy takiego nie ma — po prostu ostatnie)
-// i przypina je w S.ghost.file — kolejne strzały jej nie podmieniają.
+// (z oryginałem z aparatu, a gdy takiego nie ma - po prostu ostatnie)
+// i przypina je w S.ghost.file - kolejne strzały jej nie podmieniają.
 // Inne zdjęcie: O w podglądzie zdjęcia. Przypięte zdjęcie skasowane =
 // przypina się znowu ostatnie.
 function ghostShot(st) {
@@ -1533,7 +1533,7 @@ const ALIGN_ILLUSTRATION = `
 
 // Animacja korekty na live view: świeżo zrobione zdjęcie (oryginał, jak
 // nakładka) wchodzi na podgląd i przesuwa się/skaluje dokładnie o tyle, o ile
-// dociągnięto kadr — widać, jak „wskakuje" na nakładkę. Okno cropu przesunięte
+// dociągnięto kadr - widać, jak „wskakuje" na nakładkę. Okno cropu przesunięte
 // o +d = treść w kadrze przesunięta o −d; okno ×k = treść ×1/k wokół środka
 // okna. Zdjęcia obecne przy wejściu w sesję nie animują (S.alignSeen).
 function alignReconcile(st) {
@@ -1625,7 +1625,7 @@ function alignGuideReconcile(st, shot) {
   const el = $("align-guide");
   if (!el) return;
   // zdjęcie z oryginałem bez zapisanego kadru albo odcisku kształtu (sprzed
-  // tych wersji) — backend raz policzy je z oryginału (job ghost_frame, nic
+  // tych wersji) - backend raz policzy je z oryginału (job ghost_frame, nic
   // nie robi, gdy oba są); kontur pojawi się sam
   if (shot && S.ghost.align && shot.ghost === "raw" && S.ghostFrameAsked !== shot.file) {
     S.ghostFrameAsked = shot.file;
@@ -1646,7 +1646,7 @@ function alignGuideReconcile(st, shot) {
   el.style.height = `${(box[3] - box[1]) * 100}%`;
   el.classList.toggle("ok", ok);
   // duży produkt pod górną krawędzią kadru: dopisek nad ramką wypadałby poza
-  // podgląd — wtedy siedzi w środku ramki, w jej lewym górnym rogu
+  // podgląd - wtedy siedzi w środku ramki, w jej lewym górnym rogu
   el.classList.toggle("label-inside", box[1] < 0.07);
   const label = $("align-guide-label");
   const text = ok ? `✓ ${t("korekta")}` : t("za daleko");
@@ -1660,7 +1660,7 @@ function ghostReconcile(st) {
   if (shot) {
     const src = ghostUrl(st, shot);
     if (img.dataset.src !== src) { img.dataset.src = src; img.src = src; }
-    // w trakcie przelotu z podglądu (pinGhost) nakładkę udaje klon — ta
+    // w trakcie przelotu z podglądu (pinGhost) nakładkę udaje klon - ta
     // prawdziwa czeka niewidoczna, aż klon wyląduje dokładnie na niej
     img.style.opacity = S.ghostFlying ? 0 : S.ghost.opacity;
   }
@@ -1674,7 +1674,7 @@ function ghostReconcile(st) {
 
 function setGhost(on) {
   S.ghost.on = on;
-  // wyłączenie odpina zdjęcie — ponowne włączenie przypina ostatnie
+  // wyłączenie odpina zdjęcie - ponowne włączenie przypina ostatnie
   if (!on) S.ghost.file = null;
   ghostReconcile(S.state);
 }
@@ -1689,11 +1689,11 @@ function setGhostOpacity(v) {
 // O w podglądzie zdjęcia: to zdjęcie na live view i powrót do aparatu.
 // Zdjęcie „odlatuje" z podglądu w ramkę live view (FLIP: klon z oryginałem
 // ustawiony w ramce, startuje przeskalowany na miejsce zdjęcia w podglądzie)
-// i ląduje z kryciem nakładki — wtedy podmienia go prawdziwy #ghost.
+// i ląduje z kryciem nakładki - wtedy podmienia go prawdziwy #ghost.
 async function pinGhost() {
   const shot = reviewShot();
   if (!shot) return;
-  if (ghostLand) ghostLand();   // poprzedni przelot jeszcze trwa — ląduje od razu
+  if (ghostLand) ghostLand();   // poprzedni przelot jeszcze trwa - ląduje od razu
   const fromEl = $("review-img"), ghostEl = $("ghost");
   const from = fromEl && fromEl.getBoundingClientRect();
   const box = ghostEl && ghostEl.parentElement.getBoundingClientRect();
@@ -1720,7 +1720,7 @@ async function pinGhost() {
   const dx = from.left + from.width / 2 - (box.left + box.width / 2);
   const dy = from.top + from.height / 2 - (box.top + box.height / 2);
   // Lądowanie także na timerze: onfinish potrafi nie przyjść (karta w tle,
-  // przeglądarka bez pełnego Web Animations) — bez tego ghostFlying zostawało
+  // przeglądarka bez pełnego Web Animations) - bez tego ghostFlying zostawało
   // na zawsze, nakładka miała krycie 0, a każde kolejne O było ignorowane.
   let timer = 0;
   const land = () => {

@@ -196,6 +196,15 @@ def test_escape_asks_before_leaving_session(app, ui):
     expect(ui.locator("#new-session-input")).to_be_visible()
 
 
+def test_session_menu_back_leaves_without_asking(app, ui):
+    start_session(ui)
+    ui.locator(".sess-menu-btn").click()
+    ui.get_by_role("menuitem", name="Wróć do listy sesji").click()
+    wait_for(lambda: app.state()["session"]["name"] == "", 5, "wyjscie z sesji z menu")
+    expect(ui.locator("#leave-confirm")).to_have_count(0)    # z menu bez pytania (ESC dalej pyta)
+    expect(ui.locator("#new-session-input")).to_be_visible()
+
+
 def test_escape_twice_cancels_leaving(app, ui, camera):
     start_session(ui)
     ui.keyboard.press("Escape")
@@ -216,6 +225,59 @@ def test_click_on_live_view_focuses_there(app, ui, camera):
     fx, fy = camera.focus_calls[0]
     assert 0 <= fx <= 1 and 0 <= fy <= 1
     expect(ui.locator("#af-box")).to_be_visible()
+
+
+def test_session_edit_changes_logo_on_selected_photos(app, ui):
+    start_session(ui)
+    for n in (1, 2):
+        ui.keyboard.press("Enter")
+        wait_for(lambda: app.state()["session"]["count"] == n and not app.state()["busy"], 120, "zdjecie")
+    ui.wait_for_timeout(700)
+    ui.locator(".sess-menu-btn").click()                 # nazwa sesji w gornym pasku = menu
+    ui.get_by_role("menuitem", name="Zmień logo na zdjęciach…").click()
+    expect(ui.locator(".sess-menu-list")).to_be_hidden()
+    sedit = ui.locator("#sedit")
+    expect(sedit).to_be_visible()
+    tiles = sedit.locator("[data-sfile]")
+    expect(tiles).to_have_count(2)
+    expect(sedit.locator("#sedit-count")).to_have_text("2/2")   # domyslnie wszystkie
+    tiles.first.click()                                    # zwykly klik = tylko to zdjecie
+    expect(sedit.locator("#sedit-count")).to_have_text("1/2")
+    tiles.nth(1).click(modifiers=["ControlOrMeta"])        # ⌘/Ctrl+klik dokłada
+    expect(sedit.locator("#sedit-count")).to_have_text("2/2")
+    g = sedit.locator("#sedit-grid").bounding_box()
+    ui.mouse.click(g["x"] + g["width"] - 20, g["y"] + g["height"] - 20)   # klik w tlo = odznacz
+    expect(sedit.locator("#sedit-count")).to_have_text("0/2")
+    # przeciagniecie przez oba kafelki = zaznaczenie obu
+    a, b = tiles.first.bounding_box(), tiles.nth(1).bounding_box()
+    ui.mouse.move(a["x"] + 20, a["y"] + 20)
+    ui.mouse.down()
+    ui.mouse.move(b["x"] + b["width"] - 10, b["y"] + 30, steps=8)
+    ui.mouse.up()
+    expect(sedit.locator("#sedit-count")).to_have_text("2/2")
+    expect(sedit.locator(".sedit-marquee")).to_have_count(0)
+    # ⌘/Ctrl + przeciagniecie odwraca: zaznaczone pod prostokatem sie odznaczaja
+    ui.keyboard.down("ControlOrMeta")
+    ui.mouse.move(a["x"] + 20, a["y"] + 20)
+    ui.mouse.down()
+    ui.mouse.move(b["x"] + b["width"] - 10, b["y"] + 30, steps=8)
+    ui.mouse.up()
+    ui.keyboard.up("ControlOrMeta")
+    expect(sedit.locator("#sedit-count")).to_have_text("0/2")
+    tiles.nth(1).click()                                                      # zaznacz drugie
+    expect(sedit.locator("#sedit-count")).to_have_text("1/2")
+    sedit.locator(".viewer-bar").get_by_text("Edycja sesji").click()   # fokus poza kafelkami (ENTER na kafelku go przelacza)
+    ui.keyboard.press("Enter")                         # ENTER nie robi zdjecia zza edycji sesji
+    expect(sedit.locator("#sedit-count")).to_have_text("1/2")
+    sedit.locator('[data-blogo=""]').click()           # bez logo
+    sedit.locator("#sedit-apply").click()
+    wait_for(lambda: app.state()["batchEdit"] is None and
+             any("Edycja sesji" in t for t in [e["text"] for e in app.state()["log"]]), 30, "edycja sesji")
+    assert app.state()["session"]["count"] == 2
+    second = app.state()["shots"][1]["file"]
+    assert app.shot_info("zwrotnica test", second)["logo"] is False
+    ui.keyboard.press("Escape")
+    expect(sedit).to_have_count(0)
 
 
 def test_settings_logo_editor_adds_logo(app, ui, tmp_path):
@@ -293,6 +355,23 @@ def test_new_photo_does_not_rebuild_session_screen(app, make_app, page: Page, mo
     running = page.evaluate("""document.querySelector('.live-empty.sdk').getAnimations()
         .filter(a => a.animationName === 'liveEmptyIn' && a.playState === 'running').length""")
     assert running == 0, "animacja wejścia karty odpaliła się drugi raz"
+
+
+def test_session_search_ranks_best_match_first(app, ui):
+    """Najlepiej pasująca nazwa na górze, nie najnowsza: „duplo" przed
+    „proste duplo", choć ta jest młodsza."""
+    ui.wait_for_function("typeof S !== 'undefined' && S.state && S.state.automat")
+    names = ui.evaluate("""() => {
+      S.state.automat.sessions = [
+        {id: 1, name: "proste duplo", created_at: "2026-10-20T12:00:00"},
+        {id: 2, name: "crossing duplo", created_at: "2026-10-20T11:00:00"},
+        {id: 3, name: "duplo", created_at: "2026-10-19T10:00:00"},
+        {id: 4, name: "duplo track", created_at: "2026-10-18T10:00:00"},
+        {id: 5, name: "inne", product: {name: "Duplo set"}, created_at: "2026-10-21T10:00:00"},
+      ];
+      return paletteItems("duplo").filter(i => i.kind === "session").map(i => i.s.name);
+    }""")
+    assert names == ["duplo", "duplo track", "proste duplo", "crossing duplo", "inne"]
 
 
 def test_ctrl_k_opens_session_search_everywhere(app, ui):

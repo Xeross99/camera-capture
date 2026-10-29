@@ -4,8 +4,8 @@ from .i18n import EN, tr
 
 EN.update({
     "BRAK EDSDK.framework w katalogu aplikacji": "EDSDK.framework MISSING from the app folder",
-    "BRAK EDSDK.dll obok aplikacji — połóż EDSDK.dll + EdsImage.dll (x64) obok .exe, patrz README":
-        "EDSDK.dll MISSING next to the app — put EDSDK.dll + EdsImage.dll (x64) next to the .exe, "
+    "BRAK EDSDK.dll obok aplikacji - połóż EDSDK.dll + EdsImage.dll (x64) obok .exe, patrz README":
+        "EDSDK.dll MISSING next to the app - put EDSDK.dll + EdsImage.dll (x64) next to the .exe, "
         "see README",
     "znaleziono {dll}": "found {dll}",
     "; SDK w osobnym procesie": "; SDK in a separate process",
@@ -28,7 +28,7 @@ def make_camera_session():
     from .config import CAMERA_EDSDK_ISOLATION
     dll = find_edsdk_dll()
     missing = (tr("BRAK EDSDK.framework w katalogu aplikacji") if sys.platform == "darwin"
-               else tr("BRAK EDSDK.dll obok aplikacji — połóż EDSDK.dll "
+               else tr("BRAK EDSDK.dll obok aplikacji - połóż EDSDK.dll "
                        "+ EdsImage.dll (x64) obok .exe, patrz README"))
     reason = tr("znaleziono {dll}", dll=dll) if dll else missing
     if CAMERA_EDSDK_ISOLATION:

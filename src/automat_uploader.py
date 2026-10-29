@@ -15,14 +15,14 @@ from .config import AUTOMAT_API_TOKEN, AUTOMAT_BASE_URL
 from .i18n import EN, tr
 
 EN.update({
-    " — podłączono do istniejącej ({n} zdjęć)": " — attached to the existing one ({n} photos)",
+    " - podłączono do istniejącej ({n} zdjęć)": " - attached to the existing one ({n} photos)",
     "↑ API: sesja {id} ({name})": "↑ API: session {id} ({name})",
-    "{base} — produkt nie znaleziony, sesja luźna{suffix}":
-        "{base} — product not found, loose session{suffix}",
-    "AUTOMAT_TOKEN nie ustawiony — uzupelnij .env (patrz .env.example).":
-        "AUTOMAT_TOKEN not set — fill in .env (see .env.example).",
-    "<HTML z Rails dev mode — sprawdz log/development.log>":
-        "<HTML from Rails dev mode — check log/development.log>",
+    "{base} - produkt nie znaleziony, sesja luźna{suffix}":
+        "{base} - product not found, loose session{suffix}",
+    "AUTOMAT_TOKEN nie ustawiony - uzupelnij .env (patrz .env.example).":
+        "AUTOMAT_TOKEN not set - fill in .env (see .env.example).",
+    "<HTML z Rails dev mode - sprawdz log/development.log>":
+        "<HTML from Rails dev mode - check log/development.log>",
     # rodzaj zapytania w bledzie "API {kind} {status} …"
     "lista sesji": "session list",
     "zdjecia sesji": "session photos",
@@ -45,14 +45,14 @@ class AutomatNotFound(RuntimeError):
 def describe_opened_session(uploader: "AutomatUploader", name: str) -> tuple[str, str]:
     """Komunikat do logu po open_session() -> (tekst, poziom 'ok'|'warn')."""
     suffix = (
-        tr(" — podłączono do istniejącej ({n} zdjęć)", n=uploader.photos_count)
+        tr(" - podłączono do istniejącej ({n} zdjęć)", n=uploader.photos_count)
         if uploader.reattached
         else ""
     )
     base = tr("↑ API: sesja {id} ({name})", id=uploader.session_id, name=name)
     if uploader.product_found:
         return f"{base}{suffix}", "ok"
-    return tr("{base} — produkt nie znaleziony, sesja luźna{suffix}",
+    return tr("{base} - produkt nie znaleziony, sesja luźna{suffix}",
               base=base, suffix=suffix), "warn"
 
 
@@ -67,7 +67,7 @@ class AutomatUploader:
         token = token or AUTOMAT_API_TOKEN
         if not token:
             raise RuntimeError(
-                tr("AUTOMAT_TOKEN nie ustawiony — uzupelnij .env (patrz .env.example).")
+                tr("AUTOMAT_TOKEN nie ustawiony - uzupelnij .env (patrz .env.example).")
             )
         self.base = (base_url or AUTOMAT_BASE_URL).rstrip("/")
         self.headers = {"Authorization": f"Bearer {token}"}
@@ -89,7 +89,7 @@ class AutomatUploader:
         text = (r.text or "").lstrip()
         low = text[:20].lower()
         if low.startswith("<!doctype") or low.startswith("<html"):
-            return tr("<HTML z Rails dev mode — sprawdz log/development.log>")
+            return tr("<HTML z Rails dev mode - sprawdz log/development.log>")
         return text.strip().replace("\n", " ")[:400] or "<empty>"
 
     def _err(self, kind: str, r) -> RuntimeError:
@@ -97,7 +97,7 @@ class AutomatUploader:
         # lapia jak dotad) — wolajacy musi umiec odroznic "znikneło po drugiej
         # stronie" od zwyklego bledu HTTP, np. zeby sprzatnac lokalna sesje.
         cls = AutomatNotFound if r.status_code == 404 else RuntimeError
-        return cls(f"API {tr(kind)} {r.status_code} {r.reason} — {self._strip_body(r)}")
+        return cls(f"API {tr(kind)} {r.status_code} {r.reason} - {self._strip_body(r)}")
 
     def list_sessions(self) -> list[dict]:
         """GET wszystkich sesji photo_studio: [{id, name, product, created_at,

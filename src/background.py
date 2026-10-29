@@ -35,7 +35,7 @@ from .i18n import EN, tr
 
 EN.update({
     "rembg: inferencja na GPU ({provider})": "rembg: inference on the GPU ({provider})",
-    "rembg: GPU nie wstało ({e}) — liczę na CPU": "rembg: the GPU did not start ({e}) — computing on the CPU",
+    "rembg: GPU nie wstało ({e}) - liczę na CPU": "rembg: the GPU did not start ({e}) - computing on the CPU",
     # etapy w linii "Czyszczenie tła: …" (rembg zostaje bez tlumaczenia)
     "maska": "mask",
     "kadr": "framing",
@@ -114,7 +114,7 @@ def _session(model_name: str):
             return session
         except Exception as e:
             # DirectML potrafi polec na starych sterownikach — CPU zawsze dziala
-            print(tr("rembg: GPU nie wstało ({e}) — liczę na CPU", e=e))
+            print(tr("rembg: GPU nie wstało ({e}) - liczę na CPU", e=e))
     return new_session(model_name)
 
 

@@ -14,8 +14,9 @@ src/update_token.py
 # Canon EDSDK dla macOS (licencja Canona, nie do repo — jak EDSDK.dll na Windowsie)
 EDSDK.framework/
 .edsdk-headers/
-# czasy rozgrzewki silnika czyszczenia tla na tym komputerze
+# czasy rozgrzewki silnika czyszczenia tla i etapow zdjecia na tym komputerze
 .warmup.json
+.stages.json
 
 # lista logo z Ustawien i wgrane pliki (obok .env)
 /logos.json

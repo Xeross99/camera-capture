@@ -141,6 +141,14 @@ TRASH_RETENTION_DAYS = int(os.environ.get("TRASH_RETENTION_DAYS", "30"))
 # razem z kopia bez logo (.nologo) — potem logo na tym zdjeciu juz sie nie
 # zmieni. 0 = trzymane zawsze. Domyslnie 90 dni; wybor z Ustawien zapisuje sie
 # w .env i od tej pory to on obowiazuje.
+# Limit miejsca na zdjęcia (Ustawienia → Pliki), GB; 0 = bez limitu
+STORAGE_LIMIT_CHOICES = (10, 25, 50, 100, 0)
+try:
+    STORAGE_LIMIT_GB = int(os.environ.get("STORAGE_LIMIT_GB", "0") or 0)
+except ValueError:
+    STORAGE_LIMIT_GB = 0
+if STORAGE_LIMIT_GB not in STORAGE_LIMIT_CHOICES:
+    STORAGE_LIMIT_GB = 0
 RAW_RETENTION_CHOICES = (7, 30, 90, 0)
 RAW_RETENTION_DAYS = int(os.environ.get("RAW_RETENTION_DAYS", "90") or 0)
 if RAW_RETENTION_DAYS not in RAW_RETENTION_CHOICES:

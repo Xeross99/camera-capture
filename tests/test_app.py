@@ -301,6 +301,34 @@ def test_session_menu_reveals_session_folder(app, monkeypatch):
     assert sdir.is_dir() and opened == [sdir]
 
 
+def test_storage_limit_setting_measures_and_persists(app, env_store):
+    open_session(app)
+    shoot_and_wait(app)
+    app.action({"action": "set_app", "key": "storage_limit_gb", "value": 25})
+    # pomiar ze startu (pusty katalog) zastepuje ten po zmianie limitu
+    wait_for(lambda: (app.state()["settings"]["storage"] or {}).get("finals", 0) > 0
+             and app.state()["settings"]["storageLimitGb"] == 25, 20, "pomiar miejsca")
+    st = app.state()["settings"]["storage"]
+    assert st["finals"] > 0 and st["originals"] > 0 and st["total"] >= st["finals"] + st["originals"]
+    assert env_store["STORAGE_LIMIT_GB"] == "25"
+    app.action({"action": "set_app", "key": "storage_limit_gb", "value": 7})   # spoza listy
+    assert app.state()["settings"]["storageLimitGb"] == 25
+
+
+def test_storage_limit_frees_space_but_keeps_finished_photos(app, monkeypatch):
+    from src import webui
+    monkeypatch.setattr(webui, "GB", 1024)          # limit „10 GB" = 10 KB, zeby test cos zwolnil
+    sdir = open_session(app)
+    files = [shoot_and_wait(app) for _ in range(2)]
+    assert list((sdir / "raw").glob("*_raw.jpg")), "oryginaly sa przed limitem"
+    app.action({"action": "set_app", "key": "storage_limit_gb", "value": 10})
+    wait_for(lambda: not list((sdir / "raw").glob("*_raw.jpg")), 20, "kasowanie oryginalow ponad limit")
+    for f in files:
+        assert (sdir / f).exists(), "gotowe zdjecia zostaja zawsze"
+    wait_for(lambda: any("Limit miejsca" in t for t in log_texts(app)), 10, "wpis o zwolnionym miejscu")
+    wait_for(lambda: any("Same gotowe zdjęcia" in t for t in log_texts(app)), 10, "ostrzezenie o gotowych")
+
+
 def test_edit_refuses_unknown_logo_and_position(app):
     open_session(app)
     assert app.action({"action": "edit_save", "file": "x.jpg", "logo": "inne"})["error"] == "nieznane logo"

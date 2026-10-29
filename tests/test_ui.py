@@ -280,6 +280,16 @@ def test_session_edit_changes_logo_on_selected_photos(app, ui):
     expect(sedit).to_have_count(0)
 
 
+def test_settings_show_storage_bar(app, ui):
+    ui.locator("#tab-ustawienia").click()
+    sec = ui.locator("#sec-pliki")
+    expect(sec.locator(".storage-bar")).to_be_visible(timeout=15000)
+    expect(sec.locator(".storage-legend")).to_contain_text("Gotowe zdjęcia")
+    sec.get_by_role("button", name="50 GB").click()
+    wait_for(lambda: app.storage_limit_gb == 50, 5, "limit 50 GB")
+    expect(sec.locator(".storage-head")).to_contain_text("z 50 GB")
+
+
 def test_settings_logo_editor_adds_logo(app, ui, tmp_path):
     import io
     from PIL import Image

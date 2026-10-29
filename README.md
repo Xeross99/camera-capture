@@ -151,6 +151,12 @@ theme switches with the icon in the top right corner.
 
 <img src="assets/readme/settings.jpg" width="100%" alt="Settings: updates, API with endpoints, logos">
 
+**Space for photos** (Settings → Files) shows how much the photos take, split into finished photos, camera
+originals, the trash and cached files, against the free space on the disk. Pick a limit (10, 25, 50 or
+100 GB, or no limit) and the app keeps the photos folder under it: it empties the trash first, then the
+cached files (thumbnails come back on their own), then the oldest camera originals. Finished photos are
+never deleted; if they alone take more than the limit, the bar turns red and says so.
+
 <img src="assets/readme/session-dark.jpg" width="100%" alt="Session in the dark theme, camera disconnected">
 
 <sub>Dark theme. With the camera unplugged, an animated plug tries to connect in the preview frame and the app reconnects every few seconds.</sub>

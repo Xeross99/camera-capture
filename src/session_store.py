@@ -369,6 +369,99 @@ def purge_originals(base_output: Path, days: int) -> int:
     return removed
 
 
+# ---------- miejsce na dysku (Ustawienia → Pliki) ----------
+
+CACHE_DIRS = (".thumbs", ".views", GHOSTS_DIR)   # odtworzą się same przy następnym podglądzie
+GB = 1024 ** 3
+
+
+def _kind(rel: Path) -> str:
+    """Do której kategorii paska należy plik (ścieżka względem photos/)."""
+    top = rel.parts[0]
+    if top == TRASH_DIR:
+        return "trash"
+    if top == COVERS_DIR or (len(rel.parts) > 2 and rel.parts[1] in CACHE_DIRS):
+        return "cache"
+    if len(rel.parts) > 2 and rel.parts[1] in ("raw", NOLOGO_DIR):
+        return "originals"
+    if len(rel.parts) == 2 and rel.suffix.lower() == ".jpg":
+        return "originals" if rel.stem.endswith("_raw") else "finals"
+    return "other"
+
+
+def storage_usage(base_output: Path) -> dict:
+    """Ile zajmuje katalog zdjęć, z podziałem: gotowe zdjęcia, oryginały
+    z aparatu (+ kopie bez logo), kosz, pliki podręczne, reszta (kadry,
+    recenzje). Do tego wolne miejsce na dysku."""
+    usage = dict.fromkeys(("finals", "originals", "trash", "cache", "other"), 0)
+    if base_output.is_dir():
+        for root, _dirs, files in os.walk(base_output):
+            for name in files:
+                path = Path(root) / name
+                try:
+                    size = path.stat().st_size
+                except OSError:
+                    continue
+                usage[_kind(path.relative_to(base_output))] += size
+    usage["total"] = sum(usage.values())
+    probe = base_output if base_output.exists() else base_output.parent
+    try:
+        usage["free"] = shutil.disk_usage(probe).free
+    except OSError:
+        usage["free"] = None
+    return usage
+
+
+def enforce_storage_limit(base_output: Path, limit_bytes: int) -> dict:
+    """Zwalnia miejsce, aż katalog zdjęć zmieści się w limicie — od tego, czego
+    najmniej szkoda: kosz (najstarsze wpisy), pliki podręczne, najstarsze
+    oryginały z aparatu (razem z kopią bez logo). GOTOWYCH ZDJĘĆ NIE RUSZA:
+    jeśli same przekraczają limit, zostaje ostrzeżenie w UI. Zwraca, ile
+    i czego skasowano."""
+    freed = {"trash": 0, "cache": 0, "originals": 0, "bytes": 0}
+    total = storage_usage(base_output)["total"]
+    if limit_bytes <= 0 or total <= limit_bytes:
+        return freed
+
+    def drop(path: Path, kind: str) -> None:
+        nonlocal total
+        try:
+            size = sum(f.stat().st_size for f in path.rglob("*") if f.is_file()) if path.is_dir() \
+                else path.stat().st_size
+            shutil.rmtree(path) if path.is_dir() else path.unlink()
+        except OSError:
+            return
+        total -= size
+        freed["bytes"] += size
+        freed[kind] += 1
+
+    trash = base_output / TRASH_DIR
+    for entry in sorted(trash.iterdir()) if trash.is_dir() else []:
+        if total <= limit_bytes:
+            return freed
+        drop(entry, "trash")
+    sessions = [d for d in base_output.iterdir() if d.is_dir() and not d.name.startswith(".")]
+    cache = [f for d in sessions for c in CACHE_DIRS for f in (d / c).glob("*") if f.is_file()]
+    for f in sorted(cache, key=lambda f: f.stat().st_mtime):
+        if total <= limit_bytes:
+            return freed
+        drop(f, "cache")
+    raws = [r for d in sessions for r in (*d.glob("raw/*_raw.jpg"), *d.glob("*_raw.jpg"))]
+    for raw in sorted(raws, key=lambda f: f.stat().st_mtime):
+        if total <= limit_bytes:
+            return freed
+        final = raw.name[: -len("_raw.jpg")] + ".jpg"
+        session = raw.parent.parent if raw.parent.name == "raw" else raw.parent
+        drop(raw, "originals")
+        for extra in (session / NOLOGO_DIR / final, session / GHOSTS_DIR / final):
+            if extra.exists():
+                size = extra.stat().st_size
+                extra.unlink(missing_ok=True)
+                total -= size
+                freed["bytes"] += size
+    return freed
+
+
 # ---------- okladki sesji (photos/.covers) ----------
 
 

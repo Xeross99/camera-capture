@@ -625,3 +625,79 @@
 .logo-row:hover .logo-tile-mark img {
   transform: scale(1.04);
 }
+/* Ustawienia → Pliki: miejsce na zdjęcia (pasek zajętości z podziałem) */
+.storage {
+  padding: 0 20px 18px;
+}
+.storage-wait {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.storage-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.storage-head b {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.storage-head b.over {
+  color: var(--err-fg);
+}
+.storage-bar {
+  display: flex;
+  gap: 2px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+.storage-bar span {
+  height: 100%;
+  min-width: 3px;
+  transition: width 0.6s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.storage-bar.over {
+  box-shadow: 0 0 0 2px var(--err-soft);
+}
+.storage-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-top: 12px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.storage-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.storage-key b {
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.storage-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.storage-warn {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--err-soft);
+  color: var(--err-fg);
+  font-size: 12.5px;
+}

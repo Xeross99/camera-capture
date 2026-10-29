@@ -171,6 +171,7 @@ def make_app(tmp_path, monkeypatch, camera, env_store):
         app._stop.set()
         app._jobs.put(None)
         app._sync_q.put(None)
+        app._storage_q.put(None)
         if app._server is not None:
             app._server.shutdown()
             app._server.server_close()

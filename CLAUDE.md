@@ -115,6 +115,10 @@ Każda udana rozgrzewka (`_job_warmup`) dopisuje swój czas do `.warmup.json` ob
 
 `purge_originals()` (`session_store.py`, job `purge_originals` przy starcie i po zmianie ustawienia) kasuje `raw/*_raw.jpg` starsze niż N dni (po mtime) RAZEM z kopią `.nologo/<plik>` — inaczej edycja logo dalej by działała i opis w Ustawieniach kłamałby. Po tym `shot_entries` daje `edit: ""`, panel edycji mówi, że logo się nie zmieni. Gotowe zdjęcia zostają. Wybór 7/30/90/0 (0 = nigdy). Domyślnie 90 dni (brak wpisu w `.env`); wybór z Ustawień zapisuje się w `.env` i od tej pory obowiązuje.
 
+## Miejsce na zdjęcia (`STORAGE_LIMIT_GB`, Ustawienia → Pliki)
+
+Pasek zajętości katalogu zdjęć (`storage_usage()` w `session_store.py`) z podziałem: gotowe zdjęcia, oryginały z aparatu (`raw/`, `*_raw.jpg`, `.nologo/`), kosz, podręczne (`.thumbs`, `.views`, `.ghosts`, `.covers`) i reszta, plus wolne miejsce na dysku. Limit do wyboru 10/25/50/100 GB albo bez limitu (domyślnie; zapis w `.env`). Ponad limitem `enforce_storage_limit()` zwalnia miejsce od tego, czego najmniej szkoda: kosz (najstarsze wpisy) → podręczne (odtworzą się same) → najstarsze oryginały razem z kopią bez logo — tylko tyle, ile trzeba. **Gotowych zdjęć nie kasuje nigdy**: gdy same przekraczają limit, pasek jest czerwony z ostrzeżeniem, a log o tym mówi. Liczenie i zwalnianie idą w **osobnym wątku** (`_storage_loop`, kolejka `_storage_q`, zaległe zlecenia zwijane) — przejście po katalogu nie może wstrzymywać obróbki ani czekać za nią. Uruchamiane przy starcie, po zmianie limitu, przy wejściu w Ustawienia (akcja `storage_scan`, najwyżej co 30 s) i po zdjęciach najwyżej co 5 minut.
+
 ## Kosz (`photos/.trash`, retencja `TRASH_RETENTION_DAYS`)
 
 Nic, co aplikacja usuwa lokalnie, nie znika od razu — pliki lądują w `photos/.trash/<data>-<godzina>_<sesja>/` i dopiero `_job_purge_trash` (raz przy starcie, `purge_trash()` z `src/session_store.py`) kasuje wpisy starsze niż `TRASH_RETENTION_DAYS` (domyślnie 30). Odzyskanie = przeniesienie plików z powrotem do `photos/<sesja>/` (raw wraca obok finału, nie do `raw/` — kosz jest płaski).

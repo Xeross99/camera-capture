@@ -364,6 +364,7 @@ function renderScreens(force) {
       if ($("settings-scroll")) $("settings-scroll").scrollTop = sc;
       placeSegPill($("fps-seg"), true);
       placeSegPill($("raw-seg"), true);
+      placeSegPill($("storage-seg"), true);
       placeSegPill($("lang-seg"), true);
     }
   }
@@ -375,6 +376,7 @@ function renderScreens(force) {
 function go(screen) {
   if (S.screen === screen) return;
   S.screen = screen;
+  if (screen === "ustawienia") post({ action: "storage_scan" });   // świeży pomiar miejsca na dysku
   ["sesja", "ustawienia"].forEach(k => {
     const t = $(`tab-${k}`);
     if (t) t.classList.toggle("on", k === screen);
@@ -384,7 +386,7 @@ function go(screen) {
   placeTabBar(true);
   lastSesja = lastUstawienia = "";
   renderScreens(true);
-  ["period-seg", "fps-seg", "raw-seg", "lang-seg", "grid-seg"].forEach(id => placeSegPill($(id), false));
+  ["period-seg", "fps-seg", "raw-seg", "storage-seg", "lang-seg", "grid-seg"].forEach(id => placeSegPill($(id), false));
   playScreenIn(`screen-${screen}`);
 }
 

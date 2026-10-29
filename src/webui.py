@@ -55,6 +55,8 @@ from .config import (
     LOGOS,
     RAW_RETENTION_CHOICES,
     RAW_RETENTION_DAYS,
+    STORAGE_LIMIT_CHOICES,
+    STORAGE_LIMIT_GB,
     TRASH_RETENTION_DAYS,
     persist_env,
 )
@@ -64,6 +66,9 @@ from . import logo_store
 from .naming import sanitize_name
 from .progress import PhotoProgress, stages_for
 from .session_store import (
+    GB,
+    enforce_storage_limit,
+    storage_usage,
     NOLOGO_DIR,
     GHOSTS_DIR,
     FRAMES_DIR,
@@ -90,6 +95,12 @@ from .version import APP_VERSION
 from .webui_http import Handler
 
 EN.update({
+    "miejsca na dysku": "disk space",
+    "✗ Liczenie miejsca na dysku: {e}": "✗ Measuring disk space: {e}",
+    "Limit miejsca {limit} GB: zwolniono {gb} GB (kosz: {trash}, podręczne: {cache}, oryginały: {orig}).":
+        "Storage limit {limit} GB: freed {gb} GB (trash: {trash}, cache: {cache}, originals: {orig}).",
+    "Same gotowe zdjęcia zajmują więcej niż limit {limit} GB - podnieś limit albo przenieś starsze sesje.":
+        "Finished photos alone take more than the {limit} GB limit - raise the limit or move older sessions.",
     "Edycja sesji: {n} - {what}.": "Session edit: {n} - {what}.",
     "poprzednia edycja sesji jeszcze trwa": "the previous session edit is still running",
     "żadne z zaznaczonych zdjęć nie da się edytować": "none of the selected photos can be edited",
@@ -512,6 +523,10 @@ class WebUI:
         set_lang(UI_LANG)
         self.keep_raw = True
         self.raw_retention_days = RAW_RETENTION_DAYS   # 0 = oryginaly zostaja zawsze
+        self.storage_limit_gb = STORAGE_LIMIT_GB       # 0 = bez limitu (Ustawienia → Pliki)
+        self.storage: dict | None = None               # ostatni pomiar zajętości katalogu zdjęć
+        self.storage_at = 0.0                           # kiedy (monotonic) — przeliczamy najwyżej co chwilę
+        self.storage_queued = False
         self.test_result = ""
 
         # runtime
@@ -605,6 +620,10 @@ class WebUI:
         # zeby pobieranie dziesiatek zdjec nie blokowalo kolejki workera
         # (obrobka strzalu czekalaby za siecia); None = sygnal konca
         self._sync_q: queue.Queue = queue.Queue()
+        # miejsce na dysku: osobny wątek — przejście po katalogu zdjęć i
+        # zwalnianie miejsca nie mogą wstrzymywać obróbki ani czekać za nią
+        self._storage_q: queue.Queue = queue.Queue()
+        self._storage_thread: threading.Thread | None = None
     # ---------- log ----------
 
     def _log(self, text: str, kind: str = "info") -> None:
@@ -1313,6 +1332,8 @@ class WebUI:
                 "outdir": outdir, "out": out,
                 "photo_id": announced_id, "uploader": self.uploader,
             }))
+        # zajętość dysku (i limit) — po zdjęciach najwyżej co 5 minut
+        self._queue_storage()
 
     def _job_upload_photo(self, job: dict) -> None:
         out: Path = job["out"]
@@ -1480,6 +1501,60 @@ class WebUI:
             self._log(tr("Skasowano {n} {word} oryginalnych z aparatu starszych "
                          "niż {days} dni - logo na tych zdjęciach już się nie zmieni.",
                          n=n, word=_photos_word(n), days=days))
+
+    _STORAGE_EVERY_S = 300     # po zdjęciach przeliczamy zajętość najwyżej co 5 minut
+
+    def _queue_storage(self, force: bool = False) -> None:
+        """Pomiar zajętości (i pilnowanie limitu) w kolejce workera — nie
+        częściej niż co `_STORAGE_EVERY_S`, chyba że `force` (start, zmiana
+        limitu, otwarcie Ustawień)."""
+        with self.lock:
+            if self.storage_queued:
+                return
+            if not force and time.monotonic() - self.storage_at < self._STORAGE_EVERY_S:
+                return
+            self.storage_queued = True
+        self._storage_q.put(True)
+
+    def _storage_loop(self) -> None:
+        """Wątek miejsca na dysku: pomiar zajętości i pilnowanie limitu.
+        Zaległe zlecenia zwijane do jednego (liczy się stan na teraz)."""
+        while not self._stop.is_set():
+            if self._storage_q.get() is None:
+                return
+            while True:
+                try:
+                    if self._storage_q.get_nowait() is None:
+                        return
+                except queue.Empty:
+                    break
+            self._job_storage()
+
+    def _job_storage(self) -> None:
+        try:
+            limit = self.storage_limit_gb * GB
+            freed = enforce_storage_limit(self.base_output, limit) if limit else None
+            usage = storage_usage(self.base_output)
+        except Exception as e:
+            self._log(tr("✗ Liczenie miejsca na dysku: {e}", e=e), "err")
+            return
+        finally:
+            with self.lock:
+                self.storage_queued = False
+        with self.lock:
+            self.storage, self.storage_at = usage, time.monotonic()
+        if freed and freed["bytes"]:
+            self._shots_cache = None
+            self._log(tr("Limit miejsca {limit} GB: zwolniono {gb} GB (kosz: {trash}, podręczne: {cache}, "
+                         "oryginały: {orig}).", limit=self.storage_limit_gb,
+                         gb=f"{freed['bytes'] / GB:.1f}", trash=freed["trash"], cache=freed["cache"],
+                         orig=freed["originals"]), "warn")
+        if limit and usage["finals"] > limit:
+            self._log(tr("Same gotowe zdjęcia zajmują więcej niż limit {limit} GB - podnieś limit "
+                         "albo przenieś starsze sesje.", limit=self.storage_limit_gb), "warn")
+
+    def _act_storage_scan(self, data: dict) -> None:
+        self._queue_storage(force=time.monotonic() - self.storage_at > 30)
 
     def _job_cleanup_update(self) -> None:
         """Po restarcie w nowa wersje: kasuje katalog roboczy aktualizatora i
@@ -2188,6 +2263,7 @@ class WebUI:
         "edit_save": _act_edit_save,
         "edit_batch": _act_edit_batch,
         "reveal_session": _act_reveal_session,
+        "storage_scan": _act_storage_scan,
         "set_session": _act_set_session,
         "clear_session": _act_clear_session,
         "refresh_sessions": _act_refresh_sessions,
@@ -2266,6 +2342,13 @@ class WebUI:
                     self.raw_retention_days = days
                     persist_env("RAW_RETENTION_DAYS", str(days))
                     self._jobs.put(("purge_originals",))
+            elif key == "storage_limit_gb":
+                gb = int(value)
+                if gb in STORAGE_LIMIT_CHOICES:
+                    self.storage_limit_gb = gb
+                    persist_env("STORAGE_LIMIT_GB", str(gb))
+                    self.storage_queued = True
+                    self._storage_q.put(True)
             elif key == "clean_bg_gpu":
                 on = bool(value)
                 self.clean_bg_gpu = on
@@ -2453,6 +2536,8 @@ class WebUI:
                     "cleanBgGpu": self.clean_bg_gpu,
                     "keepRaw": self.keep_raw,
                     "rawRetentionDays": self.raw_retention_days,
+                    "storageLimitGb": self.storage_limit_gb,
+                    "storage": self.storage,
                     "testResult": self.test_result,
                 },
                 "update": self._update_state(),
@@ -2581,6 +2666,9 @@ class WebUI:
                                                daemon=True)
         self._worker_thread = threading.Thread(target=self._guarded(self._worker_loop, "obróbki"),
                                                daemon=True)
+        self._storage_thread = threading.Thread(
+            target=self._guarded(self._storage_loop, "miejsca na dysku"), daemon=True)
+        self._storage_thread.start()
         self._sync_thread = threading.Thread(
             target=self._guarded(self._sync_loop, "synchronizacji"), daemon=True)
         self._camera_thread.start()
@@ -2592,6 +2680,7 @@ class WebUI:
         self._jobs.put(("check_update",))
         self._jobs.put(("purge_trash",))
         self._jobs.put(("purge_originals",))
+        self._queue_storage(force=True)
         # ostatnia w kolejce startowej — szybkie joby wyżej nie mogą czekać
         # dziesiątek sekund za kompilacją shaderów DirectML; w trybie CPU
         # nie jest kolejkowana wcale
@@ -2620,6 +2709,7 @@ class WebUI:
             terminate()
         self._jobs.put(None)
         self._sync_q.put(None)
+        self._storage_q.put(None)
         if self._camera_thread is not None:
             self._camera_thread.join(timeout=4.0)
         if self._worker_thread is not None:

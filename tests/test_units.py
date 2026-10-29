@@ -448,3 +448,34 @@ def test_finished_photo_keeps_camera_exif_without_private_tags(tmp_path):
     (sdir / "p_raw.jpg").unlink(missing_ok=True)
     info = shot_metadata(sdir, "p.jpg", load_review(sdir))
     assert info["raw"] is None and info["camera"]["shutter"] == "1/2 s"
+
+
+def test_storage_usage_and_limit_free_space_in_order(tmp_path):
+    from src.session_store import enforce_storage_limit, storage_usage
+    mb = 1024 * 1024
+
+    def put(rel, size):
+        f = tmp_path / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_bytes(b"x" * size)
+        return f
+
+    put("s/a.jpg", 3 * mb)                         # gotowe
+    raw_old = put("s/raw/a_raw.jpg", 2 * mb)       # oryginal (starszy)
+    put("s/.nologo/a.jpg", 1 * mb)                 # kopia bez logo = oryginaly
+    raw_new = put("s/raw/b_raw.jpg", 2 * mb)
+    os.utime(raw_old, (1, 1))
+    put("s/.thumbs/a.jpg", 1 * mb)                 # podreczne
+    put(".trash/20260101-000000_s/x.jpg", 1 * mb)  # kosz
+    u = storage_usage(tmp_path)
+    assert (u["finals"], u["originals"], u["cache"], u["trash"]) == (3 * mb, 5 * mb, 1 * mb, 1 * mb)
+    assert u["total"] == 10 * mb and u["free"] > 0
+    # limit 7 MB: kosz, podreczne, potem NAJSTARSZY oryginal z kopia bez logo
+    freed = enforce_storage_limit(tmp_path, 7 * mb)
+    assert freed["trash"] == 1 and freed["cache"] == 1 and freed["originals"] == 1
+    assert not raw_old.exists() and not (tmp_path / "s/.nologo/a.jpg").exists()
+    assert raw_new.exists(), "zwalnia tylko tyle, ile trzeba"
+    # nawet limit mniejszy niz gotowe zdjecia nie rusza gotowych
+    enforce_storage_limit(tmp_path, 1 * mb)
+    assert (tmp_path / "s/a.jpg").exists()
+    assert storage_usage(tmp_path)["finals"] == 3 * mb

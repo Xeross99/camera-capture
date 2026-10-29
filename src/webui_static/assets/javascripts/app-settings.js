@@ -1,6 +1,20 @@
 "use strict";
 // Tłumaczenia EN tekstów z tego pliku (klucz = polski tekst, patrz i18n.js).
 Object.assign(I18N_EN, {
+  // miejsce na dysku
+  "Limit miejsca": "Storage limit",
+  "bez limitu": "no limit",
+  "Liczę, ile zajmują zdjęcia…": "Measuring how much space the photos take…",
+  "Gotowe zdjęcia": "Finished photos",
+  "Oryginały z aparatu": "Camera originals",
+  "Kosz": "Trash",
+  "Podręczne i inne": "Cache and other",
+  "{used} z {limit}": "{used} of {limit}",
+  "{used} zajęte przez zdjęcia": "{used} used by photos",
+  "wolne na dysku: {free}": "free on disk: {free}",
+  "Same gotowe zdjęcia zajmują więcej niż limit. Aplikacja ich nie usuwa - podnieś limit albo przenieś starsze sesje.": "Finished photos alone take more than the limit. The app never deletes them - raise the limit or move older sessions.",
+  "Miejsce na zdjęcia": "Space for photos",
+  "Po przekroczeniu limitu aplikacja zwalnia miejsce: najpierw kosz, potem pliki podręczne, potem najstarsze oryginały z aparatu. Gotowe zdjęcia zostają zawsze.": "Over the limit, the app frees space: the trash first, then cached files, then the oldest camera originals. Finished photos always stay.",
   // edytor logo
   "Podaj nazwę logo.": "Enter a logo name.",
   "Logo o tej nazwie już jest.": "A logo with this name already exists.",
@@ -291,6 +305,7 @@ function ustawieniaScreen() {
             </div>
             <div id="raw-seg" class="seg seg-sm has-pill" role="group" aria-label="${t("Kasuj oryginały po")}"><span class="seg-pill"></span>${[[7, "7 dni"], [30, "30 dni"], [90, "90 dni"], [0, "nigdy"]].map(([d, l]) => `<button type="button" class="seg-btn${d === cfg.rawRetentionDays ? " on" : ""}" aria-pressed="${d === cfg.rawRetentionDays}" onclick="segClick(this); setRawRetention(${d})">${t(l)}</button>`).join("")}</div>
           </div>` : ""}
+          ${storageHtml(cfg)}
         </section>
 
         <section id="sec-obrobka" class="panel" style="overflow: hidden;">
@@ -426,6 +441,55 @@ function setLang(k) {
   post({ action: "set_app", key: "ui_lang", value: k });
   S.langSwitching = true;
   setTimeout(() => { S.langSwitching = false; applyLang(k); }, 320);
+}
+
+function setStorageLimit(gb) {
+  if (S.state && S.state.settings) S.state.settings.storageLimitGb = gb;
+  post({ action: "set_app", key: "storage_limit_gb", value: gb });
+}
+
+// ---------- miejsce na dysku (Ustawienia → Pliki) ----------
+const GIB = 1024 ** 3;
+const gbText = b => {
+  const v = b / GIB;
+  const txt = v >= 10 ? v.toFixed(0) : v >= 0.1 ? v.toFixed(1) : (b / 1024 ** 2 >= 1 ? `${Math.round(b / 1024 ** 2)} MB` : "0");
+  const out = /MB|^0$/.test(txt) ? txt : `${txt} GB`;
+  return LANG === "en" ? out : out.replace(".", ",");
+};
+const STORAGE_PARTS = [
+  ["finals", "Gotowe zdjęcia", "var(--accent)"],
+  ["originals", "Oryginały z aparatu", "#a855f7"],
+  ["trash", "Kosz", "#f59e0b"],
+  ["cache", "Podręczne i inne", "var(--muted-2)"],
+];
+
+function storageHtml(cfg) {
+  const u = cfg.storage, lim = cfg.storageLimitGb || 0;
+  const seg = `<div id="storage-seg" class="seg seg-sm has-pill" role="group" aria-label="${t("Limit miejsca")}"><span class="seg-pill"></span>${[[10, "10 GB"], [25, "25 GB"], [50, "50 GB"], [100, "100 GB"], [0, "bez limitu"]].map(([g, l]) => `<button type="button" class="seg-btn${g === lim ? " on" : ""}" aria-pressed="${g === lim}" onclick="segClick(this); setStorageLimit(${g})">${t(l)}</button>`).join("")}</div>`;
+  let body = `<div class="storage-wait"><span class="spinner"></span>${t("Liczę, ile zajmują zdjęcia…")}</div>`;
+  if (u) {
+    const val = k => k === "cache" ? u.cache + u.other : u[k];
+    // skala paska: limit, a bez limitu — cały dysk (zajęte przez zdjęcia + wolne)
+    const scale = Math.max(lim ? lim * GIB : u.total + (u.free || 0), u.total, 1);
+    const over = lim && u.total > lim * GIB, finalsOver = lim && u.finals > lim * GIB;
+    const bar = STORAGE_PARTS.map(([k, , c]) => val(k) ? `<span style="width: ${val(k) / scale * 100}%; background: ${c};"></span>` : "").join("");
+    const legend = STORAGE_PARTS.map(([k, label, c]) => `<span class="storage-key"><span class="storage-dot" style="background: ${c};"></span>${t(label)} <b>${gbText(val(k))}</b></span>`).join("");
+    const head = lim ? t("{used} z {limit}", { used: gbText(u.total), limit: `${lim} GB` }) : t("{used} zajęte przez zdjęcia", { used: gbText(u.total) });
+    body = `
+      <div class="storage-head"><b class="${over ? "over" : ""}">${head}</b>${u.free != null ? `<span>${t("wolne na dysku: {free}", { free: gbText(u.free) })}</span>` : ""}</div>
+      <div class="storage-bar${over ? " over" : ""}">${bar}</div>
+      <div class="storage-legend">${legend}</div>
+      ${finalsOver ? `<div class="storage-warn">${t("Same gotowe zdjęcia zajmują więcej niż limit. Aplikacja ich nie usuwa - podnieś limit albo przenieś starsze sesje.")}</div>` : ""}`;
+  }
+  return `
+    <div class="row" style="padding: 14px 20px 18px;">
+      <div style="flex: 1;">
+        <div class="row-title">${t("Miejsce na zdjęcia")}</div>
+        <div class="row-desc">${t("Po przekroczeniu limitu aplikacja zwalnia miejsce: najpierw kosz, potem pliki podręczne, potem najstarsze oryginały z aparatu. Gotowe zdjęcia zostają zawsze.")}</div>
+      </div>
+      ${seg}
+    </div>
+    <div class="storage">${body}</div>`;
 }
 
 function setRawRetention(d) {

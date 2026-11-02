@@ -68,6 +68,27 @@
   }
 }
 
+/* pasek podgladu zdjecia: najpierw znikaja podpowiedzi klawiszy i rozmiar
+   zdjecia, w jeszcze wezszym oknie przyciski zostaja same z ikona
+   (nazwa i klawisz w tooltipie) */
+@media (max-width: 1280px) {
+  .viewer-bar {
+    gap: 10px;
+  }
+  .viewer-bar .vbtn .kbd,
+  #review-size {
+    display: none !important;
+  }
+}
+@media (max-width: 1060px) {
+  .viewer-bar .vbtn-label {
+    display: none;
+  }
+  .viewer-bar .vbtn {
+    padding: 0 10px;
+  }
+}
+
 /* niskie okno (laptop 1366×768, Windows ze skalowaniem 150%): mniejsze
    kafelki, ciaśniejsze karty, bez opisów pod przełącznikami */
 @media (max-height: 860px) {

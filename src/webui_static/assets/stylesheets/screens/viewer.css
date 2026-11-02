@@ -10,6 +10,24 @@
   border-bottom: 1px solid var(--viewer-line);
   background: var(--viewer);
   color: var(--viewer-fg);
+  white-space: nowrap;
+}
+/* w waskim oknie nic nie lamie sie na dwie linie: przyciski i plakietki
+   trzymaja szerokosc, a kurczy sie tylko nazwa pliku (wielokropek) */
+.viewer-bar > * {
+  flex-shrink: 0;
+}
+.viewer-bar > .viewer-title {
+  flex-shrink: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.viewer-file {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .vbtn {
   display: flex;

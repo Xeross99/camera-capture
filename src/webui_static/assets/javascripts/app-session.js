@@ -689,18 +689,18 @@ function reviewOverlay() {
   <div id="review-wrap" class="ui" style="position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column;">
     <div id="review-main" style="flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--viewer); transition: opacity .24s cubic-bezier(0.32, 0.72, 0, 1);">
       <div class="viewer-bar">
-        <button type="button" class="vbtn" onclick="closeReview()">${icon("arrowLeft", 16, 1.8)}${t("Wróć do sesji")}<span class="kbd">ESC</span></button>
-        <div style="display: flex; align-items: baseline; gap: 10px;">
+        <button type="button" class="vbtn" onclick="closeReview()" title="${t("Wróć do sesji")} (ESC)">${icon("arrowLeft", 16, 1.8)}<span class="vbtn-label">${t("Wróć do sesji")}</span><span class="kbd">ESC</span></button>
+        <div class="viewer-title">
           <span id="review-count" style="font-size: 15px; font-weight: 700;">${t("{i} z {n}", { i: shot.i + 1, n })}</span>
-          <span id="review-file" class="mono" style="font-size: 12.5px; color: var(--viewer-fg-2);">${shot.file}</span>
+          <span id="review-file" class="mono viewer-file" style="font-size: 12.5px; color: var(--viewer-fg-2);">${shot.file}</span>
         </div>
         <span id="review-size" class="vtag" style="display: none;"></span>
         <span id="review-status">${reviewStatusHtml(shot)}</span>
         <div style="flex: 1;"></div>
-        <button type="button" class="vbtn" onclick="pinGhost()" title="${t("Poprzednie zdjęcie na podglądzie")}">${icon("camera", 16, 1.8)}${t("Na podgląd")}<span class="kbd">O</span></button>
-        <button type="button" id="info-btn" class="vbtn${S.info ? " on" : ""}" onclick="toggleInfo()">${icon("info", 16, 1.8)}${t("Informacje")}<span class="kbd">I</span></button>
-        <button type="button" id="edit-btn" class="vbtn" onclick="toggleEdit()">${icon("pencil", 16, 1.8)}${t("Edytuj")}<span class="kbd">E</span></button>
-        <button type="button" class="vbtn vbtn-danger" onclick="deleteReviewed()">${icon("trash", 16, 1.8)}${t("Usuń")}<span class="kbd">BACKSPACE</span></button>
+        <button type="button" class="vbtn" onclick="pinGhost()" title="${t("Poprzednie zdjęcie na podglądzie")} (O)">${icon("camera", 16, 1.8)}<span class="vbtn-label">${t("Na podgląd")}</span><span class="kbd">O</span></button>
+        <button type="button" id="info-btn" class="vbtn${S.info ? " on" : ""}" onclick="toggleInfo()" title="${t("Informacje")} (I)">${icon("info", 16, 1.8)}<span class="vbtn-label">${t("Informacje")}</span><span class="kbd">I</span></button>
+        <button type="button" id="edit-btn" class="vbtn" onclick="toggleEdit()" title="${t("Edytuj")} (E)">${icon("pencil", 16, 1.8)}<span class="vbtn-label">${t("Edytuj")}</span><span class="kbd">E</span></button>
+        <button type="button" class="vbtn vbtn-danger" onclick="deleteReviewed()" title="${t("Usuń")} (BACKSPACE)">${icon("trash", 16, 1.8)}<span class="vbtn-label">${t("Usuń")}</span><span class="kbd">BACKSPACE</span></button>
       </div>
       <div style="flex: 1; min-height: 0; display: flex;">
       <div style="flex: 1; min-width: 0; position: relative;">

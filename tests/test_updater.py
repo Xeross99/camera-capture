@@ -461,12 +461,12 @@ def test_user_files_live_next_to_the_app_not_inside_it(platform, executable, exp
 
 # ---------- przepływ w aplikacji ----------
 
-def release_info(upd, kind: str = "windows") -> dict:
+def release_info(upd, kind: str = "windows", version: str = VERSION, asset_id: int = 1) -> dict:
     """To, co `latest_release()` oddaje aplikacji dla danego systemu."""
-    rel = release_json(upd.GITHUB_REPO, kind)
+    rel = release_json(upd.GITHUB_REPO, kind, version, asset_id)
     asset = rel["assets"][0]
     return {
-        "version": VERSION, "tag": rel["tag_name"], "published": rel["published_at"],
+        "version": version, "tag": rel["tag_name"], "published": rel["published_at"],
         "url": asset["url"], "size": asset["size"], "download": asset["browser_download_url"],
         "notes": "Co nowego", "page": rel["html_url"],
     }
@@ -503,6 +503,56 @@ def test_windows_app_downloads_and_hands_over_to_updater(windows_app, monkeypatc
     assert app.action({"action": "apply_update"})["ok"]
     wait_for(lambda: app.exits == ["stop", 0], 10, "zamknięcie po starcie aktualizatora")
     assert calls == [("download", release_info(updater)["url"]), ("apply", tmp_path / "staging")]
+
+
+def test_banner_click_downloads_the_newest_release_not_the_one_on_the_banner(
+        windows_app, monkeypatch, tmp_path):
+    """Baner pokazuje 9.9.9, ale zanim operator kliknal, wyszlo 9.9.10, a CI
+    skasowalo 9.9.9 razem z paczka. Klik ma pobrac 9.9.10, nie martwy adres."""
+    from src import updater
+    app = windows_app
+    newer = release_info(updater, version="9.9.10", asset_id=7)
+    monkeypatch.setattr(updater, "latest_release", lambda: newer)
+    urls = []
+    monkeypatch.setattr(updater, "download_and_stage",
+                        lambda url, progress: urls.append(url) or tmp_path / "staging")
+    monkeypatch.setattr(updater, "apply_update_and_restart", lambda staging: tmp_path / "update.log")
+    app.action({"action": "apply_update"})
+    wait_for(lambda: app.exits == ["stop", 0], 10, "zamknięcie po starcie aktualizatora")
+    assert urls == [newer["url"]]
+    assert app.state()["update"]["available"] == "9.9.10"
+    assert any("nowsza wersja 9.9.10 - pobieram ją zamiast 9.9.9" in t for t in log_texts(app))
+    assert any("Pobieram aktualizację 9.9.10" in t for t in log_texts(app))
+
+
+def test_banner_click_uses_known_release_when_github_does_not_answer(
+        windows_app, monkeypatch, tmp_path):
+    from src import updater
+    app = windows_app
+    def offline():
+        raise requests.ConnectionError("brak sieci")
+    monkeypatch.setattr(updater, "latest_release", offline)
+    urls = []
+    monkeypatch.setattr(updater, "download_and_stage",
+                        lambda url, progress: urls.append(url) or tmp_path / "staging")
+    monkeypatch.setattr(updater, "apply_update_and_restart", lambda staging: tmp_path / "update.log")
+    app.action({"action": "apply_update"})
+    wait_for(lambda: app.exits == ["stop", 0], 10, "zamknięcie po starcie aktualizatora")
+    assert urls == [release_info(updater)["url"]]
+    assert any("Nie udało się sprawdzić najnowszej wersji" in t for t in log_texts(app))
+
+
+def test_banner_click_downloads_nothing_when_release_was_withdrawn(windows_app, monkeypatch):
+    """Wydanie z banera zniknelo i nie ma nic nowszego od zainstalowanej wersji."""
+    from src import updater
+    app = windows_app
+    monkeypatch.setattr(updater, "latest_release", lambda: None)
+    called = []
+    monkeypatch.setattr(updater, "download_and_stage", lambda *a: called.append(a))
+    app.action({"action": "apply_update"})
+    wait_for(lambda: any("Brak paczki aktualizacji" in t for t in log_texts(app)), 10, "odmowa")
+    assert called == [] and app.exits == []
+    assert app.state()["update"]["available"] in ("", None)
 
 
 def test_windows_app_stays_open_when_updater_fails(windows_app, monkeypatch, tmp_path):

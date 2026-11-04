@@ -196,6 +196,10 @@ EN.update({
     "Pobierz paczkę dla macOS z GitHub Releases i podmień Camera Capture.app.":
         "Download the macOS package from GitHub Releases and replace Camera Capture.app.",
     "✗ Brak paczki aktualizacji do pobrania.": "✗ No update package to download.",
+    "Nie udało się sprawdzić najnowszej wersji ({e}) - pobieram {v}.":
+        "Could not check for the newest version ({e}) - downloading {v}.",
+    "W międzyczasie wyszła nowsza wersja {v} - pobieram ją zamiast {old}.":
+        "A newer version {v} came out in the meantime - downloading it instead of {old}.",
     "✗ Samo-aktualizacja działa tylko dla .exe (Windows).": "✗ Self-update works only for the .exe (Windows).",
     "✗ Trwa zdjęcie/obróbka - spróbuj aktualizacji za chwilę.":
         "✗ A photo is being taken/processed - try the update in a moment.",
@@ -1611,8 +1615,8 @@ class WebUI:
         from . import updater
 
         with self.lock:
-            info = self.update_info
             busy = self.busy or self.processing_file
+        info = self._fresh_update_info()
         if not info or not info.get("url"):
             self._log(tr("✗ Brak paczki aktualizacji do pobrania."), "err")
             return
@@ -1646,6 +1650,36 @@ class WebUI:
         # osobny watek: _restart_into() czeka na zamkniecie workera w stop()
         threading.Thread(target=self._restart_into, args=(staging,),
                          daemon=True).start()
+
+    def _fresh_update_info(self) -> dict | None:
+        """Wydanie do pobrania, sprawdzone TERAZ, a nie przy starcie.
+
+        Baner moze wisiec godzinami: aplikacja 1.0 pokazuje 1.1, a w tym czasie
+        CI wydalo 1.2 i skasowalo 1.1 razem z paczka (zostaje jedno wydanie na
+        system). Klik w baner pobieral wtedy martwy adres i konczyl sie bledem.
+        Gdy GitHub nie odpowiada, zostaje to, co wykryto wczesniej."""
+        from . import updater
+
+        with self.lock:
+            cached = self.update_info
+        try:
+            latest = updater.latest_release()
+        except Exception as e:
+            if cached:
+                self._log(tr("Nie udało się sprawdzić najnowszej wersji ({e}) - pobieram {v}.",
+                             e=e, v=cached["version"]), "warn")
+            return cached
+        info = latest if latest and updater.is_newer(latest["version"]) else None
+        with self.lock:
+            self.update_info = info
+            self.update_latest = latest
+            self.update_checked = time.time()
+            self.update_status = (tr("Dostępna wersja {v}", v=info['version']) if info
+                                  else tr("Masz najnowszą wersję ({v})", v=APP_VERSION))
+        if info and cached and info["version"] != cached["version"]:
+            self._log(tr("W międzyczasie wyszła nowsza wersja {v} - pobieram ją zamiast {old}.",
+                         v=info["version"], old=cached["version"]), "warn")
+        return info
 
     def _restart_into(self, staging) -> None:
         """Odpala aktualizator i dopiero WTEDY zamyka aplikacje.
